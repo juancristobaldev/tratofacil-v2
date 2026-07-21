@@ -1,0 +1,12 @@
+{
+  "ignore_dirs": [
+    "node_modules/.cache",
+    "android/.gradle",
+    "android/app/build",
+    "android/app/.cxx",
+    "node_modules/react-native-reanimated/android/build",
+    "node_modules/react-native-reanimated/android/.cxx",
+    "node_modules/react-native-worklets/android/build",
+    "node_modules/react-native-worklets/android/.cxx"
+  ]
+}
