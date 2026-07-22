@@ -47,6 +47,7 @@ const ROUTE_COORDS = [
 type ClientState =
   | 'MATCHING' // 0: Radar
   | 'QUOTE_RECEIVED' // 1: Quote details, chat & pay
+  | 'WAITING_PROVIDER_RESPONSE' // 1.5: Waiting provider to accept new quote
   | 'CHAT' // 2: Chat screen
   | 'PAID' // 3: Paid, moving on map
   | 'START_REPAIR' // 4: Provider arrived
@@ -63,6 +64,7 @@ export const FocusModeClientScreen: React.FC = () => {
   const provider = MOCK_PROVIDERS.find((p) => p.id === providerId) || MOCK_PROVIDERS[0];
 
   const [orderState, setOrderState] = useState<ClientState>('MATCHING');
+  const [matchingText, setMatchingText] = useState('Contactando al profesional solicitado...');
   const lastOrderState = useRef<ClientState>(orderState);
 
   // Simulated provider position movement on map when PAID
@@ -236,15 +238,30 @@ export const FocusModeClientScreen: React.FC = () => {
     const composite = Animated.parallel([loop1, loop2]);
     composite.start();
 
-    // Auto advance from MATCHING to QUOTE_RECEIVED after 3 seconds
+    // Change text after 2 seconds
+    const textTimer = setTimeout(() => {
+      setMatchingText('Esperando cotización...');
+    }, 2000);
+
+    // Auto advance from MATCHING to QUOTE_RECEIVED after 4 seconds
     const timer = setTimeout(() => {
       setOrderState('QUOTE_RECEIVED');
-    }, 3000);
+    }, 4000);
 
     return () => {
       composite.stop();
       clearTimeout(timer);
+      clearTimeout(textTimer);
     };
+  }, [orderState]);
+
+  useEffect(() => {
+    if (orderState === 'WAITING_PROVIDER_RESPONSE') {
+      const timer = setTimeout(() => {
+        setOrderState('PAID');
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
   }, [orderState]);
 
   // Chatbot State
@@ -357,21 +374,8 @@ export const FocusModeClientScreen: React.FC = () => {
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {location && (
-            <AnimatedUserMarker 
-              coordinate={{ 
-                latitude: location.coords.latitude, 
-                longitude: location.coords.longitude 
-              }} 
-            />
-          )}
-
-          {/* Client Marker */}
-          <Marker coordinate={CLIENT_LOCATION}>
-            <View style={styles.clientMarker}>
-              <Icon name="Home" size={12} color={TOKENS.colors.white} />
-            </View>
-          </Marker>
+          {/* Client Marker (User's mock location) */}
+          <AnimatedUserMarker coordinate={CLIENT_LOCATION} />
 
           {/* Provider Marker (shows up in states after quote) */}
           {orderState !== 'MATCHING' && (
@@ -424,7 +428,7 @@ export const FocusModeClientScreen: React.FC = () => {
           <View style={styles.radarPulseCenter}>
             <Avatar uri={provider.avatar} name={provider.name} size={64} />
           </View>
-          <Text style={styles.radarText}>Contactando al profesional solicitado...</Text>
+          <Text style={styles.radarText}>{matchingText}</Text>
           <TouchableOpacity onPress={closePanel} style={styles.cancelLink}>
             <Text style={styles.cancelLinkText}>Cancelar búsqueda</Text>
           </TouchableOpacity>

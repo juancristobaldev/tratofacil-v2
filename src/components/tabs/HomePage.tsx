@@ -8,6 +8,7 @@ import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker } from '..
 import { MOCK_CATEGORIES, MOCK_PROVIDERS, Category, Provider } from '../../mocks/mockData';
 import { usePanel } from '../../context/PanelContext';
 import { useRole } from '../../context/RoleContext';
+import { useLocation } from '../../context/LocationContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -49,6 +50,8 @@ export const HomePage: React.FC = () => {
   const { openPanel, panelState, activePanel } = usePanel();
   const [region, setRegion] = useState(SANTIAGO_REGION);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [isEditingRadius, setIsEditingRadius] = useState(false);
+  const [radiusKm, setRadiusKm] = useState(5);
 
   const { role } = useRole();
 
@@ -81,7 +84,16 @@ export const HomePage: React.FC = () => {
   }, [role, activePanel, openPanel]);
 
   const handleRecenter = () => {
-    setRegion(SANTIAGO_REGION);
+    if (location) {
+      setRegion({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.035,
+        longitudeDelta: 0.035,
+      });
+    } else {
+      setRegion(SANTIAGO_REGION);
+    }
   };
 
   return (
@@ -124,21 +136,63 @@ export const HomePage: React.FC = () => {
         })}
       </MapView>
 
+      {/* Top Floating Controls */}
+      <View style={styles.topFloatingControls}>
+        {/* Floating Location & Radius Box (Client only) */}
+        {(role === 'client' || role === 'guest') && (
+          <View style={styles.locationFloatContainer}>
+            <TouchableOpacity 
+              style={styles.locationHeaderRow} 
+              onPress={() => setIsEditingRadius(!isEditingRadius)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.locationLeft}>
+                <View style={styles.locationIconBox}>
+                  <Icon name="MapPin" size={14} color={TOKENS.colors.white} />
+                </View>
+                <Text style={styles.locationLabel}>Mi ubicación</Text>
+              </View>
+              <View style={styles.radiusBadge}>
+                <Text style={styles.radiusBadgeText}>Radio {radiusKm === 50 ? '+50' : radiusKm}km</Text>
+                <Icon name={isEditingRadius ? "ChevronUp" : "ChevronDown"} size={14} color={TOKENS.colors.brand600} />
+              </View>
+            </TouchableOpacity>
+            
+            {isEditingRadius && (
+              <View style={styles.radiusEditor}>
+                <Text style={styles.radiusEditorTitle}>Ajustar radio de búsqueda</Text>
+                <View style={styles.radiusOptions}>
+                  {[2, 5, 10, 25, 50].map((r) => (
+                    <TouchableOpacity 
+                      key={r} 
+                      style={[styles.radiusOptionBtn, radiusKm === r && styles.radiusOptionBtnActive]}
+                      onPress={() => {
+                        setRadiusKm(r);
+                        setTimeout(() => setIsEditingRadius(false), 200);
+                      }}
+                    >
+                      <Text style={[styles.radiusOptionText, radiusKm === r && styles.radiusOptionTextActive]}>
+                        {r === 50 ? '+50' : r} km
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
-
-      {/* GPS button */}
-      <TouchableOpacity
-        onPress={handleRecenter}
-        activeOpacity={0.8}
-        style={[
-          styles.gpsBtn,
-          {
-            bottom: panelState === 'minimized' ? 80 : (panelState === 'expanded' ? SCREEN_HEIGHT * 0.48 + 20 : 100)
-          }
-        ]}
-      >
-        <Icon name="Crosshair" size={20} color={TOKENS.colors.white} />
-      </TouchableOpacity>
+        {/* GPS button */}
+        <View style={styles.gpsBtnWrapper}>
+          <TouchableOpacity
+            onPress={handleRecenter}
+            activeOpacity={0.8}
+            style={styles.gpsBtn}
+          >
+            <Icon name="Crosshair" size={20} color={TOKENS.colors.dark900} />
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 };
@@ -166,17 +220,19 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 0,
   },
+  gpsBtnWrapper: {
+    alignItems: 'flex-end',
+  },
   gpsBtn: {
-    position: 'absolute',
-    right: 20,
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: TOKENS.colors.dark900,
+    backgroundColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     ...TOKENS.shadows.floating,
-    zIndex: 10,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
   },
   sheetContent: { flex: 1, paddingHorizontal: TOKENS.spacing.lg, paddingTop: TOKENS.spacing.xxs },
   sheetTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
@@ -196,4 +252,97 @@ const styles = StyleSheet.create({
   providerService: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, marginBottom: 4 },
   providerFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   providerPrice: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
+  topFloatingControls: {
+    position: 'absolute',
+    top: TOKENS.spacing.md,
+    left: TOKENS.spacing.md,
+    right: TOKENS.spacing.md,
+    zIndex: 50,
+  },
+  locationFloatContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    ...TOKENS.shadows.floating,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginBottom: TOKENS.spacing.sm,
+  },
+  locationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+  },
+  locationLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  locationIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: TOKENS.colors.dark900,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationLabel: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  radiusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.brand50,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+    gap: 4,
+  },
+  radiusBadgeText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand600,
+  },
+  radiusEditor: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: TOKENS.colors.surface100,
+  },
+  radiusEditorTitle: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.semibold,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  radiusOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  radiusOptionBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    alignItems: 'center',
+  },
+  radiusOptionBtnActive: {
+    backgroundColor: TOKENS.colors.brand500,
+    borderColor: TOKENS.colors.brand500,
+  },
+  radiusOptionText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+  },
+  radiusOptionTextActive: {
+    color: TOKENS.colors.white,
+  },
 });

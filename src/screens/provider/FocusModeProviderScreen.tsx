@@ -30,7 +30,7 @@ const ROUTE_COORDS = [
   CLIENT_LOCATION,
 ];
 
-type ProviderOrderState = 'EN_CAMINO' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED';
+type ProviderOrderState = 'VIEW_REQUEST' | 'WAITING_CLIENT_RESPONSE' | 'EN_CAMINO' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED';
 
 export const FocusModeProviderScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -39,7 +39,7 @@ export const FocusModeProviderScreen: React.FC = () => {
   const { location } = useLocation();
   const requestId = panelData?.requestId || 'req201';
 
-  const [orderState, setOrderState] = useState<ProviderOrderState>('EN_CAMINO');
+  const [orderState, setOrderState] = useState<ProviderOrderState>(panelData?.orderState || 'VIEW_REQUEST');
   const lastOrderState = useRef<ProviderOrderState | null>(null);
 
   // Simulated provider position movement on map when EN_CAMINO
@@ -171,6 +171,16 @@ export const FocusModeProviderScreen: React.FC = () => {
   }, [orderState]);
 
   useEffect(() => {
+    if (orderState === 'WAITING_CLIENT_RESPONSE') {
+      // Simular que el cliente acepta la cotización después de unos segundos
+      const timer = setTimeout(() => {
+        setOrderState('EN_CAMINO');
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [orderState]);
+
+  useEffect(() => {
     if (orderState !== 'IN_PROGRESS') return;
 
     const timer = setInterval(() => {
@@ -197,14 +207,6 @@ export const FocusModeProviderScreen: React.FC = () => {
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {location && (
-            <AnimatedUserMarker 
-              coordinate={{ 
-                latitude: location.coords.latitude, 
-                longitude: location.coords.longitude 
-              }} 
-            />
-          )}
           {/* Client Marker */}
           <Marker coordinate={CLIENT_LOCATION}>
             <View style={styles.clientMarker}>
@@ -212,12 +214,8 @@ export const FocusModeProviderScreen: React.FC = () => {
             </View>
           </Marker>
 
-          {/* Provider Marker */}
-          <Marker coordinate={providerCoords}>
-            <View style={styles.providerMarker}>
-              <Icon name="Wrench" size={12} color={TOKENS.colors.white} />
-            </View>
-          </Marker>
+          {/* Provider Marker (User's mock location) */}
+          <AnimatedUserMarker coordinate={providerCoords} />
 
           {/* Route path */}
           {orderState === 'EN_CAMINO' && (

@@ -18,6 +18,7 @@ export const FocusClientPanelContent: React.FC = () => {
   const { role, setRole } = useRole();
   const [showGuestCheckout, setShowGuestCheckout] = useState(false);
   const [guestForm, setGuestForm] = useState({ name: '', lastName: '', email: '', phone: '' });
+  const [clientPrice, setClientPrice] = useState(15000);
   const {
     orderState,
     provider,
@@ -128,6 +129,9 @@ export const FocusClientPanelContent: React.FC = () => {
                       <Icon name="CheckCircle2" size={14} color={TOKENS.colors.statusSuccess} style={{ marginLeft: 4 }} />
                     </View>
                   </View>
+                  <TouchableOpacity onPress={() => setOrderState && setOrderState('CHAT')} style={styles.chatIconBtnSmall}>
+                    <Icon name="MessageSquare" size={20} color={TOKENS.colors.brand500} />
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -151,15 +155,25 @@ export const FocusClientPanelContent: React.FC = () => {
               </View>
 
               <View style={styles.priceRow}>
-                <Text style={styles.priceLabel}>Precio total</Text>
-                <Text style={styles.priceValue}>$15.000</Text>
+                <Text style={styles.priceLabel}>Cotización total</Text>
+                <View style={styles.priceAdjusterRow}>
+                  <TouchableOpacity onPress={() => setClientPrice((p) => Math.max(5000, p - 1000))} style={styles.adjusterBtnSmall}>
+                    <Icon name="Minus" size={20} color={TOKENS.colors.textMain} />
+                  </TouchableOpacity>
+                  <Text style={styles.priceValue}>${clientPrice.toLocaleString('es-CL')}</Text>
+                  <TouchableOpacity onPress={() => setClientPrice((p) => p + 1000)} style={styles.adjusterBtnSmall}>
+                    <Icon name="Plus" size={20} color={TOKENS.colors.textMain} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              <View style={styles.buttonRow}>
+              <View style={{ gap: 12 }}>
                 <Button
-                  title="Pagar ahora"
+                  title={clientPrice !== 15000 ? "Enviar cotización" : "Pagar ahora"}
                   onPress={() => {
-                    if (role === 'guest') {
+                    if (clientPrice !== 15000) {
+                      setOrderState && setOrderState('WAITING_PROVIDER_RESPONSE');
+                    } else if (role === 'guest') {
                       setShowGuestCheckout(true);
                     } else {
                       setOrderState && setOrderState('PAID');
@@ -167,9 +181,29 @@ export const FocusClientPanelContent: React.FC = () => {
                   }}
                   style={styles.payBtn}
                 />
+                <Button
+                  title="Cancelar orden"
+                  variant="outline"
+                  onPress={() => {}}
+                />
               </View>
             </>
           )}
+        </ScrollView>
+      )}
+
+      {/* STATE 2: WAITING PROVIDER */}
+      {orderState === 'WAITING_PROVIDER_RESPONSE' && (
+        <ScrollView contentContainerStyle={styles.sheetBody}>
+          <View style={styles.waitingContainer}>
+            <Icon name="Clock" size={48} color={TOKENS.colors.brand500} />
+            <Text style={styles.waitingTitle}>Cotización enviada</Text>
+            <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
+            
+            <TouchableOpacity onPress={() => setOrderState && setOrderState('QUOTE_RECEIVED')} style={styles.bypassBtn}>
+              <Text style={styles.bypassBtnText}>Simular profesional rechaza/contraoferta</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
 
@@ -587,5 +621,44 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textMain,
     marginTop: 12,
+  },
+  priceAdjusterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  adjusterBtnSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatIconBtnSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: TOKENS.colors.brand50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+  },
+  waitingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  waitingTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  waitingDesc: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
   },
 });

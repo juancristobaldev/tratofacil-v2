@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon } from '../ui/Icon';
 
-export type AppTab = 'home' | 'direct' | 'marketplace' | 'jobs' | 'account';
+export type AppTab = 'home' | 'direct' | 'marketplace' | 'jobs' | 'trato_directo';
 
 interface TabItem {
   key: AppTab;
@@ -17,13 +17,13 @@ const CLIENT_TABS: TabItem[] = [
   { key: 'home', label: 'Buscar', icon: 'Search', iconFilled: 'Search' },
   { key: 'marketplace', label: 'Marketplace', icon: 'Store' },
   { key: 'jobs', label: 'Trabajos', icon: 'Briefcase' },
-  { key: 'account', label: 'Perfil', icon: 'User' },
+  { key: 'trato_directo', label: 'Trato Directo', icon: 'Sparkles' },
 ];
 
 const PROVIDER_TABS: TabItem[] = [
   { key: 'home', label: 'Mapa', icon: 'MapPin' },
   { key: 'direct', label: 'Ganancias', icon: 'TrendingUp' },
-  { key: 'account', label: 'Perfil', icon: 'User' },
+  { key: 'trato_directo', label: 'Trato Directo', icon: 'Sparkles' },
 ];
 
 interface BottomNavProps {

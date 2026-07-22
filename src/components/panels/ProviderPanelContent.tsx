@@ -40,7 +40,7 @@ export const ProviderPanelContent: React.FC = () => {
   const [requests, setRequests] = useState<IncomingRequest[]>(INCOMING_REQUESTS);
 
   const handleAcceptRequest = (reqId: string) => {
-    openPanel('focus_provider', { requestId: reqId });
+    openPanel('focus_provider', { requestId: reqId, orderState: 'VIEW_REQUEST' });
   };
 
   const handleDeclineRequest = (reqId: string) => {
@@ -144,7 +144,7 @@ export const ProviderPanelContent: React.FC = () => {
                     style={styles.declineBtn}
                   />
                   <Button
-                    title="Aceptar"
+                    title="Ver"
                     onPress={() => handleAcceptRequest(req.id)}
                     style={styles.acceptBtn}
                   />

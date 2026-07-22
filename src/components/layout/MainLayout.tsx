@@ -14,6 +14,7 @@ import { JobsTab } from '../tabs/JobsTab';
 import { EarningsTab } from '../tabs/EarningsTab';
 import { MyProfileScreen } from '../../screens/shared/MyProfileScreen';
 import { MyServicesScreen } from '../../screens/shared/MyServicesScreen';
+import { TratoDirectoScreen } from '../../screens/shared/TratoDirectoScreen';
 
 interface MainLayoutProps {
   children?: React.ReactNode;
@@ -59,6 +60,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         return role === 'provider' ? <EarningsTab /> : <View style={styles.placeholder}><Text>Trato Directo</Text></View>;
       case 'account':
         return <MyProfileScreen />;
+      case 'trato_directo':
+        return <TratoDirectoScreen />;
       default:
         return children;
     }

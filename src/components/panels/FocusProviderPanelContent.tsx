@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,11 +8,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Button, Badge } from '../ui';
+import { Icon, Avatar, Button, Badge, Rating } from '../ui';
 import { usePanel } from '../../context/PanelContext';
 
 export const FocusProviderPanelContent: React.FC = () => {
-  const { panelData } = usePanel();
+  const { panelData, closePanel } = usePanel();
+  const [quotedPrice, setQuotedPrice] = useState(22000);
   const {
     orderState,
     etaRemaining,
@@ -26,6 +27,77 @@ export const FocusProviderPanelContent: React.FC = () => {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.sheetBody}>
+        {/* STATE: VIEW_REQUEST */}
+        {orderState === 'VIEW_REQUEST' && (
+          <View style={styles.viewRequestContainer}>
+            <View style={styles.clientCard}>
+              <Avatar uri={null} name="Juan Pérez" size={48} />
+              <View style={styles.clientCardInfo}>
+                <Text style={styles.clientName}>Juan Pérez</Text>
+                <View style={styles.ratingRow}>
+                  <Rating rating={4.8} size={14} showText textSuffix="reseñas" reviewsCount={24} />
+                </View>
+              </View>
+              <TouchableOpacity style={styles.actionCircleBtn}>
+                <Icon name="MessageSquare" size={18} color={TOKENS.colors.brand500} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.detailSection}>
+              <Text style={styles.detailTitle}>Detalles del problema</Text>
+              <Text style={styles.detailText}>
+                Reparación de enchufe en cocina, aparentemente hubo un cortocircuito. Necesito que se revise también el tablero general por si acaso.
+              </Text>
+            </View>
+
+            <View style={styles.priceAdjusterContainer}>
+              <Text style={styles.priceAdjusterLabel}>Cotización total del servicio</Text>
+              <View style={styles.priceAdjusterRow}>
+                <TouchableOpacity
+                  onPress={() => setQuotedPrice((p) => Math.max(5000, p - 1000))}
+                  style={styles.adjusterBtn}
+                >
+                  <Icon name="Minus" size={24} color={TOKENS.colors.textMain} />
+                </TouchableOpacity>
+                <Text style={styles.priceAdjusterValue}>${quotedPrice.toLocaleString('es-CL')}</Text>
+                <TouchableOpacity
+                  onPress={() => setQuotedPrice((p) => p + 1000)}
+                  style={styles.adjusterBtn}
+                >
+                  <Icon name="Plus" size={24} color={TOKENS.colors.textMain} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.actionRow}>
+              <Button
+                title="Rechazar"
+                variant="outline"
+                onPress={closePanel}
+                style={styles.actionRowBtn}
+              />
+              <Button
+                title="Enviar cotización"
+                onPress={() => setOrderState && setOrderState('WAITING_CLIENT_RESPONSE')}
+                style={styles.actionRowBtn}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* STATE: WAITING_CLIENT_RESPONSE */}
+        {orderState === 'WAITING_CLIENT_RESPONSE' && (
+          <View style={styles.waitingContainer}>
+            <Icon name="Clock" size={48} color={TOKENS.colors.brand500} />
+            <Text style={styles.waitingTitle}>Cotización enviada</Text>
+            <Text style={styles.waitingDesc}>Esperando respuesta del cliente...</Text>
+            
+            <TouchableOpacity onPress={() => setOrderState && setOrderState('VIEW_REQUEST')} style={styles.bypassBtn}>
+              <Text style={styles.bypassBtnText}>Simular cliente rechaza/contraoferta</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* STATE 1: EN CAMINO */}
         {orderState === 'EN_CAMINO' && (
           <>
@@ -249,5 +321,85 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
     fontWeight: TOKENS.typography.weights.medium,
     marginBottom: 12,
+  },
+  viewRequestContainer: {
+    gap: TOKENS.spacing.md,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  detailSection: {
+    backgroundColor: TOKENS.colors.surface50,
+    padding: TOKENS.spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  detailTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    marginBottom: 8,
+  },
+  detailText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    lineHeight: 20,
+  },
+  priceAdjusterContainer: {
+    alignItems: 'center',
+    paddingVertical: TOKENS.spacing.md,
+  },
+  priceAdjusterLabel: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    marginBottom: 16,
+  },
+  priceAdjusterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 24,
+  },
+  adjusterBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priceAdjusterValue: {
+    fontSize: TOKENS.typography.sizes.xxl,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand600,
+    minWidth: 140,
+    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: TOKENS.spacing.md,
+    marginTop: TOKENS.spacing.sm,
+  },
+  actionRowBtn: {
+    flex: 1,
+  },
+  waitingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  waitingTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  waitingDesc: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
   },
 });
