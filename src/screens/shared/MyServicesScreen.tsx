@@ -1,49 +1,102 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Badge } from '../../components';
-
-interface ServiceItem { id: string; name: string; category: string; price: number; status: 'ACTIVE' | 'PAUSED'; }
-
-const MY_SERVICES: ServiceItem[] = [
-  { id: 's_01', name: 'Especialista en Tableros e Iluminación', category: 'Electricidad', price: 22000, status: 'ACTIVE' },
-  { id: 's_02', name: 'Instalaciones Eléctricas Domiciliarias SEC', category: 'Electricidad', price: 25000, status: 'ACTIVE' },
-  { id: 's_03', name: 'Mantención y Reparación de Calefactores', category: 'Mecánica/Calefacción', price: 18000, status: 'PAUSED' },
-];
+import { Icon, Button, Card, Badge, EmptyState, ErrorState } from '../../components';
+import { useServices } from '../../hooks/useServices';
+import { useRefresh } from '../../context/RefreshContext';
 
 export const MyServicesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { setIsRefreshing } = useRefresh();
+
+  const {
+    myServices: services,
+    myServicesLoading: loading,
+    myServicesError: error,
+    deleteService,
+    refetch,
+  } = useServices();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetch, setIsRefreshing]);
+
+  const handleDelete = (id: number, name: string) => {
+    Alert.alert('Eliminar servicio', `¿Estás seguro de eliminar "${name}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => deleteService(id),
+      },
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return <ErrorState message="No se pudieron cargar tus servicios." onRetry={() => refetch()} />;
+  }
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <View style={styles.introRow}>
           <Text style={styles.subtitle}>Administra los servicios técnicos que ofreces a tus clientes en TratoFácil.</Text>
         </View>
-        <View style={styles.servicesList}>
-          {MY_SERVICES.map((item) => (
-            <Card key={item.id} style={styles.serviceCard} padded={true}>
-              <View style={styles.cardHeader}>
-                <View style={styles.titleCol}>
-                  <Text style={styles.serviceName}>{item.name}</Text>
-                  <Text style={styles.serviceCat}>{item.category}</Text>
+        {services.length === 0 ? (
+          <EmptyState icon="Wrench" title="No tienes servicios publicados" description="Publica tu primer servicio para que los clientes te encuentren." />
+        ) : (
+          <View style={styles.servicesList}>
+            {services.map((item) => (
+              <Card key={item.id} style={styles.serviceCard} padded={true}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.titleCol}>
+                    <Text style={styles.serviceName}>{item.name}</Text>
+                    <Text style={styles.serviceCat}>{item.category?.name || 'Sin categoría'}</Text>
+                  </View>
+                  <Badge label="Activo" tone="success" />
                 </View>
-                <Badge label={item.status === 'ACTIVE' ? 'Activo' : 'Pausado'} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
-              </View>
-              <View style={styles.cardDivider} />
-              <View style={styles.cardFooter}>
-                <Text style={styles.priceText}>Valor estimado: <Text style={styles.priceVal}>${item.price.toLocaleString('es-CL')} / hr</Text></Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}><Icon name="Edit" size={16} color={TOKENS.colors.textSubtle} /></TouchableOpacity>
-                  <TouchableOpacity style={styles.actionBtn} activeOpacity={0.7}><Icon name={item.status === 'ACTIVE' ? 'Pause' : 'Play'} size={16} color={TOKENS.colors.textSubtle} /></TouchableOpacity>
+                <View style={styles.cardDivider} />
+                <View style={styles.cardFooter}>
+                  <Text style={styles.priceText}>
+                    {item.serviceProviders?.[0]?.price ? (
+                      <>Valor: <Text style={styles.priceVal}>${item.serviceProviders[0].price.toLocaleString('es-CL')} / hr</Text></>
+                    ) : (
+                      'Sin precio definido'
+                    )}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    activeOpacity={0.7}
+                    onPress={() => handleDelete(item.id, item.name)}
+                  >
+                    <Icon name="Trash" size={16} color={TOKENS.colors.statusError} />
+                  </TouchableOpacity>
                 </View>
-              </View>
-            </Card>
-          ))}
-        </View>
+              </Card>
+            ))}
+          </View>
+        )}
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
         <Button title="Publicar Nuevo Servicio" onPress={() => navigation.navigate('PublishService')} icon="Plus" style={styles.publishBtn} />
@@ -54,6 +107,7 @@ export const MyServicesScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white },
   scrollBody: { padding: TOKENS.spacing.lg, paddingBottom: 90 },
   introRow: { marginBottom: TOKENS.spacing.md },
   subtitle: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, lineHeight: 18 },

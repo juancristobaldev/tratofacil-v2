@@ -1,56 +1,69 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch } from 'react-native';
+import Geolocation, { GeoPosition } from 'react-native-geolocation-service';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Card, Button, Badge } from '../ui';
 import { usePanel } from '../../context/PanelContext';
-
-interface IncomingRequest {
-  id: string;
-  clientName: string;
-  serviceType: string;
-  distance: string;
-  price: number;
-  address: string;
-}
-
-const INCOMING_REQUESTS: IncomingRequest[] = [
-  {
-    id: 'req201',
-    clientName: 'Juan Pérez',
-    serviceType: 'Reparación de Enchufe Cocina',
-    distance: '1.2 km de distancia',
-    price: 22000,
-    address: 'Av. Providencia 1450, Depto 402, Providencia',
-  },
-  {
-    id: 'req202',
-    clientName: 'María Ignacia',
-    serviceType: 'Cortocircuito en Baño',
-    distance: '2.5 km de distancia',
-    price: 35000,
-    address: 'Pedro de Valdivia 900, Providencia',
-  },
-];
+import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
+import { useLocation } from '../../context/LocationContext';
+import { useTimeRealServices } from '../../hooks/useTimeRealServices';
 
 export const ProviderPanelContent: React.FC = () => {
   const navigation = useNavigation<any>();
   const { openPanel } = usePanel();
-  const [online, setOnline] = useState(true);
-  const [requests, setRequests] = useState<IncomingRequest[]>(INCOMING_REQUESTS);
+  const { user } = useAuth();
+  const { wallet } = usePlans();
+  const { location } = useLocation();
+  const realtime = useTimeRealServices();
 
-  const handleAcceptRequest = (reqId: string) => {
-    openPanel('focus_provider', { requestId: reqId, orderState: 'VIEW_REQUEST' });
+  const [online, setOnline] = useState(realtime?.isRealtimeActive || false);
+
+  useEffect(() => {
+    setOnline(realtime?.isRealtimeActive || false);
+  }, [realtime?.isRealtimeActive]);
+
+  const handleToggleOnline = async (value: boolean) => {
+    setOnline(value);
+    let lat: number | null | undefined = null;
+    let lng: number | null | undefined = null;
+    if (value) {
+      try {
+        const pos = await new Promise<GeoPosition>((resolve, reject) => {
+          Geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 5000,
+          });
+        });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch (_) {
+        lat = location?.coords?.latitude ?? null;
+        lng = location?.coords?.longitude ?? null;
+      }
+    }
+    realtime?.toggleAvailability(value, lat, lng);
   };
 
-  const handleDeclineRequest = (reqId: string) => {
-    setRequests((prev) => prev.filter((r) => r.id !== reqId));
+  const handleRejectRequest = async (orderId: number) => {
+    try {
+      await realtime?.respondRequest(orderId, 'reject');
+    } catch {}
+  };
+
+  const walletBalance = wallet?.balance || 0;
+  const completedOrdersCount = user?.provider?.completedOrdersCount || 0;
+  const planActive = user?.planOrders?.some((p) => p.planActive) || false;
+
+  const handleAcceptRequest = (orderId: number) => {
+    openPanel('focus_provider', { requestId: orderId, orderState: 'VIEW_REQUEST' });
   };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
-        {/* Online toggle */}
         <View style={styles.onlineRow}>
           <View style={styles.onlineInfo}>
             <View style={[styles.statusDot, online && styles.statusDotActive]} />
@@ -60,13 +73,12 @@ export const ProviderPanelContent: React.FC = () => {
           </View>
           <Switch
             value={online}
-            onValueChange={setOnline}
+            onValueChange={handleToggleOnline}
             trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
             thumbColor={online ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
           />
         </View>
 
-        {/* Wallet card */}
         <Card style={styles.walletCard} padded={false}>
           <TouchableOpacity
             style={styles.walletBtn}
@@ -74,9 +86,9 @@ export const ProviderPanelContent: React.FC = () => {
             activeOpacity={0.9}
           >
             <View style={styles.walletTextCol}>
-              <Text style={styles.walletLabel}>Ganancias de hoy</Text>
-              <Text style={styles.walletVal}>$67.000</Text>
-              <Text style={styles.walletSub}>3 servicios completados</Text>
+              <Text style={styles.walletLabel}>Saldo disponible</Text>
+              <Text style={styles.walletVal}>${walletBalance.toLocaleString('es-CL')}</Text>
+              <Text style={styles.walletSub}>{completedOrdersCount} servicios completados</Text>
             </View>
             <View style={styles.walletIconCircle}>
               <Icon name="ArrowRight" size={18} color={TOKENS.colors.white} />
@@ -84,24 +96,24 @@ export const ProviderPanelContent: React.FC = () => {
           </TouchableOpacity>
         </Card>
 
-        {/* Plan notice */}
-        <Card style={styles.planNoticeCard} padded={true}>
-          <View style={styles.planNoticeRow}>
-            <Icon name="Crown" size={20} color={TOKENS.colors.starActive} />
-            <View style={styles.planNoticeText}>
-              <Text style={styles.planNoticeTitle}>Plan Profesional Activo</Text>
-              <Text style={styles.planNoticeSub}>Tu membresía Bronce vence en 15 días.</Text>
+        {planActive && (
+          <Card style={styles.planNoticeCard} padded={true}>
+            <View style={styles.planNoticeRow}>
+              <Icon name="Crown" size={20} color={TOKENS.colors.starActive} />
+              <View style={styles.planNoticeText}>
+                <Text style={styles.planNoticeTitle}>Plan Profesional Activo</Text>
+                <Text style={styles.planNoticeSub}>Tienes acceso a todas las funciones premium.</Text>
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('Plans')}>
+                <Text style={styles.planNoticeLink}>Ver Planes</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate('Plans')}>
-              <Text style={styles.planNoticeLink}>Ver Planes</Text>
-            </TouchableOpacity>
-          </View>
-        </Card>
+          </Card>
+        )}
 
-        {/* Requests */}
         <View style={styles.requestsSection}>
           <Text style={styles.sectionTitle}>
-            Solicitudes en curso ({online ? requests.length : 0})
+            Solicitudes en curso ({online ? (realtime?.providerActiveOrder ? 1 : 0) : 0})
           </Text>
 
           {!online ? (
@@ -109,48 +121,50 @@ export const ProviderPanelContent: React.FC = () => {
               <Icon name="WifiOff" size={48} color={TOKENS.colors.textMuted} />
               <Text style={styles.offlineTextPlaceholder}>Conéctate para recibir solicitudes en tiempo real.</Text>
             </View>
-          ) : requests.length === 0 ? (
+          ) : realtime?.providerActiveOrder ? (
+            <Card style={styles.requestCard}>
+              <View style={styles.reqHeader}>
+                <View style={styles.reqHeaderMain}>
+                  <Text style={styles.reqTitle} numberOfLines={1}>
+                    {realtime.providerActiveOrder.serviceProvider?.service?.name || 'Servicio solicitado'}
+                  </Text>
+                  <Text style={styles.reqClient}>
+                    {realtime.providerActiveOrder.client?.displayName || 'Cliente'}
+                  </Text>
+                </View>
+                <Text style={styles.reqPrice}>
+                  ${(realtime.providerActiveOrder.quotedPrice || 0).toLocaleString('es-CL')}
+                </Text>
+              </View>
+
+              <View style={styles.reqMeta}>
+                <View style={styles.reqMetaItem}>
+                  <Icon name="MapPin" size={14} color={TOKENS.colors.textSubtle} />
+                  <Text style={styles.reqMetaText}>
+                    {realtime.providerActiveOrder.clientAddress || 'Dirección no especificada'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.reqActions}>
+                <Button
+                  title="Rechazar"
+                  variant="white"
+                  onPress={() => handleRejectRequest(realtime.providerActiveOrder!.id)}
+                  style={styles.declineBtn}
+                />
+                <Button
+                  title="Ver"
+                  onPress={() => handleAcceptRequest(realtime.providerActiveOrder!.id)}
+                  style={styles.acceptBtn}
+                />
+              </View>
+            </Card>
+          ) : (
             <View style={styles.offlinePlaceholder}>
               <Icon name="Clock" size={48} color={TOKENS.colors.textMuted} />
               <Text style={styles.offlineTextPlaceholder}>Esperando nuevas solicitudes...</Text>
             </View>
-          ) : (
-            requests.map((req) => (
-              <Card key={req.id} style={styles.requestCard}>
-                <View style={styles.reqHeader}>
-                  <View style={styles.reqHeaderMain}>
-                    <Text style={styles.reqTitle} numberOfLines={1}>{req.serviceType}</Text>
-                    <Text style={styles.reqClient}>{req.clientName}</Text>
-                  </View>
-                  <Text style={styles.reqPrice}>${req.price.toLocaleString('es-CL')}</Text>
-                </View>
-
-                <View style={styles.reqMeta}>
-                  <View style={styles.reqMetaItem}>
-                    <Icon name="MapPin" size={14} color={TOKENS.colors.textSubtle} />
-                    <Text style={styles.reqMetaText}>{req.distance}</Text>
-                  </View>
-                  <View style={styles.reqMetaItem}>
-                    <Icon name="Map" size={14} color={TOKENS.colors.textSubtle} />
-                    <Text style={styles.reqMetaText} numberOfLines={1}>{req.address}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.reqActions}>
-                  <Button
-                    title="Rechazar"
-                    variant="white"
-                    onPress={() => handleDeclineRequest(req.id)}
-                    style={styles.declineBtn}
-                  />
-                  <Button
-                    title="Ver"
-                    onPress={() => handleAcceptRequest(req.id)}
-                    style={styles.acceptBtn}
-                  />
-                </View>
-              </Card>
-            ))
           )}
         </View>
       </ScrollView>

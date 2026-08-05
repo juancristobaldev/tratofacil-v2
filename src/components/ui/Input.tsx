@@ -19,6 +19,7 @@ export const Input: React.FC<InputProps> = ({
   error,
   ...props
 }) => {
+  const [isFocused, setIsFocused] = React.useState(false);
   return (
     <View style={[styles.outerContainer, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -39,6 +40,8 @@ export const Input: React.FC<InputProps> = ({
         <TextInput
           placeholderTextColor={TOKENS.colors.textMuted}
           style={styles.textInput}
+          onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
+          onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
           {...props}
         />
       </View>
@@ -60,6 +63,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   error,
   ...props
 }) => {
+  const [isFocused, setIsFocused] = React.useState(false);
   return (
     <View style={[styles.outerContainer, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
@@ -79,6 +83,8 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           placeholder="9 1234 5678"
           placeholderTextColor={TOKENS.colors.textMuted}
           style={[styles.textInput, styles.phoneInput]}
+          onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
+          onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
           {...props}
         />
       </View>
@@ -171,6 +177,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.md,
     height: 52,
     ...TOKENS.shadows.soft,
+  },
+  inputFocusedBorder: {
+    borderColor: TOKENS.colors.brand500,
+    borderWidth: 1.5,
   },
   inputErrorBorder: {
     borderColor: TOKENS.colors.statusError,

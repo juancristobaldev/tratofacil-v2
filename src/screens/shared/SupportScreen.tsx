@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Card, Button, Input } from '../../components';
+import { useRefresh } from '../../context/RefreshContext';
 
 interface FaqItem { question: string; answer: string; }
 
@@ -15,10 +16,20 @@ const FAQ_ITEMS: FaqItem[] = [
 
 export const SupportScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { setIsRefreshing } = useRefresh();
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await new Promise<void>((r) => setTimeout(r, 600));
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [setIsRefreshing]);
 
   const filteredFaq = FAQ_ITEMS.filter((item) =>
     item.question.toLowerCase().includes(searchQuery.toLowerCase()) || item.answer.toLowerCase().includes(searchQuery.toLowerCase())
@@ -32,7 +43,11 @@ export const SupportScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <View style={styles.searchBarContainer}>
           <Icon name="Search" size={18} color={TOKENS.colors.brand500} style={styles.searchIcon} />
           <TextInput placeholder="Buscar soluciones en ayuda..." placeholderTextColor={TOKENS.colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} style={styles.searchInput} />

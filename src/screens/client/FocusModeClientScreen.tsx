@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,351 +11,235 @@ import {
   Animated,
   Dimensions,
   Easing,
-  Linking,
+  ActivityIndicator,
 } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Button, Card, BottomSheet, BottomSheetState, Badge, Gradient, ProviderPin, AnimatedUserMarker } from '../../components/ui';
-import { MOCK_PROVIDERS, MOCK_CHAT_HISTORY } from '../../mocks/mockData';
+import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
+import { Icon, Avatar, Rating, Button, Badge, AnimatedUserMarker, ProviderTrackingPin } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useLocation } from '../../context/LocationContext';
+import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRoutePolyline } from '../../hooks/useRoute';
+import { getImageUrl } from '../../utils/imageUrl';
+import type { OrderRealTime } from '../../types/graphql';
+import { FocusChatOverlay } from './components/FocusChatOverlay';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BOTTOM_NAV_HEIGHT = 85;
 
-const CLIENT_LOCATION = {
-  latitude: -33.42098,
-  longitude: -70.60862,
-};
-
-const PROVIDER_START_LOCATION = {
-  latitude: -33.42898,
-  longitude: -70.61262,
-};
-
-const ROUTE_COORDS = [
-  PROVIDER_START_LOCATION,
-  { latitude: -33.42738, longitude: -70.61182 },
-  { latitude: -33.42588, longitude: -70.61102 },
-  { latitude: -33.42438, longitude: -70.61022 },
-  { latitude: -33.42288, longitude: -70.60942 },
-  CLIENT_LOCATION,
-];
-
-type ClientState =
-  | 'MATCHING' // 0: Radar
-  | 'QUOTE_RECEIVED' // 1: Quote details, chat & pay
-  | 'WAITING_PROVIDER_RESPONSE' // 1.5: Waiting provider to accept new quote
-  | 'CHAT' // 2: Chat screen
-  | 'PAID' // 3: Paid, moving on map
-  | 'START_REPAIR' // 4: Provider arrived
-  | 'IN_PROGRESS' // 5: Repair timer ticking
-  | 'CALIFICAR'; // 6: Rate & review
+const TERMINAL_STATUSES = new Set<string>(['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED']);
 
 export const FocusModeClientScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
   const { location } = useLocation();
-  const providerId = panelData?.providerId || 'p1';
-  const provider = MOCK_PROVIDERS.find((p) => p.id === providerId) || MOCK_PROVIDERS[0];
+  const realtime = useTimeRealServices();
 
-  const [orderState, setOrderState] = useState<ClientState>('MATCHING');
-  const [matchingText, setMatchingText] = useState('Contactando al profesional solicitado...');
-  const lastOrderState = useRef<ClientState>(orderState);
+  const activeOrder: OrderRealTime | null = realtime.localActiveOrder || realtime.activeOrder;
 
-  // Simulated provider position movement on map when PAID
-  const [providerCoords, setProviderCoords] = useState(PROVIDER_START_LOCATION);
-  const [distanceRemaining, setDistanceRemaining] = useState('850m');
-  const [etaRemaining, setEtaRemaining] = useState('7 min');
+  const completedOrder: OrderRealTime | null = realtime.clientOrders?.find(
+    (o: any) => o.id === activeOrder?.id && o.status === 'COMPLETED' && o.provider
+  ) || null;
 
-  // In progress timer
-  const [repairSeconds, setRepairSeconds] = useState(0);
+  const provider = useMemo(() => {
+    const p = activeOrder?.provider;
+    const sp = activeOrder?.serviceProvider;
+    if (p) {
+      return {
+        id: String(p.id),
+        name: p.name,
+        providerName: p.name,
+        avatar: getImageUrl(p.logoImage?.cdnUrl || null),
+        rating: p.reviews?.length ? p.reviews.reduce((s: number, r: any) => s + r.rating, 0) / p.reviews.length : 0,
+        reviewsCount: p.reviews?.length || 0,
+        verified: p.certificates?.some((c: any) => c.verified) || false,
+        description: p.bio || '',
+        pricePerHour: sp?.price || 0,
+        serviceName: sp?.service?.name || '',
+        serviceProviderId: sp?.id,
+      };
+    }
+    return panelData?.provider || null;
+  }, [activeOrder, panelData?.provider]);
 
-  const formatTimer = (sec: number) => {
-    const mm = Math.floor(sec / 60).toString().padStart(2, '0');
-    const ss = (sec % 60).toString().padStart(2, '0');
-    return `${mm}:${ss}`;
-  };
+  const status = activeOrder?.status || 'PENDING';
 
-  const handleFinishReview = () => {
-    closePanel();
-  };
+  const clientLat = activeOrder?.clientLat ?? location?.coords?.latitude;
+  const clientLng = activeOrder?.clientLng ?? location?.coords?.longitude;
+  const clientCoords = clientLat && clientLng ? { latitude: clientLat, longitude: clientLng } : null;
 
+  const providerLat = activeOrder?.providerLat ?? activeOrder?.provider?.lat;
+  const providerLng = activeOrder?.providerLng ?? activeOrder?.provider?.lng;
+  const providerCoords = providerLat && providerLng ? { latitude: providerLat, longitude: providerLng } : null;
+
+  const { routeCoords } = useRoutePolyline(
+    providerCoords,
+    clientCoords,
+    true,
+  );
+
+  const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
+
+  const distanceLabel = useMemo(() => {
+    if (!clientCoords || !providerCoords) return null;
+    const R = 6371e3;
+    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
+    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (meters < 1000) return `${Math.round(meters)}m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+  }, [clientCoords, providerCoords]);
+
+  const etaLabel = useMemo(() => {
+    if (!clientCoords || !providerCoords) return null;
+    const R = 6371e3;
+    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
+    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const minutes = Math.ceil(meters / 200);
+    if (minutes <= 0) return 'Llegó';
+    if (minutes === 1) return '1 min';
+    return `${minutes} min`;
+  }, [clientCoords, providerCoords]);
+
+  const distanceToProviderKm = useMemo(() => {
+    if (!clientCoords || !providerCoords) return null;
+    const R = 6371;
+    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
+    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }, [clientCoords, providerCoords]);
+
+  const [showChat, setShowChat] = useState(false);
+
+  // Sync panel data whenever order data changes
   useEffect(() => {
-    if (orderState === 'CALIFICAR') {
-      clearPanel();
+    if (activeOrder?.status === 'COMPLETED' && activeOrder?.provider) {
+      const providerImg = getImageUrl(activeOrder.provider.logoImage?.cdnUrl || null);
+      const reviews = activeOrder.provider.reviews || [];
+      const avgRating = reviews.length
+        ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
+        : 0;
       navigation.navigate('Rating', {
         role: 'client',
         targetUser: {
-          name: provider.name,
-          avatar: provider.avatar,
-          rating: provider.rating,
-          reviewsCount: provider.reviewsCount,
-          subtext: provider.serviceName,
+          name: activeOrder.provider.name || 'Profesional',
+          avatar: providerImg || undefined,
+          rating: avgRating,
+          reviewsCount: reviews.length,
+          subtext: activeOrder.serviceProvider?.service?.name || '',
         },
-        serviceDetails: 'Reparación de fuga en cañería de agua principal y mantención de grifería.',
-        amount: 22000,
-        address: 'Av. Nueva Providencia 2150, Ñuñoa',
-        paymentMethod: 'Efectivo',
+        serviceDetails: activeOrder.clientDescription || '',
+        amount: activeOrder.payment?.amount || activeOrder.quotedPrice || 0,
+        address: activeOrder.clientAddress || '',
+        paymentMethod: activeOrder.payment ? 'Flow.cl' : '-',
+        orderRealtimeId: activeOrder.id,
+        providerId: activeOrder.provider.id,
       });
-      lastOrderState.current = orderState;
+      clearPanel();
       return;
     }
-
-    if (orderState === 'MATCHING' || orderState === 'CHAT') {
-      closePanel();
-      lastOrderState.current = orderState;
-    } else {
-      if (orderState !== lastOrderState.current) {
-        openPanel('focus_client', {
-          orderState,
-          provider,
-          etaRemaining,
-          distanceRemaining,
-          repairSeconds,
-          formatTimer,
-          setOrderState,
-          handleFinishReview,
-        });
-        lastOrderState.current = orderState;
-      } else {
-        updatePanelData({
-          orderState,
-          provider,
-          etaRemaining,
-          distanceRemaining,
-          repairSeconds,
-          formatTimer,
-          setOrderState,
-          handleFinishReview,
-        });
-      }
-    }
-  }, [orderState, etaRemaining, distanceRemaining, repairSeconds, provider, openPanel, closePanel, updatePanelData, clearPanel, navigation]);
-
-  const [pushAlert, setPushAlert] = useState<{ title: string; message: string } | null>(null);
-  const pushTranslateY = useRef(new Animated.Value(-120)).current;
-
-  const triggerPushAlert = (title: string, message: string) => {
-    setPushAlert({ title, message });
-    Animated.timing(pushTranslateY, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start();
-
-    setTimeout(() => {
-      Animated.timing(pushTranslateY, {
-        toValue: -120,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setPushAlert(null);
-      });
-    }, 3500);
-  };
-
-  const lastPushedAlert = useRef<ClientState | null>(null);
+    if (!provider) return;
+    updatePanelData({
+      order: activeOrder,
+      provider,
+      userLat: location?.coords?.latitude,
+      userLng: location?.coords?.longitude,
+      etaRemaining: etaLabel || '...',
+      distanceRemaining: distanceLabel || '...',
+      setShowChat,
+      handleFinishReview,
+      realtime,
+    });
+  }, [activeOrder, completedOrder]);
 
   useEffect(() => {
-    if (orderState === lastPushedAlert.current) return;
-    lastPushedAlert.current = orderState;
+    updatePanelData({ distanceToProvider: distanceToProviderKm });
+  }, [distanceToProviderKm, updatePanelData]);
 
-    if (orderState === 'QUOTE_RECEIVED') {
-      triggerPushAlert("Cotización Recibida", `Has recibido una cotización de ${provider.name}.`);
-    } else if (orderState === 'PAID') {
-      triggerPushAlert("Servicio Aceptado", `${provider.name} se dirige a tu ubicación en su vehículo.`);
-    } else if (orderState === 'START_REPAIR') {
-      triggerPushAlert("Técnico ha Llegado", `${provider.name} se encuentra afuera de tu domicilio.`);
-    } else if (orderState === 'IN_PROGRESS') {
-      triggerPushAlert("Servicio Iniciado", `El profesional ha comenzado el trabajo.`);
-    } else if (orderState === 'CALIFICAR') {
-      triggerPushAlert("Pago Procesado", `Se han debitado $22.000 de tu tarjeta. Califica a ${provider.name}.`);
-    }
-  }, [orderState]);
+  const handleFinishReview = useCallback(() => {
+    closePanel();
+    clearPanel();
+    realtime.setLocalActiveOrder(null);
+  }, [closePanel, clearPanel, realtime]);
 
-  // Animation values
-  const radarScale1 = useRef(new Animated.Value(0.5)).current;
-  const radarOpacity1 = useRef(new Animated.Value(1)).current;
-  const radarScale2 = useRef(new Animated.Value(0.5)).current;
-  const radarOpacity2 = useRef(new Animated.Value(1)).current;
-  const mapStyle = [
-    { elementType: 'geometry', stylers: [{ color: '#212121' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
-    { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#2c2c2c' }] },
-  ];
+  // Radar animation values
+  const pingScale = useRef(new Animated.Value(1)).current;
+  const pingOpacity = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(0.5)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
 
-  // Radar Animation Loop
+  const mapStyle = DARK_VISIBLE_MAP_STYLE;
+
   useEffect(() => {
-    if (orderState !== 'MATCHING') return;
+    if (status !== 'PENDING') return;
 
-    radarScale1.setValue(0.5);
-    radarOpacity1.setValue(1);
-    radarScale2.setValue(0.5);
-    radarOpacity2.setValue(1);
+    pingScale.setValue(1);
+    pingOpacity.setValue(1);
+    pulseOpacity.setValue(0.5);
+    floatAnim.setValue(0);
 
-    const loop1 = Animated.loop(
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(radarScale1, {
-            toValue: 3,
-            duration: 2000,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(radarOpacity1, {
-            toValue: 0,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ]),
+    const pingLoop = Animated.loop(
+      Animated.parallel([
+        Animated.timing(pingScale, {
+          toValue: 1.5,
+          duration: 2500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingOpacity, {
+          toValue: 0,
+          duration: 2500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
       ])
     );
 
-    const loop2 = Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
-        Animated.delay(1000),
-        Animated.parallel([
-          Animated.timing(radarScale2, {
-            toValue: 3,
-            duration: 2000,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(radarOpacity2, {
-            toValue: 0,
-            duration: 2000,
-            useNativeDriver: true,
-          }),
-        ]),
+        Animated.timing(pulseOpacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseOpacity, {
+          toValue: 0.5,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
       ])
     );
 
-    const composite = Animated.parallel([loop1, loop2]);
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -10,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const composite = Animated.parallel([pingLoop, pulseLoop, floatLoop]);
     composite.start();
-
-    // Change text after 2 seconds
-    const textTimer = setTimeout(() => {
-      setMatchingText('Esperando cotización...');
-    }, 2000);
-
-    // Auto advance from MATCHING to QUOTE_RECEIVED after 4 seconds
-    const timer = setTimeout(() => {
-      setOrderState('QUOTE_RECEIVED');
-    }, 4000);
 
     return () => {
       composite.stop();
-      clearTimeout(timer);
-      clearTimeout(textTimer);
     };
-  }, [orderState]);
-
-  useEffect(() => {
-    if (orderState === 'WAITING_PROVIDER_RESPONSE') {
-      const timer = setTimeout(() => {
-        setOrderState('PAID');
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [orderState]);
-
-  // Chatbot State
-  const [chatMessages, setChatMessages] = useState(MOCK_CHAT_HISTORY);
-  const [typedMessage, setTypedMessage] = useState('');
-  const chatScrollRef = useRef<ScrollView | null>(null);
-
-  const handleSendMessage = () => {
-    if (!typedMessage.trim()) return;
-    const newMsg = {
-      id: Date.now().toString(),
-      sender: 'client',
-      text: typedMessage,
-      time: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-    };
-
-    setChatMessages((prev) => [...prev, newMsg]);
-    setTypedMessage('');
-    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
-
-    // Auto replies from bot
-    setTimeout(() => {
-      const replies = [
-        'Perfecto, ya estoy finalizando unos detalles.',
-        'De acuerdo, procederé con lo acordado.',
-        'Excelente, nos vemos en un momento.',
-        '¡Listo! Iniciemos el trabajo.',
-      ];
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-      const botMsg = {
-        id: (Date.now() + 1).toString(),
-        sender: 'provider',
-        text: randomReply,
-        time: new Date().toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
-      };
-      setChatMessages((prev) => [...prev, botMsg]);
-      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
-    }, 1500);
-  };
-
-  useEffect(() => {
-    if (orderState !== 'PAID') return;
-
-    let step = 0;
-    const interval = setInterval(() => {
-      step += 1;
-      const coord = ROUTE_COORDS[step] || CLIENT_LOCATION;
-      setProviderCoords(coord);
-
-      // Update mock labels
-      if (step === 1) {
-        setDistanceRemaining('650m');
-        setEtaRemaining('5 min');
-      } else if (step === 2) {
-        setDistanceRemaining('400m');
-        setEtaRemaining('3 min');
-      } else if (step === 3) {
-        setDistanceRemaining('200m');
-        setEtaRemaining('1 min');
-      } else if (step === 4) {
-        setDistanceRemaining('50m');
-        setEtaRemaining('En tu puerta');
-      } else if (step === 5) {
-        clearInterval(interval);
-        setDistanceRemaining('0m');
-        setEtaRemaining('Llegó');
-        setOrderState('START_REPAIR'); // Arrived!
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [orderState]);
-
-  useEffect(() => {
-    if (orderState !== 'IN_PROGRESS') return;
-
-    const timer = setInterval(() => {
-      setRepairSeconds((p) => p + 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [orderState]);
-
-  // Review states
-  const [selectedRating, setSelectedRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const reviewTags = ['Puntual', 'Limpio', 'Eficiente', 'Amable', 'Buen precio'];
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
+  }, [status]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -364,38 +248,29 @@ export const FocusModeClientScreen: React.FC = () => {
         <MapView
           style={styles.map}
           region={{
-            latitude: (CLIENT_LOCATION.latitude + providerCoords.latitude) / 2,
-            longitude: (CLIENT_LOCATION.longitude + providerCoords.longitude) / 2,
-            latitudeDelta: Math.abs(CLIENT_LOCATION.latitude - providerCoords.latitude) * 2 + 0.005,
-            longitudeDelta: Math.abs(CLIENT_LOCATION.longitude - providerCoords.longitude) * 2 + 0.005,
+            latitude: ((clientCoords?.latitude || -33.4489) + (providerCoords?.latitude || -33.4489)) / 2,
+            longitude: ((clientCoords?.longitude || -70.6693) + (providerCoords?.longitude || -70.6693)) / 2,
+            latitudeDelta: providerCoords && clientCoords
+              ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
+              : 0.05,
+            longitudeDelta: providerCoords && clientCoords
+              ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
+              : 0.05,
           }}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {/* Client Marker (User's mock location) */}
-          <AnimatedUserMarker coordinate={CLIENT_LOCATION} />
+          {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
 
-          {/* Provider Marker (shows up in states after quote) */}
-          {orderState !== 'MATCHING' && (
-            <Marker coordinate={providerCoords}>
-              <View style={styles.providerAvatarMarker}>
-                <Image
-                  source={{ uri: provider.avatar }}
-                  style={styles.providerAvatarImage}
-                />
-                <View style={styles.providerAvatarCarBadge}>
-                  <Icon name="Truck" size={8} color={TOKENS.colors.white} />
-                </View>
-              </View>
-            </Marker>
+          {status !== 'PENDING' && providerCoords && (
+            <ProviderTrackingPin coordinate={providerCoords} text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'} />
           )}
 
-          {/* Route path */}
-          {orderState === 'PAID' && (
+          {polylineCoords.length > 0 && (
             <Polyline
-              coordinates={[providerCoords, CLIENT_LOCATION]}
+              coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
               strokeWidth={4}
               lineDashPattern={[6, 3]}
@@ -404,109 +279,79 @@ export const FocusModeClientScreen: React.FC = () => {
         </MapView>
       </View>
 
-      {/* MATCHING RADAR OVERLAY */}
-      {orderState === 'MATCHING' && (
+      {/* PENDING RADAR OVERLAY */}
+      {status === 'PENDING' && (
         <View style={styles.radarOverlay}>
-          <Animated.View
-            style={[
-              styles.radarRing,
-              {
-                opacity: radarOpacity1,
-                transform: [{ scale: radarScale1 }],
-              },
-            ]}
-          />
-          <Animated.View
-            style={[
-              styles.radarRing,
-              {
-                opacity: radarOpacity2,
-                transform: [{ scale: radarScale2 }],
-              },
-            ]}
-          />
-          <View style={styles.radarPulseCenter}>
-            <Avatar uri={provider.avatar} name={provider.name} size={64} />
+          <View style={styles.radarContainer}>
+            <View style={styles.staticRing} />
+            
+            <Animated.View
+              style={[
+                styles.pingRing,
+                {
+                  opacity: pingOpacity,
+                  transform: [{ scale: pingScale }],
+                },
+              ]}
+            />
+            
+            <Animated.View
+              style={[
+                styles.pulseRing,
+                {
+                  opacity: pulseOpacity,
+                },
+              ]}
+            />
+            
+            <View style={styles.radarPulseCenter}>
+              {provider?.avatar ? (
+                <Avatar uri={provider.avatar} name={provider.name} size={60} />
+              ) : (
+                <Icon name="Search" size={32} color={TOKENS.colors.white} />
+              )}
+            </View>
+
+            <Animated.View style={[styles.floatingAvatar1, { transform: [{ translateY: floatAnim }] }]}>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
+            </Animated.View>
+            <Animated.View style={[styles.floatingAvatar2, { transform: [{ translateY: Animated.multiply(floatAnim, -1) }] }]}>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
+            </Animated.View>
           </View>
-          <Text style={styles.radarText}>{matchingText}</Text>
-          <TouchableOpacity onPress={closePanel} style={styles.cancelLink}>
-            <Text style={styles.cancelLinkText}>Cancelar búsqueda</Text>
+
+          <Text style={styles.radarText}>Esperando respuesta...</Text>
+          <Text style={styles.radarSubText}>Notificando al profesional indicado</Text>
+          
+          <TouchableOpacity  onPress={async () => {
+            if (activeOrder?.id) {
+              try { await realtime.cancelOrder(activeOrder.id); } catch {}
+            }
+            clearPanel();
+          }} style={styles.cancelBtn}>
+            <Text style={styles.cancelBtnText}>Cancelar búsqueda</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* CHAT STEP OVERLAY */}
-      {orderState === 'CHAT' && (
-        <SafeAreaView style={styles.chatOverlay}>
-          {/* Chat Header */}
-          <View style={styles.chatHeader}>
-            <TouchableOpacity onPress={() => setOrderState('QUOTE_RECEIVED')} style={styles.chatBackBtn}>
-              <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-            </TouchableOpacity>
-            <Avatar uri={provider.avatar} name={provider.name} size={36} />
-            <Text style={styles.chatHeaderTitle}>{provider.name}</Text>
-          </View>
-
-          {/* Messages scroll */}
-          <ScrollView
-            ref={chatScrollRef}
-            contentContainerStyle={styles.chatScroll}
-            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
-          >
-            {chatMessages.map((msg) => {
-              const isMe = msg.sender === 'client';
-              return (
-                <View
-                  key={msg.id}
-                  style={[
-                    styles.chatBubbleContainer,
-                    isMe ? styles.chatBubbleContainerMe : styles.chatBubbleContainerThem,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.chatBubble,
-                      isMe ? styles.chatBubbleMe : styles.chatBubbleThem,
-                    ]}
-                  >
-                    <Text style={isMe ? styles.chatBubbleTextMe : styles.chatBubbleTextThem}>
-                      {msg.text}
-                    </Text>
-                    <Text style={isMe ? styles.chatBubbleTimeMe : styles.chatBubbleTimeThem}>
-                      {msg.time}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-
-          {/* Messages input bar */}
-          <View style={styles.chatInputBar}>
-            <TextInput
-              placeholder="Escribe un mensaje aquí..."
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={typedMessage}
-              onChangeText={setTypedMessage}
-              style={styles.chatInput}
-            />
-            <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn}>
-              <Icon name="Send" size={18} color={TOKENS.colors.white} />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+      {/* PAYMENT_PENDING OVERLAY */}
+      {status === 'PAYMENT_PENDING' && (
+        <View style={styles.radarOverlay}>
+          <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
+          <Text style={styles.radarText}>Esperando confirmación de pago</Text>
+          <Text style={styles.radarSubText}>Estamos verificando tu pago con la pasarela...</Text>
+        </View>
       )}
 
-      {pushAlert && (
-        <Animated.View style={[styles.pushNotificationContainer, { transform: [{ translateY: pushTranslateY }] }]}>
-          <View style={styles.pushNotificationIcon}>
-            <Icon name="Bell" size={18} color={TOKENS.colors.white} />
-          </View>
-          <View style={styles.pushNotificationContent}>
-            <Text style={styles.pushNotificationTitle}>{pushAlert.title}</Text>
-            <Text style={styles.pushNotificationMessage} numberOfLines={2}>{pushAlert.message}</Text>
-          </View>
-        </Animated.View>
+      {/* CHAT OVERLAY */}
+      {showChat && (
+        <FocusChatOverlay
+          chatUser={provider}
+          activeOrder={activeOrder}
+          realtime={realtime}
+          role="client"
+          onClose={() => setShowChat(false)}
+        />
       )}
     </SafeAreaView>
   );
@@ -525,399 +370,130 @@ const styles = StyleSheet.create({
   },
   radarOverlay: {
     ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     backgroundColor: 'rgba(26, 26, 29, 0.85)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 90,
+    elevation: 90,
   },
-  radarRing: {
+  radarContainer: {
+    position: 'relative',
+    width: 300,
+    height: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: TOKENS.spacing.xxl,
+    marginTop: TOKENS.spacing.xxl,
+  },
+  staticRing: {
     position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    borderWidth: 2,
-    borderColor: TOKENS.colors.brand500,
-    backgroundColor: 'transparent',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  pingRing: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(236, 72, 153, 0.3)',
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(236, 72, 153, 0.2)',
   },
   radarPulseCenter: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: TOKENS.colors.brand50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: TOKENS.colors.brand500,
-    ...TOKENS.shadows.floating,
-  },
-  radarText: {
-    color: TOKENS.colors.white,
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    marginTop: TOKENS.spacing.lg,
-    textAlign: 'center',
-  },
-  cancelLink: {
-    marginTop: 32,
-  },
-  cancelLinkText: {
-    color: TOKENS.colors.brand400,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.semibold,
-    textDecorationLine: 'underline',
-  },
-  sheetBody: {
-    flex: 1,
-    padding: TOKENS.spacing.lg,
-    paddingTop: TOKENS.spacing.xs,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: TOKENS.spacing.md,
-  },
-  sheetHeaderText: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  sheetTitle: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  quoteCard: {
-    marginBottom: TOKENS.spacing.md,
-    padding: TOKENS.spacing.md,
-  },
-  quoteCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  quoteCardTitle: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.brand600,
-  },
-  quoteCardPrice: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.textMain,
-  },
-  quoteCardDesc: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    lineHeight: 16,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: TOKENS.spacing.sm,
-  },
-  chatIconBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: TOKENS.geometry.radiusInput,
-    backgroundColor: TOKENS.colors.brand50,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  payBtn: {
-    flex: 1,
-  },
-  routeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: TOKENS.spacing.md,
-  },
-  etaText: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  providerCardRoute: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TOKENS.colors.surface50,
-    borderColor: TOKENS.colors.surface200,
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: TOKENS.spacing.md,
-    marginBottom: TOKENS.spacing.md,
-  },
-  providerCardRouteInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  providerNameText: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  providerVehicleText: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    marginTop: 2,
-  },
-  phoneCallBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: TOKENS.colors.white,
-    borderColor: TOKENS.colors.surface200,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...TOKENS.shadows.soft,
-  },
-  trackerText: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    textAlign: 'center',
-    lineHeight: 16,
-    marginBottom: 8,
-  },
-  bypassBtn: {
-    paddingVertical: TOKENS.spacing.xs,
-    alignItems: 'center',
-  },
-  bypassBtnText: {
-    color: TOKENS.colors.brand500,
-    fontSize: TOKENS.typography.sizes.xxs,
-    fontWeight: TOKENS.typography.weights.bold,
-    textDecorationLine: 'underline',
-  },
-  confirmStartBtn: {
-    width: '100%',
-  },
-  timerHeader: {
-    alignItems: 'center',
-    paddingVertical: TOKENS.spacing.sm,
-    marginBottom: TOKENS.spacing.xs,
-  },
-  timerLabel: {
-    fontSize: 10,
-    color: TOKENS.colors.textSubtle,
-    textTransform: 'uppercase',
-    fontWeight: TOKENS.typography.weights.bold,
-  },
-  timerVal: {
-    fontSize: 32,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.textMain,
-    marginTop: 4,
-  },
-  workingDesc: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    textAlign: 'center',
-    marginBottom: TOKENS.spacing.md,
-    lineHeight: 16,
-  },
-  confirmFinishedBtn: {
-    width: '100%',
-  },
-  reviewSheetBody: {
-    flex: 1,
-    padding: TOKENS.spacing.lg,
-    paddingTop: TOKENS.spacing.xs,
-    alignItems: 'center',
-  },
-  reviewTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-  },
-  reviewSubtitle: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    marginTop: 4,
-    marginBottom: TOKENS.spacing.md,
-  },
-  reviewRatingStars: {
-    marginBottom: TOKENS.spacing.lg,
-  },
-  tagLabel: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    alignSelf: 'flex-start',
-    marginBottom: TOKENS.spacing.xs,
-  },
-  tagGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    alignSelf: 'flex-start',
-    marginBottom: TOKENS.spacing.md,
-  },
-  tagItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: TOKENS.geometry.radiusPill,
-    backgroundColor: TOKENS.colors.surface100,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-  },
-  tagItemActive: {
-    backgroundColor: TOKENS.colors.brand50,
-    borderColor: TOKENS.colors.brand500,
-  },
-  tagText: {
-    color: TOKENS.colors.textSubtle,
-    fontSize: TOKENS.typography.sizes.xxs,
-    fontWeight: TOKENS.typography.weights.semibold,
-  },
-  tagTextActive: {
-    color: TOKENS.colors.brand500,
-  },
-  reviewTextarea: {
-    width: '100%',
-    height: 72,
-    backgroundColor: TOKENS.colors.surface50,
-    borderColor: TOKENS.colors.surface200,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textMain,
-    textAlignVertical: 'top',
-    marginBottom: TOKENS.spacing.md,
-  },
-  submitReviewBtn: {
-    width: '100%',
-  },
-  chatOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: TOKENS.colors.white,
-    zIndex: 100,
-  },
-  chatHeader: {
-    height: 56,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface200,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: TOKENS.spacing.md,
-    gap: 8,
-  },
-  chatBackBtn: {
-    padding: TOKENS.spacing.xs,
-    marginRight: 4,
-  },
-  chatHeaderTitle: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  chatScroll: {
-    padding: TOKENS.spacing.md,
-    gap: 12,
-  },
-  chatBubbleContainer: {
-    width: '100%',
-    flexDirection: 'row',
-  },
-  chatBubbleContainerMe: {
-    justifyContent: 'flex-end',
-  },
-  chatBubbleContainerThem: {
-    justifyContent: 'flex-start',
-  },
-  chatBubble: {
-    maxWidth: '75%',
-    padding: 12,
-    borderRadius: 16,
-  },
-  chatBubbleMe: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: TOKENS.colors.brand500,
-    borderTopRightRadius: 4,
-  },
-  chatBubbleThem: {
-    backgroundColor: TOKENS.colors.surface100,
-    borderTopLeftRadius: 4,
-  },
-  chatBubbleTextMe: {
-    color: TOKENS.colors.white,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
-  },
-  chatBubbleTextThem: {
-    color: TOKENS.colors.textMain,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
-  },
-  chatBubbleTimeMe: {
-    fontSize: 9,
-    color: 'rgba(255, 255, 255, 0.7)',
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    fontWeight: 'bold',
-  },
-  chatBubbleTimeThem: {
-    fontSize: 9,
-    color: TOKENS.colors.textMuted,
-    alignSelf: 'flex-end',
-    marginTop: 4,
-    fontWeight: 'bold',
-  },
-  chatInputBar: {
-    height: 60,
-    borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.surface200,
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: TOKENS.spacing.md,
-    paddingBottom: 10,
-    gap: 8,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 10,
+    zIndex: 10,
+    overflow: 'hidden',
   },
-  chatInput: {
-    flex: 1,
-    height: 40,
-    backgroundColor: TOKENS.colors.surface100,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    color: TOKENS.colors.textMain,
-    fontSize: TOKENS.typography.sizes.sm,
-  },
-  chatSendBtn: {
+  floatingAvatar1: {
+    position: 'absolute',
+    top: 24,
+    right: 40,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: TOKENS.colors.brand700,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  clientMarker: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.dark900,
     borderWidth: 2,
     borderColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...TOKENS.shadows.soft,
+    opacity: 0.8,
+    zIndex: 15,
+    overflow: 'hidden',
   },
-  providerMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: TOKENS.colors.brand500,
+  floatingAvatar2: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
     borderColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...TOKENS.shadows.floating,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 15,
+    overflow: 'hidden',
+  },
+  floatingAvatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  radarText: {
+    color: TOKENS.colors.white,
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.black,
+    marginTop: TOKENS.spacing.md,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  radarSubText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: TOKENS.spacing.xxl,
+    marginTop: TOKENS.spacing.xs,
+  },
+  cancelBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginTop:20
+  },
+  cancelBtnText: {
+    color: TOKENS.colors.white,
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
   },
   providerAvatarMarker: {
     width: 44,
@@ -948,40 +524,5 @@ const styles = StyleSheet.create({
     borderColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  pushNotificationContainer: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    right: 20,
-    backgroundColor: TOKENS.colors.dark900,
-    borderRadius: 16,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    zIndex: 9999,
-    ...TOKENS.shadows.floating,
-  },
-  pushNotificationIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: TOKENS.colors.brand500,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pushNotificationContent: {
-    flex: 1,
-  },
-  pushNotificationTitle: {
-    color: TOKENS.colors.white,
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  pushNotificationMessage: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    marginTop: 2,
   },
 });

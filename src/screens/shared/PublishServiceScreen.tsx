@@ -1,36 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon } from '../../components';
 import { useRole } from '../../context/RoleContext';
+import { useServices } from '../../hooks/useServices';
 
-const SERVICE_COMMISSION_RATE = 0.10; // Assuming 10% base commission
+const SERVICE_COMMISSION_RATE = 0.10;
 
 export const PublishServiceScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { role } = useRole();
 
-  // What service
   const [parentCat, setParentCat] = useState('');
   const [subCat, setSubCat] = useState('');
   const [specificService, setSpecificService] = useState('');
-
-  // Coverage
   const [region, setRegion] = useState('');
   const [city, setCity] = useState('');
   const [hasHomeVisit, setHasHomeVisit] = useState(false);
-
-  // Price & Details
-  const [cobroType, setCobroType] = useState('POR SERVICIO COMPLETO');
   const [price, setPrice] = useState('');
   const [desc, setDesc] = useState('');
-
-  // Breakdown
+  const [cobroType] = useState('POR SERVICIO COMPLETO');
   const [commissionAmount, setCommissionAmount] = useState(0);
   const [receivingAmount, setReceivingAmount] = useState(0);
+
+  const { createService, createLoading: loading } = useServices();
 
   useEffect(() => {
     const basePrice = Number(price) || 0;
@@ -39,15 +35,24 @@ export const PublishServiceScreen: React.FC = () => {
     setReceivingAmount(basePrice - comm);
   }, [price]);
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!parentCat || !specificService || !region || !city || !price) {
       Alert.alert('Error', 'Por favor, completa los campos obligatorios.');
       return;
     }
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await createService({
+        categoryId: null,
+        city,
+        description: desc,
+        hasHomeVisit,
+        price: Number(price),
+        slug: specificService.toLowerCase().replace(/\s+/g, '-'),
+      });
       navigation.goBack();
-    }, 1000);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
   };
 
   if (role === 'guest') {
@@ -149,7 +154,7 @@ export const PublishServiceScreen: React.FC = () => {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Forma de Cobro *</Text>
               <View style={styles.inputWithIcon}>
-                <TextInput style={styles.innerInput} value={cobroType} onChangeText={setCobroType} />
+                <TextInput style={styles.innerInput} value={cobroType} editable={false} />
                 <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
               </View>
             </View>
@@ -177,11 +182,11 @@ export const PublishServiceScreen: React.FC = () => {
               </View>
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Comisión plataforma:</Text>
-                <Text style={[styles.breakdownValue, { color: TOKENS.colors.error600 }]}>- ${commissionAmount.toLocaleString("es-CL")}</Text>
+                <Text style={[styles.breakdownValue, { color: '#dc2626' }]}>- ${commissionAmount.toLocaleString("es-CL")}</Text>
               </View>
               <View style={[styles.breakdownRow, styles.breakdownTotal]}>
                 <Text style={styles.breakdownTotalLabel}>Ingreso Neto para ti:</Text>
-                <Text style={[styles.breakdownTotalValue, { color: TOKENS.colors.success700 }]}>${receivingAmount.toLocaleString("es-CL")}</Text>
+                  <Text style={[styles.breakdownTotalValue, { color: '#16a34a' }]}>${receivingAmount.toLocaleString("es-CL")}</Text>
               </View>
             </View>
 
@@ -206,7 +211,12 @@ export const PublishServiceScreen: React.FC = () => {
         <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
         <View style={styles.footerButtons}>
           <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
-          <Button title="Publicar Servicio" onPress={handlePublish} disabled={!parentCat || !specificService || !region || !city || !price} style={{ flex: 2 }} />
+          <Button
+            title={loading ? 'Publicando...' : 'Publicar Servicio'}
+            onPress={handlePublish}
+            disabled={loading || !parentCat || !specificService || !region || !city || !price}
+            style={{ flex: 2 }}
+          />
         </View>
       </View>
     </View>
@@ -234,16 +244,16 @@ const styles = StyleSheet.create({
   toggleLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   toggleDesc: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 4 },
 
-  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.brand200 },
+  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.brand100 },
   breakdownTitle: { fontSize: 12, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand700, textAlign: 'center', marginBottom: TOKENS.spacing.md, letterSpacing: 0.5 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   breakdownLabel: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
   breakdownValue: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  breakdownTotal: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: TOKENS.colors.brand200 },
+  breakdownTotal: { marginTop: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: TOKENS.colors.brand100 },
   breakdownTotalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   breakdownTotalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold },
 
-  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
+  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.soft },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
   footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
 });

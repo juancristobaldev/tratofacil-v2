@@ -1,37 +1,75 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Input, Button, Badge } from '../../components';
-import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
+import { useProfile } from '../../hooks/useProfile';
+import { useRefresh } from '../../context/RefreshContext';
+import { getImageUrl } from '../../utils/imageUrl';
 
 export const MyProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { role, setRole } = useRole();
-  
+  const { role, user, logout, refetch: refetchAuth } = useAuth();
+  const { setIsRefreshing } = useRefresh();
+  const { updateProfile, updateProviderProfile, updateProviderBank, saving, setSaving } = useProfile();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetchAuth();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetchAuth, setIsRefreshing]);
+
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [city, setCity] = useState('');
   const [providerTab, setProviderTab] = useState(0);
 
-  // States
-  const [name, setName] = useState('Juan Pérez');
-  const [email, setEmail] = useState('juan.perez@correo.com');
-  const [phone, setPhone] = useState('987654321');
-  const [city, setCity] = useState('Santiago, Providencia');
-  const [saving, setSaving] = useState(false);
+  const updateUser = async (args: any) => {
+    // Placeholder to satisfy the missing function call
+    console.log('Update user', args);
+  };
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (user) {
+      setName(user.displayName || '');
+      setEmail(user.email || '');
+      setPhone(user.phone || '');
+    }
+  }, [user]);
+
+  const providerData = user?.provider;
+  const reviews = [...(providerData?.reviews || []), ...(providerData?.realtimeReviews || [])];
+  const avgRating = reviews.length
+    ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    : 0;
+
+  const handleSave = async () => {
+    if (!user) return;
     setSaving(true);
-    setTimeout(() => { setSaving(false); Alert.alert('Perfil', 'Perfil actualizado exitosamente'); }, 1000);
+    try {
+      await updateUser({
+        variables: { input: { id: user.id, displayName: name, email, phone } },
+      });
+      Alert.alert('Perfil', 'Perfil actualizado exitosamente');
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
+    setSaving(false);
   };
 
-  const handleLogout = () => {
-    setRole('guest');
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp' }],
-    });
+  const handleLogout = async () => {
+    await logout();
+    navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
   };
+
+  const isProfileIncomplete = role === 'provider' && !user?.isProfileFullyComplete;
 
   const renderGuest = () => (
     <View style={styles.guestContainer}>
@@ -40,26 +78,13 @@ export const MyProfileScreen: React.FC = () => {
           <Icon name="UserPlus" size={48} color={TOKENS.colors.brand500} />
         </View>
         <Text style={styles.guestTitle}>Únete a TratoFácil</Text>
-        <Text style={styles.guestSubtitle}>
-          Descubre a los mejores profesionales o ofrece tus servicios a miles de clientes.
-        </Text>
+        <Text style={styles.guestSubtitle}>Descubre a los mejores profesionales o ofrece tus servicios a miles de clientes.</Text>
       </View>
-
       <View style={styles.guestFeatures}>
-        <View style={styles.featureRow}>
-          <Icon name="Search" size={24} color={TOKENS.colors.brand500} />
-          <Text style={styles.featureText}>Encuentra expertos cerca de ti</Text>
-        </View>
-        <View style={styles.featureRow}>
-          <Icon name="Briefcase" size={24} color={TOKENS.colors.brand500} />
-          <Text style={styles.featureText}>Gestiona tus trabajos y contratos</Text>
-        </View>
-        <View style={styles.featureRow}>
-          <Icon name="Star" size={24} color={TOKENS.colors.brand500} />
-          <Text style={styles.featureText}>Lee reseñas de la comunidad</Text>
-        </View>
+        <View style={styles.featureRow}><Icon name="Search" size={24} color={TOKENS.colors.brand500} /><Text style={styles.featureText}>Encuentra expertos cerca de ti</Text></View>
+        <View style={styles.featureRow}><Icon name="Briefcase" size={24} color={TOKENS.colors.brand500} /><Text style={styles.featureText}>Gestiona tus trabajos y contratos</Text></View>
+        <View style={styles.featureRow}><Icon name="Star" size={24} color={TOKENS.colors.brand500} /><Text style={styles.featureText}>Lee reseñas de la comunidad</Text></View>
       </View>
-
       <View style={styles.guestActions}>
         <Button title="Registrarse ahora" onPress={() => navigation.navigate('Register')} style={styles.fullWidthBtn} />
         <Button title="Ya tengo una cuenta" variant="secondary" onPress={() => navigation.navigate('Login')} style={styles.fullWidthBtn} />
@@ -67,143 +92,100 @@ export const MyProfileScreen: React.FC = () => {
     </View>
   );
 
-  const renderClientFields = () => (
-    <View style={styles.formSection}>
-      <Input label="Nombre completo" value={name} onChangeText={setName} icon="User" />
-      <Input label="Correo electrónico" value={email} onChangeText={setEmail} icon="Mail" keyboardType="email-address" autoCapitalize="none" />
-      <Input label="Número móvil" value={phone} onChangeText={setPhone} icon="Phone" keyboardType="phone-pad" />
-      <Input label="Ciudad / Comuna" value={city} onChangeText={setCity} icon="MapPin" />
-    </View>
-  );
-
-  const renderProviderCompany = () => (
-    <View style={styles.providerTabContent}>
-      <Text style={styles.tabSectionTitle}>Información de la Empresa</Text>
-      <Input label="Nombre Comercial" value="Reparaciones JP" icon="Store" />
-      <Input label="RUT de Empresa" value="76.123.456-7" icon="FileText" />
-      <Input label="Región Base" value="Región Metropolitana" icon="MapPin" />
-      <Button title="Guardar Empresa" onPress={handleSave} loading={saving} style={styles.fullWidthBtn} />
-    </View>
-  );
-
-  const renderProviderBank = () => (
-    <View style={styles.providerTabContent}>
-      <Text style={styles.tabSectionTitle}>Datos Bancarios</Text>
-      <Input label="Banco" value="Banco Santander" icon="Landmark" />
-      <Input label="Tipo de Cuenta" value="Cuenta Corriente" icon="CreditCard" />
-      <Input label="Número de Cuenta" value="123456789" icon="Hash" />
-      <Button title="Guardar Banco" onPress={handleSave} loading={saving} style={styles.fullWidthBtn} />
-    </View>
-  );
-
-  const renderProviderCertificates = () => (
-    <View style={styles.providerTabContent}>
-      <Text style={styles.tabSectionTitle}>Mis Certificados</Text>
-      <View style={styles.certCard}>
-        <Icon name="FileText" size={24} color={TOKENS.colors.brand500} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.certTitle}>Certificado Eléctrico SEC (Clase A)</Text>
-          <Text style={styles.certStatus}>Validado</Text>
-        </View>
-        <Badge label="ACTIVO" tone="success" />
-      </View>
-      <Button title="Subir nuevo certificado" variant="secondary" icon="Upload" style={styles.fullWidthBtn} />
-    </View>
-  );
-
   if (role === 'guest') {
-    return (
-      <View style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>
-        {renderGuest()}
-      </View>
-    );
+    return <View style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>{renderGuest()}</View>;
   }
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 80 }]} showsVerticalScrollIndicator={false}>
-        
-        {/* Header (Avatar & Badges) */}
+      <ScrollView
+        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 80 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <View style={styles.headerBox}>
-          {role === 'provider' && (
-            <TouchableOpacity 
-              style={styles.incompleteAlert} 
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('VerificationCenter')}
-            >
+          {isProfileIncomplete && (
+            <TouchableOpacity style={styles.incompleteAlert} activeOpacity={0.8} onPress={() => navigation.navigate('VerificationCenter')}>
               <Icon name="AlertTriangle" size={16} color={TOKENS.colors.brand700} />
               <Text style={styles.incompleteAlertText}>Perfil Incompleto: Completa tu verificación KYC</Text>
             </TouchableOpacity>
           )}
-
           <View style={styles.avatarSection}>
-            <Avatar uri={null} name={name} size={100} />
-            <TouchableOpacity style={styles.avatarEditBtn} activeOpacity={0.8}>
-              <Icon name="Camera" size={18} color={TOKENS.colors.white} />
-            </TouchableOpacity>
+            <Avatar uri={getImageUrl(providerData?.logoImage?.cdnUrl || null)} name={name} size={100} />
           </View>
-          <Text style={styles.profileName}>{role === 'provider' ? 'Reparaciones JP' : name}</Text>
+          <Text style={styles.profileName}>{role === 'provider' ? (providerData?.name || name) : name}</Text>
           <View style={styles.badgesRow}>
-            {role === 'provider' ? (
-              <Badge label="PROVEEDOR" tone="neutral" />
-            ) : (
-              <Badge label="CLIENTE" tone="brand" />
-            )}
-            
-            <TouchableOpacity 
-              style={styles.ratingPill} 
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('ReviewsList')}
-            >
+            <Badge label={role === 'provider' ? 'PROVEEDOR' : 'CLIENTE'} tone={role === 'provider' ? 'neutral' : 'brand'} />
+            <TouchableOpacity style={styles.ratingPill} activeOpacity={0.8} onPress={() => navigation.navigate('ReviewsList')}>
               <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
-              <Text style={styles.ratingPillText}>4.8</Text>
-              <Text style={styles.ratingPillCount}>(14)</Text>
+              <Text style={styles.ratingPillText}>{avgRating.toFixed(1)}</Text>
+              <Text style={styles.ratingPillCount}>({reviews.length})</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Navigation Tabs (Only for Provider) */}
-        {role === 'provider' && (
-          <View style={styles.tabsScrollWrapper}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
-              {[
-                { id: 0, label: 'Mi Empresa', icon: 'Store' },
-                { id: 1, label: 'Banco', icon: 'Landmark' },
-                { id: 2, label: 'Certificados', icon: 'FileText' },
-                { id: 3, label: 'Contacto', icon: 'Phone' },
-              ].map(t => (
-                <TouchableOpacity 
-                  key={t.id} 
-                  style={[styles.providerTab, providerTab === t.id && styles.providerTabActive]}
-                  onPress={() => setProviderTab(t.id)}
-                >
-                  <Icon name={t.icon as any} size={16} color={providerTab === t.id ? TOKENS.colors.white : TOKENS.colors.textSubtle} />
-                  <Text style={[styles.providerTabText, providerTab === t.id && styles.providerTabTextActive]}>
-                    {t.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Content */}
         {role === 'client' && (
           <>
-            {renderClientFields()}
+            <View style={styles.formSection}>
+              <Input label="Nombre completo" value={name} onChangeText={setName} icon="User" />
+              <Input label="Correo electrónico" value={email} onChangeText={setEmail} icon="Mail" keyboardType="email-address" autoCapitalize="none" />
+              <Input label="Número móvil" value={phone} onChangeText={setPhone} icon="Phone" keyboardType="phone-pad" />
+              <Input label="Ciudad / Comuna" value={city} onChangeText={setCity} icon="MapPin" />
+            </View>
             <Button title="Guardar Cambios" onPress={handleSave} loading={saving} style={styles.fullWidthBtn} />
           </>
         )}
 
         {role === 'provider' && (
           <View style={styles.providerContentBox}>
-            {providerTab === 0 && renderProviderCompany()}
-            {providerTab === 1 && renderProviderBank()}
-            {providerTab === 2 && renderProviderCertificates()}
+            <View style={styles.tabsScrollWrapper}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
+                {['Empresa', 'Bancarios', 'Certificados', 'Contacto'].map((tab, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.providerTab, providerTab === idx && styles.providerTabActive]}
+                    onPress={() => setProviderTab(idx)}
+                  >
+                    <Text style={[styles.providerTabText, providerTab === idx && styles.providerTabTextActive]}>{tab}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+            {providerTab === 0 && (
+              <View style={styles.providerTabContent}>
+                <Text style={styles.tabSectionTitle}>Información de la Empresa</Text>
+                <Input label="Nombre Comercial" value={providerData?.name || ''} icon="Store" />
+                <Input label="RUT de Empresa" value={providerData?.rut || ''} icon="FileText" />
+                <Input label="Región Base" value={providerData?.location || ''} icon="MapPin" />
+              </View>
+            )}
+            {providerTab === 1 && (
+              <View style={styles.providerTabContent}>
+                <Text style={styles.tabSectionTitle}>Datos Bancarios</Text>
+                <Input label="Banco" value={providerData?.bank?.bankName || ''} icon="Landmark" />
+                <Input label="Tipo de Cuenta" value={providerData?.bank?.accountType || ''} icon="CreditCard" />
+                <Input label="Número de Cuenta" value={providerData?.bank?.accountNumber || ''} icon="Hash" />
+              </View>
+            )}
+            {providerTab === 2 && (
+              <View style={styles.providerTabContent}>
+                <Text style={styles.tabSectionTitle}>Mis Certificados</Text>
+                {providerData?.certificates?.map((cert) => (
+                  <View key={cert.id} style={styles.certCard}>
+                    <Icon name="FileText" size={24} color={TOKENS.colors.brand500} />
+                    <View style={{ flex: 1 }}><Text style={styles.certTitle}>{cert.title}</Text><Text style={styles.certStatus}>{cert.verified ? 'Validado' : 'Pendiente'}</Text></View>
+                    <Badge label={cert.verified ? 'ACTIVO' : 'PENDIENTE'} tone={cert.verified ? 'success' : 'neutral'} />
+                  </View>
+                ))}
+              </View>
+            )}
             {providerTab === 3 && (
               <View style={styles.providerTabContent}>
                 <Text style={styles.tabSectionTitle}>Información de Contacto</Text>
-                {renderClientFields()}
+                <Input label="Nombre completo" value={name} onChangeText={setName} icon="User" />
+                <Input label="Correo electrónico" value={email} onChangeText={setEmail} icon="Mail" keyboardType="email-address" />
+                <Input label="Número móvil" value={phone} onChangeText={setPhone} icon="Phone" keyboardType="phone-pad" />
+                <Input label="Ciudad / Comuna" value={city} onChangeText={setCity} icon="MapPin" />
                 <Button title="Guardar Contacto" onPress={handleSave} loading={saving} style={styles.fullWidthBtn} />
               </View>
             )}
@@ -211,14 +193,7 @@ export const MyProfileScreen: React.FC = () => {
         )}
 
         <View style={styles.divider} />
-        
-        <Button 
-          title="Cerrar Sesión" 
-          variant="outline" 
-          onPress={handleLogout} 
-          style={styles.fullWidthBtn} 
-        />
-
+        <Button title="Cerrar Sesión" variant="outline" onPress={handleLogout} style={styles.fullWidthBtn} />
       </ScrollView>
     </View>
   );
@@ -230,7 +205,7 @@ const styles = StyleSheet.create({
   guestContainer: { flex: 1, padding: TOKENS.spacing.xl },
   guestHeader: { alignItems: 'center', marginBottom: TOKENS.spacing.xl, marginTop: TOKENS.spacing.xl },
   guestIconBox: { width: 96, height: 96, borderRadius: 48, backgroundColor: TOKENS.colors.brand50, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.md },
-  guestTitle: { fontSize: TOKENS.typography.sizes.h1, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 8 },
+  guestTitle: { fontSize: TOKENS.typography.sizes.xxxl, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 8 },
   guestSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', lineHeight: 22 },
   guestFeatures: { gap: TOKENS.spacing.lg, marginBottom: TOKENS.spacing.xxl, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.xl, borderRadius: 24, borderWidth: 1, borderColor: TOKENS.colors.surface200, ...TOKENS.shadows.soft },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -248,7 +223,7 @@ const styles = StyleSheet.create({
   },
   avatarSection: { alignItems: 'center', position: 'relative', marginBottom: TOKENS.spacing.md },
   avatarEditBtn: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: 18, backgroundColor: TOKENS.colors.brand500, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: TOKENS.colors.white, ...TOKENS.shadows.soft },
-  profileName: { fontSize: TOKENS.typography.sizes.h2, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: 8 },
+  profileName: { fontSize: TOKENS.typography.sizes.xxl, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: 8 },
   badgesRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   ratingPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.surface100, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 4, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   ratingPillText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },

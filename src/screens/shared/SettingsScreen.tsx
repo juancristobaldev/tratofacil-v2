@@ -1,17 +1,28 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, Switch, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Card } from '../../components';
+import { useRefresh } from '../../context/RefreshContext';
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { setIsRefreshing } = useRefresh();
   const [notifications, setNotifications] = useState(true);
   const [emailAlerts, setEmailAlerts] = useState(false);
   const [locationSharing, setLocationSharing] = useState(true);
   const [biometrics, setBiometrics] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await new Promise<void>((r) => setTimeout(r, 600));
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [setIsRefreshing]);
 
   const handleLogout = () => {
     navigation.replace('Login');
@@ -19,7 +30,11 @@ export const SettingsScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <Card style={styles.sectionCard} padded={false}>
           <View style={styles.sectionHeader}><Text style={styles.sectionLabel}>NOTIFICACIONES</Text></View>
           <View style={styles.settingRow}>

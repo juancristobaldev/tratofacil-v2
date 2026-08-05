@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,147 +6,250 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  FlatList,
+  Dimensions,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Badge, RotatingHorizontalAd } from '../ui';
-import { MOCK_CATEGORIES, MOCK_PROVIDERS, Category } from '../../mocks/mockData';
+import { Icon, RotatingHorizontalAd, EmptyState } from '../ui';
+import { useCategories } from '../../hooks/useCategories';
+import { useAds } from '../../hooks/useAds';
 import { usePanel } from '../../context/PanelContext';
+import type { TreeNode } from '../../utils/categoryTree';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MAX_PANEL_HEIGHT = SCREEN_HEIGHT * 0.75;
+
+function matchText(target: string, query: string): boolean {
+  const t = target.toLowerCase();
+  const q = query.toLowerCase();
+  if (t.includes(q) || q.includes(t)) return true;
+  const tWords = t.split(/\s+/);
+  const qWords = q.split(/\s+/);
+  return qWords.some((qw) =>
+    tWords.some(
+      (tw) => tw.startsWith(qw) || qw.startsWith(tw) || tw.includes(qw),
+    ),
+  );
+}
 
 export const CategoriesPanelContent: React.FC = () => {
-  const navigation = useNavigation<any>();
-  const { panelData } = usePanel();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [showOffline, setShowOffline] = useState(false);
 
-  const filteredCategories = useMemo(() => {
-    if (!searchQuery.trim()) return MOCK_CATEGORIES;
-    return MOCK_CATEGORIES.filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery]);
+  const {
+    categoryTree,
+    servicesLoading,
+    categoriesLoading,
+    mainLoading,
+    servicesError,
+    categoriesError,
+    mainError,
+    refetchServicesByCategory,
+  } = useCategories();
 
-  const filteredProviders = useMemo(() => {
-    if (!selectedCategory) return [];
-    return MOCK_PROVIDERS.filter((p) => p.categorySlug === selectedCategory.slug);
-  }, [selectedCategory]);
+  const hasError = !!(servicesError || categoriesError || mainError);
+  const isLoading = servicesLoading || categoriesLoading || mainLoading;
 
-  const handleCategoryPress = (category: Category) => {
-    setSelectedCategory(category);
-    if (panelData?.onCategoryPress) {
-      panelData.onCategoryPress(category);
-    }
-  };
+  const { clearPanel, panelData } = usePanel();
+  const selectedCategory = panelData?.selectedCategory;
+  const onCategoryPress = panelData?.onCategoryPress;
+  const onClearCategory = panelData?.onClearCategory;
 
-  const handleBack = () => {
-    setSelectedCategory(null);
-    if (panelData?.onClearCategory) {
-      panelData.onClearCategory();
-    }
-  };
+  const { horizontal, getTransitionDuration } = useAds();
+
+  const visibleNodes = useMemo(() => {
+    if (!searchQuery.trim()) return categoryTree;
+    const q = searchQuery.trim().toLowerCase();
+    return categoryTree.filter((node) => matchText(node.name, q));
+  }, [categoryTree, searchQuery]);
+
+  const showSearch = searchQuery.trim().length > 0;
+
+  const handleNodePress = useCallback(
+    (node: TreeNode) => {
+      console.log('[DEBUG:CATEGORIES] TAP:', node.name, '| slug:', node.slug, '| type:', node.type);
+      onCategoryPress?.({
+        id: String(node.id),
+        name: node.name,
+        slug: node.slug,
+        icon: 'Grid',
+        subcategories: [],
+      });
+      clearPanel();
+    },
+    [onCategoryPress, clearPanel],
+  );
+
+  const handleClear = useCallback(() => {
+    onClearCategory?.();
+    clearPanel();
+  }, [onClearCategory, clearPanel]);
+
+  const renderNodeCard = (node: TreeNode) => (
+    <TouchableOpacity
+      key={`node-${node.type}-${node.id}`}
+      onPress={() => handleNodePress(node)}
+      style={[
+        styles.nodeCard,
+        node.type === 'category' && styles.nodeCardCategory,
+        node.type === 'subcategory' && styles.nodeCardSubcategory,
+      ]}
+      activeOpacity={0.7}
+    >
+      <Icon
+        name="ChevronRight"
+        size={18}
+        color={TOKENS.colors.textSubtle}
+      />
+      <View style={styles.nodeCardBody}>
+        <Text style={styles.nodeCardTitle} numberOfLines={1}>
+          {node.name}
+        </Text>
+        {node.type === 'subcategory' && node.parentName ? (
+          <Text style={styles.nodeCardParent} numberOfLines={1}>
+            {node.parentName}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.nodeCardRight}>
+        <Text style={styles.nodeCardCount}>
+          {node.services.length}
+        </Text>
+        {node.onlineProviderCount > 0 && (
+          <View style={styles.onlineBadge}>
+            <Text style={styles.onlineBadgeText}>
+              {node.onlineProviderCount}
+            </Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
-    <View style={styles.container}>
-      {selectedCategory ? (
-        <View style={styles.sheetContent}>
-          <TouchableOpacity onPress={handleBack} style={styles.sheetBackBtn}>
-            <Icon name="ArrowLeft" size={16} color={TOKENS.colors.brand500} />
-            <Text style={styles.sheetBackText}>Todas las categorías</Text>
-          </TouchableOpacity>
-          <Text style={styles.categoryTitle}>{selectedCategory.name}</Text>
-          {filteredProviders.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Icon name="Inbox" size={40} color={TOKENS.colors.textMuted} />
-              <Text style={styles.emptyText}>No hay profesionales disponibles en este momento.</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredProviders}
-              keyExtractor={(item) => item.id}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => navigation.navigate('ProviderProfile', { providerId: item.id })}
-                  style={styles.providerCard}
-                  activeOpacity={0.9}
-                >
-                  <Avatar uri={item.avatar} name={item.name} size={48} />
-                  <View style={styles.providerInfo}>
-                    <View style={styles.providerHeader}>
-                      <Text style={styles.providerName} numberOfLines={1}>{item.name}</Text>
-                      {item.verified && <Badge label="SEC" tone="success" size="sm" />}
-                    </View>
-                    <Text style={styles.providerService} numberOfLines={1}>{item.serviceName}</Text>
-                    <View style={styles.providerFooter}>
-                      <Rating rating={item.rating} size={10} reviewsCount={item.reviewsCount} showText />
-                      <Text style={styles.providerPrice}>${item.pricePerHour.toLocaleString('es-CL')}/hr</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-            />
-          )}
+    <View style={[styles.container, { maxHeight: MAX_PANEL_HEIGHT }]}>
+      <View style={showSearch ? styles.contentFlex : styles.content}>
+        <View style={styles.searchBar}>
+          <Icon
+            name="Search"
+            size={18}
+            color={TOKENS.colors.brand500}
+            style={styles.searchIcon}
+          />
+          <TextInput
+            placeholder="Buscar categorías o servicios..."
+            placeholderTextColor={TOKENS.colors.textMuted}
+            value={searchQuery}
+            onChangeText={(text) => {
+              if (selectedCategory && text) {
+                onClearCategory?.();
+              }
+              setSearchQuery(text);
+            }}
+            style={styles.searchInput}
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
+            </TouchableOpacity>
+          ) : null}
         </View>
-      ) : (
-        <View style={styles.sheetContent}>
-          {/* Search bar inside sheet content */}
-          <View style={styles.sheetSearchBarContainer}>
-            <Icon name="Search" size={18} color={TOKENS.colors.brand500} style={styles.searchIcon} />
-            <TextInput
-              placeholder="Buscar rubros, oficios y profesiones..."
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              style={styles.searchInput}
-            />
-            {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
 
-          {!searchQuery.trim() ? (
-            <>
-              <Text style={styles.sheetTitle}>Promociones de hoy</Text>
-              <RotatingHorizontalAd />
-            </>
-          ) : (
-            <>
-              <Text style={styles.sheetTitle}>Categorías encontradas</Text>
-              <ScrollView contentContainerStyle={styles.categoryGrid} showsVerticalScrollIndicator={false}>
-                {filteredCategories.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => handleCategoryPress(item)}
-                    style={styles.categoryCard}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.categoryIconCircle}>
-                      <Icon
-                        name={item.icon as any}
-                        size={20}
-                        color={item.slug === 'electricidad' ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
-                      />
-                    </View>
-                    <Text style={styles.categoryCardText} numberOfLines={1}>{item.name}</Text>
-                  </TouchableOpacity>
-                ))}
+        {hasError ? (
+          <EmptyState
+            icon="AlertTriangle"
+            title="Error al cargar"
+            description="No se pudieron cargar las categorías."
+          />
+        ) : selectedCategory ? (
+          <View style={styles.selectedState}>
+            <View style={styles.selectedHeader}>
+              <Text style={styles.selectedTitle}>
+                Filtrando: {selectedCategory.name}
+              </Text>
+              <TouchableOpacity style={styles.clearBtn} onPress={handleClear}>
+                <Text style={styles.clearBtnText}>Limpiar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : !showSearch ? (
+          <>
+            <Text style={styles.sheetTitle}>Promociones de hoy</Text>
+            <RotatingHorizontalAd
+              images={horizontal}
+              transitionDuration={getTransitionDuration('marketing', 'HORIZONTAL', 6000)}
+            />
+            {isLoading && visibleNodes.length === 0 ? (
+              <EmptyState
+                icon="Inbox"
+                title="Cargando categorías..."
+                description=""
+              />
+            ) : (
+              <ScrollView
+                style={styles.list}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+              >
+                {visibleNodes.map(renderNodeCard)}
               </ScrollView>
-            </>
-          )}
-        </View>
-      )}
+            )}
+          </>
+        ) : (
+          <>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsTitle}>
+                {isLoading
+                  ? 'Buscando...'
+                  : `${visibleNodes.length} categoría${visibleNodes.length !== 1 ? 's' : ''}`}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.toggleBtn,
+                  showOffline && styles.toggleBtnActive,
+                ]}
+                onPress={() => setShowOffline(!showOffline)}
+              >
+                <Text
+                  style={[
+                    styles.toggleBtnText,
+                    showOffline && styles.toggleBtnTextActive,
+                  ]}
+                >
+                  {showOffline ? 'Solo Online' : 'Todos'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {isLoading && visibleNodes.length === 0 ? (
+              <EmptyState icon="Inbox" title="Buscando..." description="" />
+            ) : visibleNodes.length === 0 ? (
+              <EmptyState
+                icon="Search"
+                title="Sin resultados"
+                description="No se encontraron categorías con ese nombre."
+              />
+            ) : (
+              <ScrollView
+                style={styles.list}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+              >
+                {visibleNodes.map(renderNodeCard)}
+              </ScrollView>
+            )}
+          </>
+        )}
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: {},
+  content: {
+    paddingHorizontal: TOKENS.spacing.lg,
   },
-  sheetContent: {
+  contentFlex: {
     flex: 1,
     paddingHorizontal: TOKENS.spacing.lg,
   },
@@ -156,109 +259,7 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMain,
     marginBottom: TOKENS.spacing.md,
   },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingBottom: 24,
-  },
-  categoryCard: {
-    width: '48%',
-    backgroundColor: TOKENS.colors.surface50,
-    borderColor: TOKENS.colors.surface200,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  categoryIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-  },
-  categoryCardText: {
-    fontSize: TOKENS.typography.sizes.xs,
-    fontWeight: TOKENS.typography.weights.semibold,
-    color: TOKENS.colors.textMain,
-    flex: 1,
-  },
-  sheetBackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  sheetBackText: {
-    color: TOKENS.colors.brand500,
-    fontSize: TOKENS.typography.sizes.xs,
-    fontWeight: TOKENS.typography.weights.semibold,
-    marginLeft: 4,
-  },
-  categoryTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-    marginBottom: TOKENS.spacing.md,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 8,
-  },
-  emptyText: {
-    color: TOKENS.colors.textSubtle,
-    fontSize: TOKENS.typography.sizes.sm,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  providerCard: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface200,
-  },
-  providerInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  providerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  providerName: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    flex: 1,
-    marginRight: 8,
-  },
-  providerService: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    marginBottom: 4,
-  },
-  providerFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  providerPrice: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-  },
-  sheetSearchBarContainer: {
+  searchBar: {
     height: 52,
     backgroundColor: TOKENS.colors.surface50,
     borderRadius: TOKENS.geometry.radiusInput,
@@ -280,5 +281,132 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.medium,
     height: '100%',
     padding: 0,
+  },
+
+  // Selected state
+  selectedState: {
+    paddingTop: TOKENS.spacing.md,
+  },
+  selectedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: TOKENS.spacing.md,
+  },
+  selectedTitle: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.brand600,
+    flex: 1,
+  },
+  clearBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: TOKENS.colors.surface100,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  clearBtnText: {
+    fontSize: 12,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.textMain,
+  },
+
+  // Results header
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: TOKENS.spacing.sm,
+  },
+  resultsTitle: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  toggleBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: TOKENS.colors.surface100,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  toggleBtnActive: {
+    backgroundColor: TOKENS.colors.brand50,
+    borderColor: TOKENS.colors.brand500,
+  },
+  toggleBtnText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+  },
+  toggleBtnTextActive: {
+    color: TOKENS.colors.brand600,
+  },
+
+  // Node cards
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: 24,
+    paddingTop: 8,
+  },
+  nodeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    gap: 10,
+    marginBottom: 8,
+  },
+  nodeCardCategory: {
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.brand200,
+  },
+  nodeCardSubcategory: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  nodeCardBody: {
+    flex: 1,
+  },
+  nodeCardTitle: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  nodeCardParent: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+  },
+  nodeCardRight: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  nodeCardCount: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.medium,
+    color: TOKENS.colors.textSubtle,
+  },
+  onlineBadge: {
+    backgroundColor: TOKENS.colors.statusSuccess,
+    borderRadius: 8,
+    minWidth: 20,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+  },
+  onlineBadgeText: {
+    fontSize: 9,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.white,
   },
 });

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Icon } from '../../components/ui';
-import { useRole } from '../../context/RoleContext';
+import { Button, Icon, Input } from '../../components/ui';
+import { useAuth } from '../../context/AuthContext';
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { setRole } = useRole();
+  const { login, loginLoading } = useAuth();
   const [step, setStep] = useState<'identifier' | 'password'>('identifier');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -17,26 +17,30 @@ export const LoginScreen: React.FC = () => {
   const handleIdentifierSubmit = () => {
     const val = identifier.trim();
     if (!val) {
-      setError('Por favor, ingresa tu correo electrónico o teléfono.');
+      setError('Por favor, ingresa tu correo electrónico.');
       return;
     }
     setError('');
     setStep('password');
   };
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = async () => {
     if (!password) {
       setError('Por favor, ingresa tu contraseña.');
       return;
     }
     setError('');
-    // Simulate login success
-    setRole('client');
-    navigation.replace('MainApp');
+
+    try {
+      await login(identifier.trim(), password);
+      navigation.replace('MainApp');
+    } catch (err: any) {
+      const msg = err?.graphQLErrors?.[0]?.message || err?.networkError?.message || 'Error al iniciar sesión. Verifica tus credenciales.';
+      setError(msg);
+    }
   };
 
   const handleGuestLogin = () => {
-    setRole('guest');
     navigation.replace('MainApp');
   };
 
@@ -75,31 +79,25 @@ export const LoginScreen: React.FC = () => {
 
             {error ? (
               <View style={styles.errorBox}>
-                <Icon name="Info" size={16} color={TOKENS.colors.error600} />
+                <Icon name="Info" size={16} color="#dc2626" />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
 
             <View style={styles.formSection}>
               {step === 'identifier' ? (
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Correo Electrónico o Teléfono</Text>
-                  <View style={styles.inputWrapper}>
-                    <Icon name="User" size={20} color={TOKENS.colors.textMuted} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="tu@correo.com o +569..."
-                      placeholderTextColor={TOKENS.colors.textMuted}
-                      value={identifier}
-                      onChangeText={(text) => {
-                        setIdentifier(text);
-                        if (error) setError('');
-                      }}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                    />
-                  </View>
-                </View>
+                  <Input
+                    label="Correo Electrónico o Teléfono"
+                    icon="User"
+                    placeholder="tu@correo.com o +569..."
+                    value={identifier}
+                    onChangeText={(text) => {
+                      setIdentifier(text);
+                      if (error) setError('');
+                    }}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
               ) : (
                 <View style={styles.passwordSection}>
                   <View style={styles.verifiedPill}>
@@ -110,40 +108,32 @@ export const LoginScreen: React.FC = () => {
                     </TouchableOpacity>
                   </View>
 
-                  <View style={styles.inputGroup}>
                     <View style={styles.passwordLabelRow}>
                       <Text style={styles.label}>Contraseña</Text>
                       <TouchableOpacity>
                         <Text style={styles.forgotText}>¿Olvidaste tu clave?</Text>
                       </TouchableOpacity>
                     </View>
-                    <View style={styles.inputWrapper}>
-                      <Icon name="Lock" size={20} color={TOKENS.colors.textMuted} />
-                      <TextInput
-                        style={styles.input}
-                        placeholder="••••••••"
-                        placeholderTextColor={TOKENS.colors.textMuted}
-                        value={password}
-                        onChangeText={(text) => {
-                          setPassword(text);
-                          if (error) setError('');
-                        }}
-                        secureTextEntry={!showPassword}
-                      />
-                      <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                        <Icon name={showPassword ? "EyeOff" : "Eye"} size={20} color={TOKENS.colors.textMuted} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                    <Input
+                      icon="Lock"
+                      placeholder="••••••••"
+                      value={password}
+                      onChangeText={(text) => {
+                        setPassword(text);
+                        if (error) setError('');
+                      }}
+                      secureTextEntry={!showPassword}
+                    />
                 </View>
               )}
             </View>
 
             <Button
-              title={step === 'identifier' ? 'Continuar' : 'Iniciar Sesión'}
+              title={loginLoading ? 'Verificando...' : step === 'identifier' ? 'Continuar' : 'Iniciar Sesión'}
               icon={step === 'identifier' ? 'ArrowRight' : undefined}
               onPress={step === 'identifier' ? handleIdentifierSubmit : handlePasswordSubmit}
               style={styles.submitBtn}
+              disabled={loginLoading}
             />
 
             {step === 'identifier' && (
@@ -251,48 +241,22 @@ const styles = StyleSheet.create({
   errorBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: TOKENS.colors.error50,
+    backgroundColor: '#fef2f2',
     padding: TOKENS.spacing.md,
     borderRadius: 12,
     marginBottom: TOKENS.spacing.lg,
     borderWidth: 1,
-    borderColor: TOKENS.colors.error100,
+    borderColor: '#fecaca',
     gap: 8,
   },
   errorText: {
     flex: 1,
     fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.error700,
+    color: '#dc2626',
     fontWeight: '500',
   },
   formSection: {
     marginBottom: TOKENS.spacing.xl,
-  },
-  inputGroup: {
-    marginBottom: TOKENS.spacing.md,
-  },
-  label: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 52,
-  },
-  input: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: TOKENS.typography.sizes.md,
-    color: TOKENS.colors.textMain,
-    height: '100%',
   },
   passwordSection: {},
   verifiedPill: {
@@ -328,6 +292,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
   },
   forgotText: {
     fontSize: 12,

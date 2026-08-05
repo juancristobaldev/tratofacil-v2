@@ -1,53 +1,104 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar } from '../../components';
+import { Icon, Avatar, EmptyState } from '../../components';
+import { useAuth } from '../../context/AuthContext';
+import { useRefresh } from '../../context/RefreshContext';
+
+interface ReviewItem {
+  id: string | number;
+  userName: string;
+  rating: number;
+  comment: string | null;
+  date: string;
+}
 
 export const ReviewsListScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
+  const { user, refetch: refetchAuth } = useAuth();
+  const { setIsRefreshing } = useRefresh();
+  const [refreshing, setRefreshing] = useState(false);
 
-  const reviews = [
-    { id: 1, name: 'María González', rating: 5, date: 'Hace 2 días', text: 'Excelente trabajo, muy puntual y profesional. Totalmente recomendado.' },
-    { id: 2, name: 'Pedro Suárez', rating: 4, date: 'Hace 1 semana', text: 'Buen servicio, aunque se demoró un poco en llegar. El trabajo quedó impecable.' },
-    { id: 3, name: 'Camila Rojas', rating: 5, date: 'Hace 2 semanas', text: 'Muy amable y transparente con los precios. Me explicó todo lo que estaba haciendo.' },
-  ];
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetchAuth();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetchAuth, setIsRefreshing]);
+
+  const reviewsFromParams: ReviewItem[] | undefined = route.params?.reviews;
+
+  const reviews = useMemo<ReviewItem[]>(() => {
+    if (reviewsFromParams?.length) {
+      return reviewsFromParams;
+    }
+    const providerReviews = user?.provider?.reviews?.map((r) => ({
+      id: r.id,
+      userName: r.client?.displayName || 'Cliente',
+      rating: r.rating,
+      comment: r.comment,
+      date: new Date(r.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' }),
+    })) || [];
+    const realtimeReviews = user?.provider?.realtimeReviews?.map((r) => ({
+      id: `rt-${r.id}`,
+      userName: user?.displayName || 'Cliente',
+      rating: r.rating,
+      comment: r.comment,
+      date: new Date(r.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' }),
+    })) || [];
+    return [...providerReviews, ...realtimeReviews];
+  }, [reviewsFromParams, user]);
+
+  const avgRating = reviews.length
+    ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
+    : 0;
+
+  const filledStars = Math.round(avgRating);
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 20 }]}>
-        
+      <ScrollView
+        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 20 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <View style={styles.headerBox}>
-          <Text style={styles.ratingNumber}>4.8</Text>
+          <Text style={styles.ratingNumber}>{avgRating.toFixed(1)}</Text>
           <View style={styles.starsRow}>
-            {[1, 2, 3, 4, 5].map(i => (
-              <Icon key={i} name="Star" size={24} color={i <= 4 ? TOKENS.colors.starActive : TOKENS.colors.surface200} />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Icon key={i} name="Star" size={24} color={i <= filledStars ? TOKENS.colors.starActive : TOKENS.colors.surface200} />
             ))}
           </View>
-          <Text style={styles.reviewCount}>Basado en 14 reseñas</Text>
+          <Text style={styles.reviewCount}>Basado en {reviews.length} reseñas</Text>
         </View>
 
-        <View style={styles.list}>
-          {reviews.map(rev => (
-            <View key={rev.id} style={styles.reviewCard}>
-              <View style={styles.revHeader}>
-                <View style={styles.revUserRow}>
-                  <Avatar uri={null} name={rev.name} size={40} />
-                  <View>
-                    <Text style={styles.revName}>{rev.name}</Text>
-                    <Text style={styles.revDate}>{rev.date}</Text>
+        {reviews.length === 0 ? (
+          <EmptyState icon="MessageSquare" title="Sin reseñas aún" description="Las reseñas de tus clientes aparecerán aquí." />
+        ) : (
+          <View style={styles.list}>
+            {reviews.map((rev) => (
+              <View key={rev.id} style={styles.reviewCard}>
+                <View style={styles.revHeader}>
+                  <View style={styles.revUserRow}>
+                    <Avatar uri={null} name={rev.userName} size={40} />
+                    <View>
+                      <Text style={styles.revName}>{rev.userName}</Text>
+                      <Text style={styles.revDate}>{rev.date}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.revRatingBadge}>
+                    <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
+                    <Text style={styles.revRatingText}>{rev.rating}</Text>
                   </View>
                 </View>
-                <View style={styles.revRatingBadge}>
-                  <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
-                  <Text style={styles.revRatingText}>{rev.rating}</Text>
-                </View>
+                {rev.comment ? <Text style={styles.revText}>{rev.comment}</Text> : null}
               </View>
-              <Text style={styles.revText}>{rev.text}</Text>
-            </View>
-          ))}
-        </View>
-
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );

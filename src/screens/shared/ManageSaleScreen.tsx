@@ -1,59 +1,86 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Avatar, Rating, Badge } from '../../components/ui';
+import { Icon, Button, Avatar, Rating, Badge, ErrorState } from '../../components/ui';
+import { useMarketplace } from '../../hooks/useMarketplace';
+import { useRefresh } from '../../context/RefreshContext';
 
 export const ManageSaleScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
   const { id } = route.params || { id: 3 };
+  const { setIsRefreshing } = useRefresh();
 
-  // Mock Sale Data
+  const {
+    mySales: sales,
+    mySalesLoading: loading,
+    mySalesError: error,
+    updateShipping,
+    refetchSales,
+  } = useMarketplace();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetchSales();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetchSales, setIsRefreshing]);
+
+  const orderData = useMemo(() => {
+    return sales?.find((o) => o.id === parseInt(String(id), 10));
+  }, [sales, id]);
+
+  if (loading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={TOKENS.colors.brand500} /></View>;
+  }
+
+  if (error) {
+    return <ErrorState message="No se pudo cargar la venta." />;
+  }
+
+  if (!orderData) {
+    return <ErrorState message="Venta no encontrada." onRetry={() => navigation.goBack()} />;
+  }
+
   const sale = {
-    id: `200${id}`,
-    date: '10 de Junio, 2024',
-    status: id === 3 ? 'VENDIDO - POR ENVIAR' : 'PUBLICADO',
+    id: String(orderData.id),
+    date: new Date(orderData.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }),
+    status: orderData.status === 'COMPLETED' ? 'VENDIDO - ENTREGADO' : 'VENDIDO - POR ENVIAR',
     product: {
-      name: 'Set de Destornilladores Profesionales',
-      price: 12500,
+      name: orderData.product.name,
+      price: orderData.unitPrice,
     },
-    buyer: id === 3 ? {
-      id: 88,
-      name: 'Juan Pérez',
-      rating: 4.5,
-      reviews: 12,
+    buyer: orderData.client ? {
+      id: orderData.client.id,
+      name: orderData.client.displayName || 'Comprador',
+      rating: (orderData.client as any).reviewsReceived?.length
+        ? (orderData.client as any).reviewsReceived.reduce((s: number, r: any) => s + r.rating, 0) / (orderData.client as any).reviewsReceived.length
+        : 0,
+      reviews: (orderData.client as any).reviewsReceived?.length || 0,
     } : null,
-    shippingInfo: id === 3 ? {
+    shippingInfo: orderData.shippingInfo ? {
       type: 'Despacho a Domicilio',
-      address: 'Av. Libertador Bernardo O\'Higgins 123',
-      city: 'Santiago Centro',
-      phone: '+56 9 8765 4321',
-      buyerPaidShipping: 2000,
-    } : null
+      address: `${orderData.shippingInfo.street} ${orderData.shippingInfo.number}`,
+      city: orderData.shippingInfo.commune,
+      phone: orderData.shippingInfo.phone,
+      buyerPaidShipping: 0,
+    } : null,
   };
 
-  const earnings = sale.product.price * 0.95; // 5% commission mock
+  const earnings = (orderData.unitPrice * orderData.quantity) - orderData.commission;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Button 
-          title="" 
-          icon="ArrowLeft" 
-          variant="secondary" 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-        />
-        <Text style={styles.headerTitle}>Gestionar Venta</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         
         {/* SUMMARY */}
         <View style={styles.card}>
@@ -96,6 +123,7 @@ export const ManageSaleScreen: React.FC = () => {
               <Button 
                 title="Mensaje" 
                 icon="MessageCircle"
+                onPress={() => {}}
                 style={{ flex: 1 }}
               />
             </View>
@@ -151,11 +179,11 @@ export const ManageSaleScreen: React.FC = () => {
       {/* FOOTER ACTION */}
       {id === 3 ? (
         <View style={styles.footer}>
-          <Button title="Confirmar Envío o Entrega" icon="CheckCircle" style={styles.confirmBtn} />
+          <Button title="Confirmar Envío o Entrega" icon="CheckCircle" onPress={() => {}} style={styles.confirmBtn} />
         </View>
       ) : (
         <View style={styles.footer}>
-          <Button title="Editar Publicación" variant="outline" icon="Edit" style={styles.confirmBtn} />
+          <Button title="Editar Publicación" variant="outline" icon="Edit" onPress={() => {}} style={styles.confirmBtn} />
         </View>
       )}
     </View>
@@ -167,25 +195,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
   },
-  header: {
-    flexDirection: 'row',
+  center: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: TOKENS.spacing.md,
     backgroundColor: TOKENS.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface100,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    paddingHorizontal: 0,
-    borderRadius: 20,
-  },
-  headerTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.textMain,
   },
   scrollContent: {
     padding: TOKENS.spacing.md,

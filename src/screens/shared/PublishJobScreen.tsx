@@ -5,8 +5,9 @@ import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon } from '../../components';
 import { useRole } from '../../context/RoleContext';
+import { useJobs } from '../../hooks/useJobs';
 
-const JOB_COMMISSION_RATE = 0.10; // Assuming 10% commission
+const JOB_COMMISSION_RATE = 0.10;
 
 export const PublishJobScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -29,15 +30,24 @@ export const PublishJobScreen: React.FC = () => {
     setReceiveAmount(priceValue - comm);
   }, [price]);
 
-  const handlePublish = () => {
+  const { createJob, createLoading: loading } = useJobs();
+
+  const handlePublish = async () => {
     if (!title || !desc || !region || !city || !price) {
       Alert.alert('Error', 'Por favor, completa todos los campos obligatorios.');
       return;
     }
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await createJob({
+        title,
+        description: desc,
+        price: Number(price),
+        location: `${city}, ${region}`,
+      });
       navigation.goBack();
-    }, 1000);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
   };
 
   if (role === 'guest') {
@@ -194,9 +204,9 @@ export const PublishJobScreen: React.FC = () => {
             style={{ flex: 1 }} 
           />
           <Button 
-            title="Publicar Trabajo" 
+            title={loading ? 'Publicando...' : 'Publicar Trabajo'} 
             onPress={handlePublish} 
-            disabled={!title || !desc || !region || !city || !price}
+            disabled={loading || !title || !desc || !region || !city || !price}
             style={{ flex: 2 }} 
           />
         </View>

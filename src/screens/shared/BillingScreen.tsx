@@ -1,120 +1,107 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button } from '../../components';
+import { Icon, Button, ErrorState } from '../../components';
+import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
+import { useRefresh } from '../../context/RefreshContext';
 
 export const BillingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
-  const [hasCard, setHasCard] = useState(true);
+  const { user } = useAuth();
+  const { setIsRefreshing } = useRefresh();
 
-  const handleUnlinkCard = () => {
-    Alert.alert(
-      'Desvincular Tarjeta',
-      '¿Estás seguro de que deseas eliminar esta tarjeta? No podrás realizar compras rápidamente.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Desvincular', 
-          style: 'destructive',
-          onPress: () => setHasCard(false)
-        },
-      ]
-    );
-  };
+  const hasCard = !!(user?.last4CardDigits && user?.creditCardType);
+  const cardBrand = user?.creditCardType || 'VISA';
+  const cardLast4 = user?.last4CardDigits || '****';
+
+  const { paymentHistory: payments, paymentHistoryLoading: loading, paymentHistoryError: error, refetch } = usePlans();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetch, setIsRefreshing]);
+
+  if (loading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={TOKENS.colors.brand500} /></View>;
+  }
+
+  if (error) {
+    return <ErrorState message="Error al cargar historial de pagos." />;
+  }
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <ScrollView contentContainerStyle={styles.scrollBody}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Facturación y Pagos</Text>
-          <Text style={styles.subtitle}>Administra tus métodos de pago y revisa tus transacciones.</Text>
-        </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollBody}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
+        <Text style={styles.subtitle}>Administra tus métodos de pago y revisa tus transacciones.</Text>
 
-        {/* Card Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Método de Pago Actual</Text>
           {hasCard ? (
             <View style={styles.cardBox}>
               <View style={styles.cardHeader}>
                 <Icon name="CreditCard" size={24} color={TOKENS.colors.white} />
-                <Text style={styles.cardBrand}>VISA</Text>
+                <Text style={styles.cardBrand}>{cardBrand}</Text>
               </View>
-              <Text style={styles.cardNumber}>**** **** **** 4321</Text>
+              <Text style={styles.cardNumber}>**** **** **** {cardLast4}</Text>
               <View style={styles.cardFooter}>
-                <Text style={styles.cardName}>JUAN PÉREZ</Text>
-                <Text style={styles.cardExp}>12/28</Text>
+                <Text style={styles.cardName}>{user?.displayName?.toUpperCase() || 'TITULAR'}</Text>
               </View>
-              
-              <TouchableOpacity style={styles.unlinkBtn} onPress={handleUnlinkCard}>
-                <Icon name="Trash2" size={14} color={TOKENS.colors.white} />
-                <Text style={styles.unlinkBtnText}>Desvincular</Text>
-              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.emptyCardBox}>
               <Icon name="CreditCard" size={32} color={TOKENS.colors.textSubtle} />
               <Text style={styles.emptyCardText}>No tienes tarjetas vinculadas</Text>
-              <Button title="Vincular Nueva Tarjeta" variant="secondary" style={{ marginTop: 12 }} />
             </View>
           )}
         </View>
 
-        {/* Transactions Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Últimas Transacciones</Text>
-          <View style={styles.transactionsList}>
-            {[
-              { id: 1, title: 'Servicio Eléctrico', category: 'Servicios', amount: -35000, date: 'Ayer' },
-              { id: 2, title: 'Taladro Percutor 800W', category: 'Marketplace', amount: -45990, date: '12 de Octubre' },
-              { id: 3, title: 'Reparación de Cañería', category: 'Trabajos', amount: -15000, date: '05 de Octubre' },
-            ].map(tx => (
-              <View key={tx.id} style={styles.txRow}>
-                <View style={styles.txLeft}>
-                  <View style={styles.txIcon}>
-                    <Icon 
-                      name={tx.category === 'Marketplace' ? 'Store' : tx.category === 'Servicios' ? 'Wrench' : 'Briefcase'} 
-                      size={16} color={TOKENS.colors.brand500} 
-                    />
+          {payments.length === 0 ? (
+            <Text style={styles.emptyText}>Sin transacciones recientes</Text>
+          ) : (
+            <View style={styles.transactionsList}>
+              {payments.slice(0, 10).map((tx) => (
+                <View key={tx.id} style={styles.txRow}>
+                  <View style={styles.txLeft}>
+                    <View style={styles.txIcon}>
+                      <Icon name="CreditCard" size={16} color={TOKENS.colors.brand500} />
+                    </View>
+                    <View>
+                      <Text style={styles.txTitle}>{tx.description}</Text>
+                      <Text style={styles.txCategory}>{tx.type} • {new Date(tx.createdAt).toLocaleDateString('es-CL')}</Text>
+                    </View>
                   </View>
-                  <View>
-                    <Text style={styles.txTitle}>{tx.title}</Text>
-                    <Text style={styles.txCategory}>{tx.category} • {tx.date}</Text>
-                  </View>
+                  <Text style={styles.txAmount}>${Math.abs(tx.amount).toLocaleString('es-CL')}</Text>
                 </View>
-                <Text style={styles.txAmount}>${Math.abs(tx.amount).toLocaleString('es-CL')}</Text>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
-
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: TOKENS.colors.surface50,
-  },
-  scrollBody: {
-    padding: TOKENS.spacing.lg,
-  },
-  header: {
-    marginBottom: TOKENS.spacing.xl,
-  },
-  title: {
-    fontSize: TOKENS.typography.sizes.h2,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-  },
+  container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white },
+  scrollBody: { padding: TOKENS.spacing.lg },
   subtitle: {
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
-    marginTop: 4,
+    marginBottom: TOKENS.spacing.xl,
+    lineHeight: 20,
   },
   section: {
     marginBottom: TOKENS.spacing.xl,
@@ -243,4 +230,5 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.textMain,
   },
+  emptyText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', paddingVertical: 24 },
 });

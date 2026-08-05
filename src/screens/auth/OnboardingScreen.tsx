@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, SafeAreaView, Dimensions, TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon, IconName } from '../../components/ui';
+
+const ONBOARDING_KEY = '@tratofacil_onboarding_done';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -38,15 +41,17 @@ export const OnboardingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const [activeSlide, setActiveSlide] = useState(0);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (activeSlide < SLIDES.length - 1) {
       setActiveSlide(activeSlide + 1);
     } else {
+      await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
       navigation.replace('MainApp');
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
     navigation.replace('MainApp');
   };
 

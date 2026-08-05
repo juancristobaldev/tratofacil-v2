@@ -6,6 +6,7 @@ import { ProviderPanelContent } from '../panels/ProviderPanelContent';
 import { CategoriesPanelContent } from '../panels/CategoriesPanelContent';
 import { FocusClientPanelContent } from '../panels/FocusClientPanelContent';
 import { FocusProviderPanelContent } from '../panels/FocusProviderPanelContent';
+import { ProviderPreviewPanelContent } from '../panels/ProviderPreviewPanelContent';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,6 +27,8 @@ export const PanelContainer: React.FC<PanelContainerProps> = ({ bottomNavHeight 
         return <FocusProviderPanelContent />;
       case 'provider_dashboard':
         return <ProviderPanelContent />;
+      case 'provider_preview':
+        return <ProviderPreviewPanelContent />;
       default:
         return null;
     }

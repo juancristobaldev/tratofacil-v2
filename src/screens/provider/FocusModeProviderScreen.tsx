@@ -1,53 +1,58 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, Dimensions, Linking, Animated } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TOKENS } from '../../theme';
-import { Icon, Avatar, Button, Card, BottomSheet, BottomSheetState, Badge, AnimatedUserMarker } from '../../components/ui';
+import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
+import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useLocation } from '../../context/LocationContext';
+import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRoutePolyline } from '../../hooks/useRoute';
+import type { OrderRealTime } from '../../types/graphql';
+import { useNotification } from '../../context/NotificationContext';
+import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BOTTOM_NAV_HEIGHT = 85;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const CLIENT_LOCATION = {
-  latitude: -33.42098,
-  longitude: -70.60862,
-};
+type ProviderOrderState = 'VIEW_REQUEST' | 'WAITING_CLIENT_RESPONSE' | 'EN_CAMINO' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 
-const PROVIDER_START_LOCATION = {
-  latitude: -33.42898,
-  longitude: -70.61262,
-};
+function getMetersBetween(la1: number, lo1: number, la2: number, lo2: number): number {
+  const R = 6371e3;
+  const dLat = ((la2 - la1) * Math.PI) / 180;
+  const dLon = ((lo2 - lo1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((la1 * Math.PI) / 180) * Math.cos((la2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
-const ROUTE_COORDS = [
-  PROVIDER_START_LOCATION,
-  { latitude: -33.42738, longitude: -70.61182 },
-  { latitude: -33.42588, longitude: -70.61102 },
-  { latitude: -33.42438, longitude: -70.61022 },
-  { latitude: -33.42288, longitude: -70.60942 },
-  CLIENT_LOCATION,
-];
+function formatDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)}m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
 
-type ProviderOrderState = 'VIEW_REQUEST' | 'WAITING_CLIENT_RESPONSE' | 'EN_CAMINO' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED';
+function formatEta(meters: number): string {
+  const minutes = Math.ceil(meters / 200);
+  if (minutes <= 0) return 'Llegó';
+  if (minutes === 1) return '1 min';
+  return `${minutes} min`;
+}
 
 export const FocusModeProviderScreen: React.FC = () => {
-  const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
   const { location } = useLocation();
-  const requestId = panelData?.requestId || 'req201';
+  const realtime = useTimeRealServices();
 
   const [orderState, setOrderState] = useState<ProviderOrderState>(panelData?.orderState || 'VIEW_REQUEST');
   const lastOrderState = useRef<ProviderOrderState | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
-  // Simulated provider position movement on map when EN_CAMINO
-  const [providerCoords, setProviderCoords] = useState(PROVIDER_START_LOCATION);
-  const [distanceRemaining, setDistanceRemaining] = useState('1.2 km');
-  const [etaRemaining, setEtaRemaining] = useState('6 min');
+  const [providerCoords, setProviderCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [distanceRemaining, setDistanceRemaining] = useState('...');
+  const [etaRemaining, setEtaRemaining] = useState('...');
 
-  // Work timer ticking
   const [workSeconds, setWorkSeconds] = useState(0);
 
   const formatTimer = (sec: number) => {
@@ -56,21 +61,58 @@ export const FocusModeProviderScreen: React.FC = () => {
     return `${mm}:${ss}`;
   };
 
+  const activeOrder: OrderRealTime | null = realtime.providerActiveOrder;
+
+  const clientLat = activeOrder?.clientLat ?? location?.coords?.latitude;
+  const clientLng = activeOrder?.clientLng ?? location?.coords?.longitude;
+  const clientCoords = clientLat && clientLng ? { latitude: clientLat, longitude: clientLng } : null;
+
+  const myLat = location?.coords?.latitude ?? activeOrder?.providerLat;
+  const myLng = location?.coords?.longitude ?? activeOrder?.providerLng;
+
+  useEffect(() => {
+    if (location && myLat != null && myLng != null) {
+      setProviderCoords({ latitude: myLat, longitude: myLng });
+    }
+  }, [myLat, myLng, location]);
+
+  useEffect(() => {
+    if (activeOrder?.providerLat && activeOrder?.providerLng) {
+      setProviderCoords({ latitude: activeOrder.providerLat, longitude: activeOrder.providerLng });
+    }
+  }, [activeOrder?.providerLat, activeOrder?.providerLng]);
+
+  useEffect(() => {
+    if (!providerCoords || !clientCoords) return;
+    const m = getMetersBetween(providerCoords.latitude, providerCoords.longitude, clientCoords.latitude, clientCoords.longitude);
+    setDistanceRemaining(formatDistance(m));
+    setEtaRemaining(formatEta(m));
+  }, [providerCoords?.latitude, providerCoords?.longitude, clientCoords?.latitude, clientCoords?.longitude, orderState]);
+
+  const { routeCoords } = useRoutePolyline(
+    providerCoords,
+    clientCoords,
+    orderState === 'EN_CAMINO' || orderState === 'ARRIVED',
+  );
+
+  const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
+
   const handleFinish = () => {
     clearPanel();
     navigation.navigate('Rating', {
       role: 'provider',
       targetUser: {
-        name: 'Juan Pérez',
+        name: activeOrder?.client?.displayName || 'Cliente',
         avatar: null,
-        rating: 5.0,
-        reviewsCount: 12,
-        subtext: 'Cliente',
+        rating: 0,
+        reviewsCount: 0,
+        subtext: activeOrder?.serviceProvider?.service?.name || '',
       },
-      serviceDetails: 'Reparación de tablero eléctrico',
-      amount: 22000,
-      address: 'Av. Providencia 1450',
-      paymentMethod: 'Tarjeta de Crédito',
+      serviceDetails: activeOrder?.clientDescription || '',
+      amount: activeOrder?.quotedPrice || 0,
+      address: activeOrder?.clientAddress || '',
+      orderRealtimeId: activeOrder?.id,
+      clientId: activeOrder?.client?.id,
     });
   };
 
@@ -84,6 +126,9 @@ export const FocusModeProviderScreen: React.FC = () => {
         formatTimer,
         setOrderState,
         handleFinish,
+        setShowChat,
+        activeOrder,
+        realtime,
       });
       lastOrderState.current = orderState;
     } else {
@@ -95,132 +140,94 @@ export const FocusModeProviderScreen: React.FC = () => {
         formatTimer,
         setOrderState,
         handleFinish,
+        setShowChat,
+        activeOrder,
+        realtime,
       });
     }
-  }, [orderState, etaRemaining, distanceRemaining, workSeconds, openPanel, updatePanelData]);
+  }, [orderState, etaRemaining, distanceRemaining, workSeconds, openPanel, updatePanelData, activeOrder]);
 
-  // Push notifications
-  const [pushAlert, setPushAlert] = useState<{ title: string; message: string } | null>(null);
-  const pushTranslateY = useRef(new Animated.Value(-120)).current;
+  useEffect(() => {
+    const r = realtime?.providerActiveOrder;
+    if (!r) return;
+    const statusMap: Record<string, ProviderOrderState> = {
+      PENDING: 'VIEW_REQUEST',
+      QUOTED: 'WAITING_CLIENT_RESPONSE',
+      ACCEPTED: 'EN_CAMINO',
+      IN_PROGRESS: 'IN_PROGRESS',
+      COMPLETED: 'COMPLETED',
+      CANCELLED: 'CANCELLED',
+      REJECTED: 'CANCELLED',
+      EXPIRED: 'CANCELLED',
+    };
+    const mapped = statusMap[r.status];
+    if (mapped && mapped !== orderState) {
+      setOrderState(mapped);
+    }
+    updatePanelData({ activeOrder: r });
+  }, [realtime?.providerActiveOrder]);
 
-  const triggerPushAlert = (title: string, message: string) => {
-    setPushAlert({ title, message });
-    Animated.timing(pushTranslateY, {
-      toValue: 0,
-      duration: 350,
-      useNativeDriver: true,
-    }).start();
-
-    setTimeout(() => {
-      Animated.timing(pushTranslateY, {
-        toValue: -120,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setPushAlert(null);
-      });
-    }, 3500);
-  };
-
+  const { showNotification } = useNotification();
+  
   useEffect(() => {
     if (orderState === 'EN_CAMINO') {
-      triggerPushAlert("Nueva Orden de Trabajo", "Dirígete a Padre Las Casas para iniciar el servicio.");
+      showNotification({ title: 'Nueva Orden de Trabajo', message: 'Dirígete a la ubicación del cliente para iniciar el servicio.', type: 'info' });
     } else if (orderState === 'ARRIVED') {
-      triggerPushAlert("Llegada a Destino", "Has llegado a la ubicación del cliente. Confirma el inicio del trabajo.");
+      showNotification({ title: 'Llegada a Destino', message: 'Has llegado a la ubicación del cliente.', type: 'success' });
     } else if (orderState === 'IN_PROGRESS') {
-      triggerPushAlert("Servicio Iniciado", "Cronómetro activo. Realiza la reparación correspondiente.");
+      showNotification({ title: 'Servicio Iniciado', message: 'Cronómetro activo.', type: 'info' });
     } else if (orderState === 'COMPLETED') {
-      triggerPushAlert("Trabajo Completado", "Has finalizado el servicio y emitido el recibo.");
+      showNotification({ title: 'Trabajo Completado', message: 'Has finalizado el servicio.', type: 'success' });
     }
   }, [orderState]);
 
-  const mapStyle = [
-    { elementType: 'geometry', stylers: [{ color: '#212121' }] },
-    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#000000' }] },
-    { featureType: 'road', elementType: 'geometry.fill', stylers: [{ color: '#2c2c2c' }] },
-  ];
-
-  useEffect(() => {
-    if (orderState !== 'EN_CAMINO') return;
-
-    let step = 0;
-    const interval = setInterval(() => {
-      step += 1;
-      const coord = ROUTE_COORDS[step] || CLIENT_LOCATION;
-      setProviderCoords(coord);
-
-      // Update mock labels
-      if (step === 1) {
-        setDistanceRemaining('800m');
-        setEtaRemaining('4 min');
-      } else if (step === 2) {
-        setDistanceRemaining('400m');
-        setEtaRemaining('2 min');
-      } else if (step === 3) {
-        setDistanceRemaining('100m');
-        setEtaRemaining('Llegando');
-      } else if (step === 4) {
-        clearInterval(interval);
-        setDistanceRemaining('0m');
-        setEtaRemaining('Llegaste');
-        setOrderState('ARRIVED'); // Arrived!
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [orderState]);
-
-  useEffect(() => {
-    if (orderState === 'WAITING_CLIENT_RESPONSE') {
-      // Simular que el cliente acepta la cotización después de unos segundos
-      const timer = setTimeout(() => {
-        setOrderState('EN_CAMINO');
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [orderState]);
+  const mapStyle = DARK_VISIBLE_MAP_STYLE;
 
   useEffect(() => {
     if (orderState !== 'IN_PROGRESS') return;
-
+    const start = activeOrder?.startedAt ? new Date(activeOrder.startedAt).getTime() : Date.now();
+    setWorkSeconds(Math.floor((Date.now() - start) / 1000));
     const timer = setInterval(() => {
-      setWorkSeconds((p) => p + 1);
+      setWorkSeconds(Math.floor((Date.now() - start) / 1000));
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [orderState]);
+  }, [orderState, activeOrder?.startedAt]);
+
+  useEffect(() => {
+    if (orderState !== 'EN_CAMINO' || !providerCoords || !clientCoords) return;
+    const m = getMetersBetween(providerCoords.latitude, providerCoords.longitude, clientCoords.latitude, clientCoords.longitude);
+    if (m < 100) {
+      setOrderState('ARRIVED');
+    }
+  }, [orderState, providerCoords?.latitude, providerCoords?.longitude, clientCoords?.latitude, clientCoords?.longitude]);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* MAP AREA */}
       <View style={styles.mapContainer}>
         <MapView
           style={styles.map}
           region={{
-            latitude: (CLIENT_LOCATION.latitude + providerCoords.latitude) / 2,
-            longitude: (CLIENT_LOCATION.longitude + providerCoords.longitude) / 2,
-            latitudeDelta: Math.abs(CLIENT_LOCATION.latitude - providerCoords.latitude) * 2 + 0.005,
-            longitudeDelta: Math.abs(CLIENT_LOCATION.longitude - providerCoords.longitude) * 2 + 0.005,
+            latitude: ((clientCoords?.latitude ?? -33.4489) + (providerCoords?.latitude ?? -33.4489)) / 2,
+            longitude: ((clientCoords?.longitude ?? -70.6693) + (providerCoords?.longitude ?? -70.6693)) / 2,
+            latitudeDelta: clientCoords && providerCoords
+              ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
+              : 0.05,
+            longitudeDelta: clientCoords && providerCoords
+              ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
+              : 0.05,
           }}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {/* Client Marker */}
-          <Marker coordinate={CLIENT_LOCATION}>
-            <View style={styles.clientMarker}>
-              <Icon name="Home" size={12} color={TOKENS.colors.white} />
-            </View>
-          </Marker>
+          {clientCoords && <HousePin coordinate={clientCoords} />}
 
-          {/* Provider Marker (User's mock location) */}
-          <AnimatedUserMarker coordinate={providerCoords} />
+          {providerCoords && <AnimatedUserMarker coordinate={providerCoords} />}
 
-          {/* Route path */}
-          {orderState === 'EN_CAMINO' && (
+          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && polylineCoords.length > 0 && (
             <Polyline
-              coordinates={[providerCoords, CLIENT_LOCATION]}
+              coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
               strokeWidth={4}
               lineDashPattern={[6, 3]}
@@ -228,19 +235,16 @@ export const FocusModeProviderScreen: React.FC = () => {
           )}
         </MapView>
       </View>
-
-      {/* PUSH ALERTS */}
-
-      {pushAlert && (
-        <Animated.View style={[styles.pushNotificationContainer, { transform: [{ translateY: pushTranslateY }] }]}>
-          <View style={styles.pushNotificationIcon}>
-            <Icon name="Bell" size={18} color={TOKENS.colors.white} />
-          </View>
-          <View style={styles.pushNotificationContent}>
-            <Text style={styles.pushNotificationTitle}>{pushAlert.title}</Text>
-            <Text style={styles.pushNotificationMessage} numberOfLines={2}>{pushAlert.message}</Text>
-          </View>
-        </Animated.View>
+      
+      {/* CHAT OVERLAY */}
+      {showChat && (
+        <FocusChatOverlay
+          chatUser={activeOrder?.client}
+          activeOrder={activeOrder}
+          realtime={realtime}
+          role="provider"
+          onClose={() => setShowChat(false)}
+        />
       )}
     </SafeAreaView>
   );
@@ -400,40 +404,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...TOKENS.shadows.floating,
-  },
-  pushNotificationContainer: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    right: 20,
-    backgroundColor: TOKENS.colors.dark900,
-    borderRadius: 16,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    zIndex: 9999,
-    ...TOKENS.shadows.floating,
-  },
-  pushNotificationIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: TOKENS.colors.brand500,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pushNotificationContent: {
-    flex: 1,
-  },
-  pushNotificationTitle: {
-    color: TOKENS.colors.white,
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
-  pushNotificationMessage: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    marginTop: 2,
   },
 });

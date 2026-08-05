@@ -1,12 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { Marker, Callout } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
 import { TOKENS } from '../../theme';
 import { Icon } from './Icon';
-import { Provider } from '../../mocks/mockData';
 
 interface ProviderPinProps {
-  provider: Provider;
+  provider: any;
   coordinate: { latitude: number; longitude: number };
   isSelected: boolean;
   onPress: () => void;
@@ -18,17 +17,39 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
   isSelected,
   onPress,
 }) => {
+  const markerRef = useRef<any>(null);
+
   return (
-    <Marker coordinate={coordinate} tracksViewChanges={isSelected} onPress={onPress}>
+    <Marker
+      ref={markerRef}
+      coordinate={coordinate}
+      tracksViewChanges={false}
+      onPress={(e) => {
+        e.stopPropagation();
+        onPress();
+      }}
+    >
       <View style={[styles.container, isSelected && styles.containerSelected]}>
-        <Image source={{ uri: provider.avatar }} style={styles.avatar} />
+        {provider.avatar ? (
+          <Image
+            source={{ uri: provider.avatar }}
+            style={styles.avatar}
+            onLoad={() => markerRef.current?.redraw()}
+          />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarInitials}>
+              {provider.name ? provider.name.charAt(0).toUpperCase() : '?'}
+            </Text>
+          </View>
+        )}
         <View style={styles.info}>
           <Text style={styles.name} numberOfLines={1}>{provider.name}</Text>
           <View style={styles.ratingRow}>
             <Icon name="Star" size={10} color="#FFB300" />
-            <Text style={styles.ratingText}>{provider.rating.toFixed(1)}</Text>
+            <Text style={styles.ratingText}>{(provider.rating || 0).toFixed(1)}</Text>
           </View>
-          <Text style={styles.price}>${provider.pricePerHour.toLocaleString('es-CL')}</Text>
+          <Text style={styles.price}>${(provider.pricePerHour || 0).toLocaleString('es-CL')}</Text>
         </View>
       </View>
     </Marker>
@@ -55,6 +76,20 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     marginRight: 8,
+  },
+  avatarPlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+    backgroundColor: TOKENS.colors.brand50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: TOKENS.colors.brand600,
   },
   info: {
     justifyContent: 'center',

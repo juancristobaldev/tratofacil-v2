@@ -3,9 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon, RotatingHorizontalAd } from '../../components/ui';
+import { useAds } from '../../hooks/useAds';
 
 export const ServiceSuccessScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const { horizontal, getTransitionDuration } = useAds();
 
   return (
     <View style={styles.container}>
@@ -24,7 +26,10 @@ export const ServiceSuccessScreen: React.FC = () => {
 
       <View style={styles.footer}>
         {/* We reuse the Ad component which will rotate, but we can assume it shows PROPERTY */}
-        <RotatingHorizontalAd />
+        <RotatingHorizontalAd 
+          images={horizontal} 
+          transitionDuration={getTransitionDuration('marketing', 'HORIZONTAL', 6000)}
+        />
         <Button
           title="Volver al Inicio"
           onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] })}

@@ -15,6 +15,7 @@ import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Badge, Rating } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useRole } from '../../context/RoleContext';
+import { useTimeRealServices } from '../../hooks/useTimeRealServices';
 
 export const RatingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -22,42 +23,52 @@ export const RatingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { clearPanel } = usePanel();
   const { role: userRole } = useRole();
+  const { createProviderReview, createClientReview } = useTimeRealServices();
 
   const {
-    role = 'client', // 'client' or 'provider'
-    targetUser = {
-      name: 'Mario R.',
-      avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150',
-      rating: 4.9,
-      reviewsCount: 24,
-      subtext: 'Gasfiter Profesional',
-    },
-    serviceDetails = 'Reparación de fuga en cañería de agua principal y mantención de grifería.',
-    amount = 22000,
-    address = 'Av. Nueva Providencia 2150, Ñuñoa',
-    paymentMethod = 'Efectivo',
+    role = 'client',
+    targetUser = {},
+    serviceDetails = '',
+    amount = 0,
+    address = '',
+    paymentMethod = '-',
+    orderRealtimeId,
+    providerId,
+    clientId,
   } = route.params || {};
 
   const [selectedRating, setSelectedRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
-  const [comment, setComment] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
 
-  // Prevenir que el usuario vuelva hacia atrás (Reseña Obligatoria)
   useEffect(() => {
     const backAction = () => {
-      // Retornar true previene el comportamiento por defecto de "volver atrás"
       return true;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
   }, []);
 
-  const handleSubmit = () => {
-    // Clean panels completely to reset order states (unmounts FocusMode Screen overlays)
+  const handleSubmit = async () => {
+    try {
+      if (role === 'client' && orderRealtimeId && providerId) {
+        await createProviderReview({
+          rating: selectedRating,
+          comment: reviewComment || undefined,
+          orderRealtimeId,
+          providerId,
+        });
+      } else if (role === 'provider' && orderRealtimeId && clientId) {
+        await createClientReview({
+          rating: selectedRating,
+          comment: reviewComment || undefined,
+          orderRealtimeId,
+          clientId,
+        });
+      }
+    } catch (_err) {
+      // Review submission is best-effort, don't block the flow
+    }
     clearPanel();
-
-    // Navigate to ServiceSuccess to finish the flow
     navigation.navigate('ServiceSuccess');
   };
 
@@ -71,7 +82,9 @@ export const RatingScreen: React.FC = () => {
         <Card style={styles.card} padded={true}>
           <Text style={styles.cardTitle}>Resumen del Trabajo</Text>
           <View style={styles.profileRow}>
-            <Image source={{ uri: targetUser.avatar }} style={styles.avatar} />
+            {targetUser.avatar ? (
+              <Image source={{ uri: targetUser.avatar }} style={styles.avatar} />
+            ) : null}
             <View style={styles.profileInfo}>
               <View style={styles.nameRow}>
                 <Text style={styles.profileName}>{targetUser.name}</Text>
@@ -113,13 +126,6 @@ export const RatingScreen: React.FC = () => {
             numberOfLines={4}
             style={styles.textarea}
           />
-
-          <Pressable onPress={() => setIsPublic(!isPublic)} style={styles.checkboxRow}>
-            <View style={[styles.checkbox, isPublic && styles.checkboxChecked]}>
-              {isPublic && <Icon name="Check" size={14} color={TOKENS.colors.white} />}
-            </View>
-            <Text style={styles.checkboxLabel}>Hacer reseña pública</Text>
-          </Pressable>
         </Card>
 
         {/* Card 3: Detalles de Cobro */}
@@ -142,7 +148,7 @@ export const RatingScreen: React.FC = () => {
                 <Text style={styles.billingTitle}>Total del servicio</Text>
                 <Icon name="Info" size={14} color={TOKENS.colors.textMuted} />
               </View>
-              <Text style={styles.billingSub}>Pagas al finalizar el servicio</Text>
+              <Text style={styles.billingSub}>Pagado mediante {paymentMethod}</Text>
             </View>
             <View style={styles.totalInfoRight}>
               <Text style={styles.totalPrice}>

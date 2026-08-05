@@ -33,7 +33,12 @@ export const Avatar: React.FC<AvatarProps> = ({ uri, name, size = 48, style }) =
   return (
     <View style={[styles.container, containerStyle, style]}>
       {uri ? (
-        <Image source={{ uri }} style={styles.image} />
+        <Image
+          source={{ uri }}
+          style={styles.image}
+          onError={(e) => { if (__DEV__) console.log('[TRACE:IMAGE] Avatar onError | uri:', String(uri).slice(0, 80), '| error:', e.nativeEvent?.error); }}
+          onLoad={() => { if (__DEV__) console.log('[TRACE:IMAGE] Avatar onLoad | uri:', String(uri).slice(0, 80)); }}
+        />
       ) : (
         <Text style={[styles.initials, textStyle]}>{initials}</Text>
       )}

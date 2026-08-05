@@ -1,15 +1,9 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Marker } from 'react-native-maps';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  interpolate,
-  Extrapolation,
-  Easing,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { Marker, Circle } from 'react-native-maps';
+import { TOKENS } from '../../theme';
+
+const AnimatedMapCircle = Animated.createAnimatedComponent(Circle);
 
 interface AnimatedUserMarkerProps {
   coordinate: {
@@ -19,64 +13,119 @@ interface AnimatedUserMarkerProps {
 }
 
 export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordinate }) => {
-  const progress = useSharedValue(0);
+  const progress1 = useRef(new Animated.Value(0)).current;
+  const progress2 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    progress.value = withRepeat(
-      withTiming(1, {
-        duration: 2000,
-        easing: Easing.out(Easing.ease),
-      }),
-      -1,
-      false
-    );
-  }, []);
+    const createAnimation = (value: Animated.Value) =>
+      Animated.loop(
+        Animated.timing(value, {
+          toValue: 1,
+          duration: 2500,
+          easing: Easing.linear,
+          useNativeDriver: false,
+        })
+      );
 
-  const haloStyle = useAnimatedStyle(() => {
-    const scale = interpolate(progress.value, [0, 1], [1, 3], Extrapolation.CLAMP);
-    const opacity = interpolate(progress.value, [0, 1], [0.8, 0], Extrapolation.CLAMP);
+    const anim1 = createAnimation(progress1);
+    const anim2 = createAnimation(progress2);
+
+    anim1.start();
     
-    return {
-      transform: [{ scale }],
-      opacity,
+    const timeout = setTimeout(() => {
+      anim2.start();
+    }, 1250);
+
+    return () => {
+      anim1.stop();
+      anim2.stop();
+      clearTimeout(timeout);
     };
+  }, [progress1, progress2]);
+
+  const radius1 = progress1.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 150], // Expansion from 0 to 150 meters
+  });
+
+  const fillColor1 = progress1.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+  });
+
+  const strokeColor1 = progress1.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
+  });
+
+  const radius2 = progress2.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 150],
+  });
+
+  const fillColor2 = progress2.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+  });
+
+  const strokeColor2 = progress2.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
   });
 
   return (
-    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} zIndex={999}>
-      <View style={styles.container}>
-        <Animated.View style={[styles.halo, haloStyle]} />
-        <View style={styles.dot} />
-      </View>
-    </Marker>
+    <>
+      <AnimatedMapCircle
+        center={coordinate}
+        radius={radius1}
+        fillColor={fillColor1}
+        strokeColor={strokeColor1}
+        strokeWidth={1}
+        zIndex={998}
+      />
+      <AnimatedMapCircle
+        center={coordinate}
+        radius={radius2}
+        fillColor={fillColor2}
+        strokeColor={strokeColor2}
+        strokeWidth={1}
+        zIndex={998}
+      />
+      <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} zIndex={999} tracksViewChanges={false}>
+        <View style={styles.container}>
+          <View style={styles.dot}>
+            <View style={styles.innerDot} />
+          </View>
+        </View>
+      </Marker>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    width: 60,
-    height: 60,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  halo: {
-    position: 'absolute',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(236, 72, 153, 0.4)', // Pink
-  },
   dot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#EC4899', // Pink solid
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#EC4899',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
     shadowRadius: 4,
     elevation: 4,
   },
+  innerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: TOKENS.colors.brand500,
+  }
 });

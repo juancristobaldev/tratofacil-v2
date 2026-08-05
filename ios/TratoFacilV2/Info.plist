@@ -22,22 +22,36 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>tratofacilv2</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-	  <!-- Do not change NSAllowsArbitraryLoads to true, or you will risk app rejection! -->
 		<key>NSAllowsArbitraryLoads</key>
 		<false/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>TratoFacil necesita acceso a tu ubicación para conectar clientes con profesionales cercanos y mostrar órdenes en el mapa de forma precisa.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>TratoFacil necesita acceso a tu ubicación de manera constante para rastrear los servicios en curso de forma precisa.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TratoFacil necesita acceso a tu ubicación para conectar clientes con profesionales cercanos y mostrar órdenes en el mapa de forma precisa.</string>
+	<key>RCTNewArchEnabled</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

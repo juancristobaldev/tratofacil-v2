@@ -1,25 +1,13 @@
-import React, { createContext, useContext, useState } from 'react';
+import { useAuth } from './AuthContext';
+import type { AppRole } from '../types/graphql';
 
-export type AppRole = 'guest' | 'client' | 'provider';
+export type { AppRole };
 
-interface RoleContextProps {
-  role: AppRole;
-  setRole: (role: AppRole) => void;
-}
-
-const RoleContext = createContext<RoleContextProps>({
-  role: 'guest',
-  setRole: () => {},
-});
-
-export const useRole = () => useContext(RoleContext);
+export const useRole = () => {
+  const { role, setRole } = useAuth();
+  return { role, setRole };
+};
 
 export const RoleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [role, setRole] = useState<AppRole>('guest');
-
-  return (
-    <RoleContext.Provider value={{ role, setRole }}>
-      {children}
-    </RoleContext.Provider>
-  );
+  return <>{children}</>;
 };

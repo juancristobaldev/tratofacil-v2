@@ -1,64 +1,92 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Avatar, Rating } from '../../components/ui';
+import { Icon, Button, Avatar, Rating, ErrorState } from '../../components/ui';
+import { useMarketplace } from '../../hooks/useMarketplace';
+import { useRefresh } from '../../context/RefreshContext';
 
 export const OrderDetailScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const insets = useSafeAreaInsets();
   const { id } = route.params || { id: 1 };
+  const { setIsRefreshing } = useRefresh();
 
-  // Mock Traceability Data
-  const order = {
-    id: `100${id}`,
-    date: '12 de Junio, 2024',
-    product: {
-      name: 'Taladro Percutor Industrial 850W',
-      price: 45000,
-      shippingPrice: 3500,
-    },
-    seller: {
-      id: 99,
-      name: 'Ferretería El Maestro',
-      rating: 4.8,
-      reviews: 120,
-    },
-    shipping: {
-      address: 'Av. Providencia 1234, Depto 502',
-      status: 'EN CAMINO',
-      tracking: 'CL-9988776655'
+  const {
+    myOrders: ordersObj,
+    myOrdersLoading: loading,
+    myOrdersError: error,
+    refetchOrders,
+  } = useMarketplace();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetchOrders();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetchOrders, setIsRefreshing]);
+
+  const order = useMemo(() => {
+    const productOrder = ordersObj?.products?.find((o) => o.id === parseInt(String(id), 10));
+    if (productOrder) {
+      return {
+        id: String(productOrder.id),
+        date: new Date(productOrder.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'long', day: 'numeric' }),
+        product: {
+          name: productOrder.product.name,
+          price: productOrder.unitPrice,
+          shippingPrice: 0,
+        },
+        seller: {
+          id: productOrder.product.user?.id || 99,
+          name: productOrder.product.user?.provider?.name || productOrder.product.user?.displayName || 'Vendedor',
+          rating: 4.0,
+          reviews: 0,
+        },
+        shipping: {
+          address: productOrder.shippingInfo
+            ? `${productOrder.shippingInfo.street} ${productOrder.shippingInfo.number}, ${productOrder.shippingInfo.commune}`
+            : 'Dirección no disponible',
+          status: productOrder.status,
+          tracking: productOrder.trackingCode || 'Pendiente',
+        },
+      };
     }
-  };
+    return null;
+  }, [ordersObj, id]);
+
+  if (loading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color={TOKENS.colors.brand500} /></View>;
+  }
+
+  if (error) {
+    return <ErrorState message="No se pudo cargar el detalle de la orden." />;
+  }
+
+  if (!order) {
+    return <ErrorState message="Orden no encontrada." onRetry={() => navigation.goBack()} />;
+  }
 
   const steps = [
     { label: 'Pago Aprobado', completed: true },
-    { label: 'Preparando Envío', completed: true },
-    { label: 'En Camino', completed: true, active: true },
-    { label: 'Entregado', completed: false }
+    { label: 'Preparando Envío', completed: order.shipping.status !== 'PENDING' },
+    { label: 'En Camino', completed: order.shipping.status === 'SUCCESS' || order.shipping.status === 'COMPLETED', active: order.shipping.status === 'PROCESSING' },
+    { label: 'Entregado', completed: order.shipping.status === 'COMPLETED' },
   ];
 
-  const total = order.product.price + order.product.shippingPrice;
+  const total = order.product.price;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Button 
-          title="" 
-          icon="ArrowLeft" 
-          variant="secondary" 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-        />
-        <Text style={styles.headerTitle}>Detalle del Pedido</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         
         {/* SUMMARY */}
         <View style={styles.card}>
@@ -158,7 +186,7 @@ export const OrderDetailScreen: React.FC = () => {
 
       {/* FOOTER ACTION */}
       <View style={styles.footer}>
-        <Button title="Recibí mi Producto" icon="CheckCircle" style={styles.confirmBtn} />
+        <Button title="Recibí mi Producto" icon="CheckCircle" onPress={() => {}} style={styles.confirmBtn} />
       </View>
     </View>
   );
@@ -169,25 +197,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
   },
-  header: {
-    flexDirection: 'row',
+  center: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: TOKENS.spacing.md,
     backgroundColor: TOKENS.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface100,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    paddingHorizontal: 0,
-    borderRadius: 20,
-  },
-  headerTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.textMain,
   },
   scrollContent: {
     padding: TOKENS.spacing.md,
@@ -268,7 +282,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   timelineDotBg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 12,
     backgroundColor: TOKENS.colors.surface300,
     zIndex: -1,

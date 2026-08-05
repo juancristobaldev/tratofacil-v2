@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Platform, PermissionsAndroid, Linking, AppState, View, Text, StyleSheet } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { Platform, PermissionsAndroid, Linking, AppState, View, Text, StyleSheet, Alert } from 'react-native';
 import Geolocation, { GeoPosition } from 'react-native-geolocation-service';
 import { TOKENS } from '../theme';
 import { Button, Icon } from '../components/ui';
@@ -19,6 +19,13 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
   const requestPermission = useCallback(async () => {
     try {
       if (Platform.OS === 'android') {
+        const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+        if (hasPermission) {
+          setPermissionStatus('granted');
+          getLocation();
+          return;
+        }
+
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
@@ -37,9 +44,13 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
         }
       } else {
         try {
-          await Geolocation.requestAuthorization('whenInUse');
-          setPermissionStatus('granted');
-          getLocation();
+          const status = await Geolocation.requestAuthorization('whenInUse');
+          if (status === 'granted') {
+            setPermissionStatus('granted');
+            getLocation();
+          } else {
+            setPermissionStatus('denied');
+          }
         } catch (error) {
           console.warn(error);
           setPermissionStatus('denied');
@@ -51,7 +62,7 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
     }
   }, []);
 
-  const getLocation = () => {
+  const getLocation = useCallback(() => {
     Geolocation.getCurrentPosition(
       (position) => {
         setLocation(position);
@@ -61,7 +72,7 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
-  };
+  }, []);
 
   useEffect(() => {
     requestPermission();
@@ -77,35 +88,52 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
     };
   }, [requestPermission]);
 
+  const value = useMemo(() => ({
+    location,
+    permissionStatus,
+    refreshLocation: getLocation,
+  }), [location, permissionStatus, getLocation]);
+
   if (permissionStatus === 'pending') {
     return (
-      <View style={styles.center}>
-        <Text style={styles.text}>Cargando permisos...</Text>
-      </View>
+      <LocationContext.Provider value={value}>
+        <View style={styles.center}>
+          <Text style={styles.text}>Cargando permisos...</Text>
+        </View>
+      </LocationContext.Provider>
     );
   }
 
   if (permissionStatus === 'denied') {
     return (
-      <View style={styles.blockerContainer}>
-        <View style={styles.iconCircle}>
-          <Icon name="MapPinOff" size={48} color={TOKENS.colors.white} />
+      <LocationContext.Provider value={value}>
+        <View style={styles.blockerContainer}>
+          <View style={styles.iconCircle}>
+            <Icon name="MapPinOff" size={48} color={TOKENS.colors.white} />
+          </View>
+          <Text style={styles.blockerTitle}>Ubicación Requerida</Text>
+          <Text style={styles.blockerSubtitle}>
+            TratoFácil necesita acceso a tu ubicación de forma obligatoria para conectar clientes con profesionales cercanos y poder mostrarte en el mapa.
+          </Text>
+          <Button 
+            title="Abrir Configuración" 
+            onPress={() => {
+              Linking.openSettings().catch(() => {
+                Alert.alert(
+                  'Atención', 
+                  'No se pudo abrir la configuración del sistema automáticamente. Por favor ve a Ajustes > Aplicaciones > TratoFacil para dar permisos manualmente.'
+                );
+              });
+            }} 
+            style={styles.blockerBtn} 
+          />
         </View>
-        <Text style={styles.blockerTitle}>Ubicación Requerida</Text>
-        <Text style={styles.blockerSubtitle}>
-          TratoFácil necesita acceso a tu ubicación de forma obligatoria para conectar clientes con profesionales cercanos y poder mostrarte en el mapa.
-        </Text>
-        <Button 
-          title="Abrir Configuración" 
-          onPress={() => Linking.openSettings()} 
-          style={styles.blockerBtn} 
-        />
-      </View>
+      </LocationContext.Provider>
     );
   }
 
   return (
-    <LocationContext.Provider value={{ location, permissionStatus, refreshLocation: getLocation }}>
+    <LocationContext.Provider value={value}>
       {children}
     </LocationContext.Provider>
   );

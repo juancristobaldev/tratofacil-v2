@@ -226,18 +226,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             </View>
           )}
 
-          {showCloseButton && (
-            <Pressable
-              onPress={() => {
-                if (onStateChange) {
-                  onStateChange('hidden');
-                }
-              }}
-              style={styles.closeBtn}
-            >
-              <Icon name="X" size={18} color={TOKENS.colors.textSubtle} />
-            </Pressable>
-          )}
+         
         </View>
 
         {/* Dynamic Content Wrapper */}
@@ -251,7 +240,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#000000',
     zIndex: 350,
   },

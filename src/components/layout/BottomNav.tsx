@@ -51,13 +51,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             key={tab.key}
             onPress={() => onTabChange(tab.key)}
             style={styles.tab}
-            activeOpacity={0.7}
+            activeOpacity={0.6}
           >
-            <View style={styles.iconWrapper}>
+            <View style={[styles.iconWrapper, isActive && styles.iconWrapperActive]}>
               <Icon
                 name={tab.icon as any}
-                size={22}
+                size={isActive ? 22 : 20}
                 color={isActive ? TOKENS.colors.brand500 : TOKENS.colors.textMuted}
+                fill={isActive ? TOKENS.colors.brand50 : 'none'}
               />
               {tab.key === 'jobs' && notificationCount > 0 && (
                 <View style={styles.notifBadge}>
@@ -104,15 +105,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 3,
   },
   iconWrapper: {
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  iconWrapperActive: {
+    backgroundColor: TOKENS.colors.brand50,
   },
   label: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: TOKENS.typography.weights.medium,
   },
   labelActive: {
@@ -120,8 +127,8 @@ const styles = StyleSheet.create({
   },
   notifBadge: {
     position: 'absolute',
-    top: -4,
-    right: -8,
+    top: -2,
+    right: -4,
     minWidth: 16,
     height: 16,
     borderRadius: 8,

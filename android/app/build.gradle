@@ -1,6 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
+apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -95,7 +97,8 @@ android {
         versionCode 1
         versionName "1.0"
         manifestPlaceholders = [
-            GOOGLE_MAPS_KEY: googleMapsApiKey
+            GOOGLE_MAPS_KEY: googleMapsApiKey,
+            usesCleartextTraffic: 'false'
         ]
     }
     signingConfigs {
@@ -109,6 +112,7 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            manifestPlaceholders = [usesCleartextTraffic: 'true']
         }
         release {
             // Caution! In production, you need to generate your own keystore file.
@@ -129,4 +133,7 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
+    implementation("androidx.core:core-ktx:1.15.0")
 }

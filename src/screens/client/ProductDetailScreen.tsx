@@ -1,9 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button } from '../../components/ui';
+import { Icon, Button, ErrorState } from '../../components/ui';
+import { useMarketplace } from '../../hooks/useMarketplace';
+import { getImageUrl } from '../../utils/imageUrl';
 
 export const ProductDetailScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -11,23 +13,55 @@ export const ProductDetailScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { id } = route.params || { id: 1 };
 
-  // Mock product
-  const product = {
-    id,
-    name: 'Taladro Percutor 850W Profesional',
-    price: 45000,
-    stock: 2,
-    description: 'Taladro percutor ideal para uso profesional y doméstico. Incluye maletín y set de brocas.',
-    provider: {
-      name: 'Ferretería El Maestro',
-    },
-    images: [
-      'https://picsum.photos/400/400?random=10'
-    ]
-  };
+  const { selectedProduct: apiProduct, productLoading: loading, productError: error, fetchProduct } = useMarketplace();
+
+  useEffect(() => {
+    if (id) fetchProduct(parseInt(String(id), 10));
+  }, [id, fetchProduct]);
+
+  const product = useMemo(() => {
+    const p = apiProduct;
+    if (p) {
+      const imgUrl = p.images?.[0]?.url || getImageUrl(p.images?.[0]?.image?.cdnUrl || '') || 'https://picsum.photos/400/400?random=10';
+      return {
+        id: p.id,
+        name: p.name,
+        price: p.price,
+        stock: p.stock,
+        description: p.description || '',
+        provider: { name: p.user?.provider?.name || p.user?.displayName || 'Vendedor' },
+        images: [imgUrl],
+      };
+    }
+    return {
+      id,
+      name: 'Cargando...',
+      price: 0,
+      stock: 0,
+      description: '',
+      provider: { name: '' },
+      images: ['https://picsum.photos/400/400?random=10'],
+    };
+  }, [apiProduct, id]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        message="No se pudo cargar el producto."
+        onRetry={() => navigation.goBack()}
+      />
+    );
+  }
 
   const handleBuy = () => {
-    // Navigate to shipping form
     navigation.navigate('Shipping', { product });
   };
 
@@ -44,7 +78,7 @@ export const ProductDetailScreen: React.FC = () => {
         </TouchableOpacity>
 
         {/* IMAGE */}
-        <Image source={{ uri: product.images[0] }} style={styles.image} />
+        <Image source={{ uri: getImageUrl(product.images[0]) }} style={styles.image} />
 
         {/* DETAILS */}
         <View style={styles.detailsContainer}>
@@ -87,6 +121,12 @@ export const ProductDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: TOKENS.colors.white,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: TOKENS.colors.white,
   },
   backBtn: {

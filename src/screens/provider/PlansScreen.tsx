@@ -1,29 +1,64 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { StyleSheet, View, Text, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Badge } from '../../components';
+import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
+import { useRefresh } from '../../context/RefreshContext';
+import { ProviderPlan } from '../../types/graphql';
 
-interface Plan { id: string; name: string; price: string; commission: string; features: string[]; recommended: boolean; color: string; }
+interface Plan { id: string; name: string; price: string; commission: string; features: string[]; recommended: boolean; color: string; planEnum: ProviderPlan; }
 
 const PLANS: Plan[] = [
-  { id: 'plan_bronze', name: 'Plan Bronce', price: 'Gratis', commission: '10% de comisión por servicio', features: ['Contacto directo con clientes', 'Perfil básico', 'Historial de trabajos', 'Soporte estándar'], recommended: false, color: '#cd7f32' },
-  { id: 'plan_silver', name: 'Plan Plata', price: '$14.990 / mes', commission: '5% de comisión por servicio', features: ['Contacto ilimitado con clientes', 'Destacado medio en búsquedas', 'Soporte prioritario 24/7', 'Estadísticas de perfil avanzadas'], recommended: true, color: '#c0c0c0' },
-  { id: 'plan_gold', name: 'Plan Oro', price: '$29.990 / mes', commission: '0% de comisión por servicio (100% tuyo)', features: ['Todo lo del Plan Plata', 'Máxima prioridad en búsquedas', 'Perfil verificado premium', 'Soporte ejecutivo dedicado'], recommended: false, color: '#ffd700' },
+  { id: 'plan_bronze', name: 'Plan Bronce', price: 'Gratis', commission: '20%', features: ['Contacto directo', 'Perfil básico', 'Máximo 2 servicios', 'Visibilidad estándar'], recommended: false, color: '#cd7f32', planEnum: ProviderPlan.FREE },
+  { id: 'plan_silver', name: 'Plan PRO', price: '$8.990 / mes', commission: '10%', features: ['Perfil verificado', 'Servicios ilimitados', 'Alta visibilidad', 'Soporte prioritario'], recommended: true, color: '#4f46e5', planEnum: ProviderPlan.TRATOFACIL_SRV_PRO },
+  { id: 'plan_gold', name: 'Plan PREMIUM', price: '$16.990 / mes', commission: '2%', features: ['Perfil verificado VIP', 'Servicios ilimitados', 'Máxima prioridad', 'Marketing destacado', 'Soporte ejecutivo'], recommended: false, color: '#ffd700', planEnum: ProviderPlan.TRATOFACIL_SRV_PREMIUM },
 ];
 
 export const PlansScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
+  const { setIsRefreshing } = useRefresh();
 
-  const handleSubscribe = (planId: string) => {
-    Alert.alert('Suscripción', `Has seleccionado el plan ${planId}. En un entorno real se iniciaría el flujo de pago.`);
+  const currentPlan = user?.planOrders?.[0]?.plan || ProviderPlan.FREE;
+
+  const { subscribe, subscribeLoading: loading, refetch } = usePlans();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetch, setIsRefreshing]);
+
+  const handleSubscribe = async (plan: Plan) => {
+    if (plan.planEnum === currentPlan) return;
+    const customerId = user?.flowCustomerId || 'flow_customer';
+    try {
+      await subscribe({
+        plan: plan.planEnum,
+        interval: 'MONTHLY',
+        type: 'PROVIDER',
+        customerId,
+      });
+      Alert.alert('Suscripción', 'Redirigiendo al pago...');
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
   };
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         <Text style={styles.intro}>Elige el plan que mejor se adapte a tu negocio y comienza a recibir más solicitudes.</Text>
         {PLANS.map((plan) => (
           <Card key={plan.id} style={[styles.planCard, plan.recommended && styles.planCardRecommended]} padded={true}>
@@ -37,7 +72,7 @@ export const PlansScreen: React.FC = () => {
                 <Text style={styles.planPrice}>{plan.price}</Text>
               </View>
             </View>
-            <Text style={styles.planCommission}>{plan.commission}</Text>
+            <Text style={styles.planCommission}>Comisión: {plan.commission}</Text>
             <View style={styles.planDivider} />
             {plan.features.map((feat, idx) => (
               <View key={idx} style={styles.featureRow}>
@@ -45,7 +80,13 @@ export const PlansScreen: React.FC = () => {
                 <Text style={styles.featureText}>{feat}</Text>
               </View>
             ))}
-            <Button title={plan.id === 'plan_bronze' ? 'Plan Actual' : 'Suscribirse'} onPress={() => handleSubscribe(plan.id)} variant={plan.id === 'plan_bronze' ? 'white' : 'primary'} style={styles.subscribeBtn} />
+            <Button
+              title={plan.planEnum === currentPlan ? 'Plan Actual' : loading ? 'Procesando...' : 'Suscribirse'}
+              onPress={() => handleSubscribe(plan)}
+              variant={plan.planEnum === currentPlan ? 'white' : 'primary'}
+              style={styles.subscribeBtn}
+              disabled={plan.planEnum === currentPlan || loading}
+            />
           </Card>
         ))}
       </ScrollView>

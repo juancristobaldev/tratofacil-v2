@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { BottomSheetState } from '../components/ui/BottomSheet';
 
-export type PanelType = 'provider_dashboard' | 'order_detail' | 'focus_client' | 'focus_provider' | 'categories' | null;
+export type PanelType = 'provider_dashboard' | 'order_detail' | 'focus_client' | 'focus_provider' | 'categories' | 'provider_preview' | null;
 
 interface PanelContextProps {
   activePanel: PanelType;

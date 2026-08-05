@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,10 +10,14 @@ import {
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Button, Badge, Rating } from '../ui';
 import { usePanel } from '../../context/PanelContext';
+import { useNotification } from '../../context/NotificationContext';
+import type { OrderRealTime } from '../../types/graphql';
 
 export const FocusProviderPanelContent: React.FC = () => {
   const { panelData, closePanel } = usePanel();
-  const [quotedPrice, setQuotedPrice] = useState(22000);
+  const { showNotification } = useNotification();
+  const [quoteHours, setQuoteHours] = useState(1);
+  const [quoteTransport, setQuoteTransport] = useState(0);
   const {
     orderState,
     etaRemaining,
@@ -22,114 +26,254 @@ export const FocusProviderPanelContent: React.FC = () => {
     formatTimer,
     setOrderState,
     handleFinish,
+    setShowChat,
+    activeOrder,
+    realtime,
   } = panelData || {};
+
+  const order = (activeOrder as OrderRealTime) || null;
+  const clientName = order?.client?.displayName || 'Cliente';
+  const clientAddress = order?.clientAddress || '';
+  const clientDescription = order?.clientDescription || '';
+  const basePrice = order?.serviceProvider?.price || 0;
+  const totalQuote = (quoteHours * basePrice) + (quoteTransport * 1000);
+  const clientAvgRating = (order?.client as any)?.reviewsReceived?.length
+    ? (order?.client as any).reviewsReceived.reduce((s: number, r: any) => s + r.rating, 0) / (order?.client as any).reviewsReceived.length
+    : 0;
+  const clientReviewCount = (order?.client as any)?.reviewsReceived?.length || 0;
+
+  const handleSendQuote = async () => {
+    if (order?.id && realtime?.quoteOrder) {
+      try {
+        await realtime.quoteOrder({
+          orderRealtimeId: order.id,
+          quotedPrice: totalQuote,
+          quotedHours: quoteHours,
+          quotedTransport: quoteTransport,
+        });
+        if (setOrderState) setOrderState('WAITING_CLIENT_RESPONSE');
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo enviar la cotización.', type: 'error' });
+      }
+    }
+  };
+
+  const handleAcceptCounterOffer = async () => {
+    if (order?.id && realtime?.respondToCounterOffer) {
+      try {
+        await realtime.respondToCounterOffer(order.id, 'ACCEPTED');
+        if (setOrderState) setOrderState('WAITING_CLIENT_RESPONSE');
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo aceptar la contraoferta.', type: 'error' });
+      }
+    }
+  };
+
+  const handleRejectCounterOffer = async () => {
+    if (order?.id && realtime?.respondToCounterOffer) {
+      try {
+        await realtime.respondToCounterOffer(order.id, 'REJECTED');
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo rechazar la contraoferta.', type: 'error' });
+      }
+    }
+  };
+
+  const handleReject = async () => {
+    if (order?.id && realtime?.respondRequest) {
+      try {
+        await realtime.respondRequest(order.id, 'reject');
+        closePanel();
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo rechazar la solicitud.', type: 'error' });
+      }
+    }
+  };
+
+  const handleStartWork = async () => {
+    if (order?.id && realtime?.startOrder) {
+      try {
+        await realtime.startOrder(order.id);
+        if (setOrderState) setOrderState('IN_PROGRESS');
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo iniciar el trabajo.', type: 'error' });
+      }
+    }
+  };
+
+  const handleCompleteWork = async () => {
+    if (order?.id && realtime?.finishOrder) {
+      try {
+        await realtime.finishOrder(order.id);
+        if (setOrderState) setOrderState('COMPLETED');
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo completar el trabajo.', type: 'error' });
+      }
+    }
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.sheetBody}>
-        {/* STATE: VIEW_REQUEST */}
         {orderState === 'VIEW_REQUEST' && (
           <View style={styles.viewRequestContainer}>
             <View style={styles.clientCard}>
-              <Avatar uri={null} name="Juan Pérez" size={48} />
+              <Avatar uri={null} name={clientName} size={48} />
               <View style={styles.clientCardInfo}>
-                <Text style={styles.clientName}>Juan Pérez</Text>
+                <Text style={styles.clientName}>{clientName}</Text>
                 <View style={styles.ratingRow}>
-                  <Rating rating={4.8} size={14} showText textSuffix="reseñas" reviewsCount={24} />
+                  <Rating rating={clientAvgRating} size={14} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
                 </View>
               </View>
-              <TouchableOpacity style={styles.actionCircleBtn}>
-                <Icon name="MessageSquare" size={18} color={TOKENS.colors.brand500} />
-              </TouchableOpacity>
             </View>
 
             <View style={styles.detailSection}>
               <Text style={styles.detailTitle}>Detalles del problema</Text>
-              <Text style={styles.detailText}>
-                Reparación de enchufe en cocina, aparentemente hubo un cortocircuito. Necesito que se revise también el tablero general por si acaso.
-              </Text>
+              <Text style={styles.detailText}>{clientDescription || 'Sin descripción'}</Text>
             </View>
 
-            <View style={styles.priceAdjusterContainer}>
-              <Text style={styles.priceAdjusterLabel}>Cotización total del servicio</Text>
-              <View style={styles.priceAdjusterRow}>
-                <TouchableOpacity
-                  onPress={() => setQuotedPrice((p) => Math.max(5000, p - 1000))}
-                  style={styles.adjusterBtn}
-                >
-                  <Icon name="Minus" size={24} color={TOKENS.colors.textMain} />
-                </TouchableOpacity>
-                <Text style={styles.priceAdjusterValue}>${quotedPrice.toLocaleString('es-CL')}</Text>
-                <TouchableOpacity
-                  onPress={() => setQuotedPrice((p) => p + 1000)}
-                  style={styles.adjusterBtn}
-                >
-                  <Icon name="Plus" size={24} color={TOKENS.colors.textMain} />
-                </TouchableOpacity>
+            {order?.counterOfferPrice != null && (
+              <View style={styles.counterOfferCard}>
+                <Badge label="CONTRAOFERTA" tone="warning" />
+                <Text style={styles.counterOfferPrice}>
+                  ${order.counterOfferPrice.toLocaleString('es-CL')}
+                </Text>
+                <Text style={styles.counterOfferDetail}>
+                  {order.counterOfferHours}h / {order.counterOfferTransport}km
+                </Text>
+                <View style={styles.actionRow}>
+                  <Button
+                    title="Rechazar"
+                    variant="outline"
+                    onPress={handleRejectCounterOffer}
+                    style={styles.actionRowBtn}
+                  />
+                  <Button
+                    title="Aceptar"
+                    onPress={handleAcceptCounterOffer}
+                    style={styles.actionRowBtn}
+                  />
+                </View>
               </View>
-            </View>
+            )}
 
-            <View style={styles.actionRow}>
-              <Button
-                title="Rechazar"
-                variant="outline"
-                onPress={closePanel}
-                style={styles.actionRowBtn}
-              />
-              <Button
-                title="Enviar cotización"
-                onPress={() => setOrderState && setOrderState('WAITING_CLIENT_RESPONSE')}
-                style={styles.actionRowBtn}
-              />
-            </View>
+            {order?.counterOfferPrice == null && (
+              <>
+                <View style={styles.priceAdjusterContainer}>
+                  <Text style={styles.priceAdjusterLabel}>Cotización del servicio</Text>
+                  <View style={styles.quoteRow}>
+                    <View style={styles.quoteField}>
+                      <Text style={styles.quoteFieldLabel}>Horas</Text>
+                      <View style={styles.priceAdjusterRow}>
+                        <TouchableOpacity
+                          onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
+                          style={styles.adjusterBtnSmall}
+                        >
+                          <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
+                        </TouchableOpacity>
+                        <Text style={styles.quoteFieldValue}>{quoteHours}</Text>
+                        <TouchableOpacity
+                          onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
+                          style={styles.adjusterBtnSmall}
+                        >
+                          <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={styles.quoteField}>
+                      <Text style={styles.quoteFieldLabel}>Km</Text>
+                      <View style={styles.priceAdjusterRow}>
+                        <TouchableOpacity
+                          onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
+                          style={styles.adjusterBtnSmall}
+                        >
+                          <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
+                        </TouchableOpacity>
+                        <Text style={styles.quoteFieldValue}>{quoteTransport}</Text>
+                        <TouchableOpacity
+                          onPress={() => setQuoteTransport((t) => t + 1)}
+                          style={styles.adjusterBtnSmall}
+                        >
+                          <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.totalRow}>
+                    <Text style={styles.totalLabel}>Total a Cobrar</Text>
+                    <Text style={styles.totalValue}>${totalQuote.toLocaleString('es-CL')}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.actionRow}>
+                  <Button
+                    title="Rechazar"
+                    variant="outline"
+                    onPress={handleReject}
+                    style={styles.actionRowBtn}
+                  />
+                  <Button
+                    title="Enviar cotización"
+                    onPress={handleSendQuote}
+                    style={styles.actionRowBtn}
+                  />
+                </View>
+              </>
+            )}
           </View>
         )}
 
-        {/* STATE: WAITING_CLIENT_RESPONSE */}
         {orderState === 'WAITING_CLIENT_RESPONSE' && (
           <View style={styles.waitingContainer}>
+            {order?.counterOfferPrice != null && (
+              <View style={styles.counterOfferCard}>
+                <Badge label="CONTRAOFERTA DEL CLIENTE" tone="warning" />
+                <Text style={styles.counterOfferPrice}>
+                  ${order.counterOfferPrice.toLocaleString('es-CL')}
+                </Text>
+                <Text style={styles.counterOfferDetail}>
+                  {order.counterOfferHours}h / {order.counterOfferTransport}km
+                </Text>
+                <View style={styles.actionRow}>
+                  <Button title="Rechazar" variant="outline" onPress={handleRejectCounterOffer} style={styles.actionRowBtn} />
+                  <Button title="Aceptar" onPress={handleAcceptCounterOffer} style={styles.actionRowBtn} />
+                </View>
+              </View>
+            )}
             <Icon name="Clock" size={48} color={TOKENS.colors.brand500} />
             <Text style={styles.waitingTitle}>Cotización enviada</Text>
             <Text style={styles.waitingDesc}>Esperando respuesta del cliente...</Text>
-            
-            <TouchableOpacity onPress={() => setOrderState && setOrderState('VIEW_REQUEST')} style={styles.bypassBtn}>
-              <Text style={styles.bypassBtnText}>Simular cliente rechaza/contraoferta</Text>
-            </TouchableOpacity>
+            <Button
+              title="Actualizar Cotización"
+              variant="outline"
+              onPress={handleSendQuote}
+              style={styles.actionBtn}
+            />
           </View>
         )}
 
-        {/* STATE 1: EN CAMINO */}
         {orderState === 'EN_CAMINO' && (
           <>
             <View style={styles.stateHeader}>
               <Badge label="DIRIGIÉNDOSE AL CLIENTE" tone="brand" />
-              <Text style={styles.etaText}>{etaRemaining} ({distanceRemaining})</Text>
+              <Text style={styles.etaText}>{etaRemaining || '...'} ({distanceRemaining || '...'})</Text>
             </View>
 
             <View style={styles.clientCard}>
-              <Avatar uri={null} name="Juan Pérez" size={48} />
+              <Avatar uri={null} name={clientName} size={48} />
               <View style={styles.clientCardInfo}>
-                <Text style={styles.clientName}>Juan Pérez</Text>
-                <Text style={styles.clientAddress} numberOfLines={1}>Av. Providencia 1450, Providencia</Text>
+                <Text style={styles.clientName}>{clientName}</Text>
+                <Text style={styles.clientAddress} numberOfLines={1}>{clientAddress || 'Ubicación'}</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => Linking.openURL('tel:+56987654321')}
-                style={styles.actionCircleBtn}
-              >
-                <Icon name="Phone" size={18} color={TOKENS.colors.brand500} />
+              <TouchableOpacity onPress={() => setShowChat?.(true)} style={styles.chatIconBtnSmall}>
+                <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.guideText}>Conduce hacia la ubicación del cliente para iniciar el servicio.</Text>
-
-            {/* Developer simulator bypass button */}
-            <TouchableOpacity onPress={() => setOrderState && setOrderState('ARRIVED')} style={styles.bypassBtn}>
-              <Text style={styles.bypassBtnText}>Simular llegada a destino</Text>
-            </TouchableOpacity>
           </>
         )}
 
-        {/* STATE 2: ARRIVED */}
         {orderState === 'ARRIVED' && (
           <>
             <View style={styles.stateHeader}>
@@ -138,22 +282,24 @@ export const FocusProviderPanelContent: React.FC = () => {
             </View>
 
             <View style={styles.clientCard}>
-              <Avatar uri={null} name="Juan Pérez" size={48} />
+              <Avatar uri={null} name={clientName} size={48} />
               <View style={styles.clientCardInfo}>
-                <Text style={styles.clientName}>Juan Pérez</Text>
+                <Text style={styles.clientName}>{clientName}</Text>
                 <Text style={styles.clientAddress}>Se encuentra esperando tu llegada</Text>
               </View>
+              <TouchableOpacity onPress={() => setShowChat?.(true)} style={styles.chatIconBtnSmall}>
+                <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />
+              </TouchableOpacity>
             </View>
 
             <Button
               title="Iniciar Trabajo"
-              onPress={() => setOrderState && setOrderState('IN_PROGRESS')}
+              onPress={handleStartWork}
               style={styles.actionBtn}
             />
           </>
         )}
 
-        {/* STATE 3: IN PROGRESS */}
         {orderState === 'IN_PROGRESS' && (
           <>
             <View style={styles.timerContainer}>
@@ -161,19 +307,24 @@ export const FocusProviderPanelContent: React.FC = () => {
               <Text style={styles.timerVal}>{formatTimer ? formatTimer(workSeconds) : '00:00'}</Text>
             </View>
 
-            <Text style={styles.workingDesc}>
-              Realizando trabajo eléctrico: Reparación de tablero y enchufe.
-            </Text>
+            <Text style={styles.workingDesc}>{clientDescription || 'Servicio en curso'}</Text>
+
+            <Button
+              title="Abrir Chat"
+              variant="outline"
+              icon="MessageCircle"
+              onPress={() => setShowChat?.(true)}
+              style={styles.actionBtn}
+            />
 
             <Button
               title="Completar Trabajo"
-              onPress={() => setOrderState && setOrderState('COMPLETED')}
+              onPress={handleCompleteWork}
               style={styles.actionBtn}
             />
           </>
         )}
 
-        {/* STATE 4: COMPLETED SUMMARY */}
         {orderState === 'COMPLETED' && (
           <>
             <View style={styles.completedContainer}>
@@ -181,7 +332,25 @@ export const FocusProviderPanelContent: React.FC = () => {
                 <Icon name="Check" size={28} color={TOKENS.colors.white} />
               </View>
               <Text style={styles.completedTitle}>¡Servicio Completado!</Text>
-              <Text style={styles.completedSub}>Has ganado $22.000 netos</Text>
+              <Text style={styles.completedSub}>Has ganado ${(order?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
+            </View>
+
+            <Button
+              title="Volver al Panel"
+              onPress={handleFinish}
+              style={styles.actionBtn}
+            />
+          </>
+        )}
+
+        {orderState === 'CANCELLED' && (
+          <>
+            <View style={styles.completedContainer}>
+              <View style={[styles.checkCircle, { backgroundColor: TOKENS.colors.textSubtle }]}>
+                <Icon name="X" size={28} color={TOKENS.colors.white} />
+              </View>
+              <Text style={styles.completedTitle}>Servicio Cancelado</Text>
+              <Text style={styles.completedSub}>Esta solicitud ha sido cancelada o rechazada.</Text>
             </View>
 
             <Button
@@ -240,32 +409,12 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
     marginTop: 2,
   },
-  actionCircleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   guideText: {
     fontSize: TOKENS.typography.sizes.xs,
     color: TOKENS.colors.textSubtle,
     lineHeight: 18,
     textAlign: 'center',
     paddingHorizontal: 12,
-  },
-  bypassBtn: {
-    alignSelf: 'center',
-    marginTop: 16,
-    paddingVertical: 6,
-  },
-  bypassBtnText: {
-    fontSize: 10,
-    color: TOKENS.colors.textMuted,
-    textDecorationLine: 'underline',
   },
   actionBtn: {
     width: '100%',
@@ -361,7 +510,15 @@ const styles = StyleSheet.create({
   priceAdjusterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    gap: 12,
+  },
+  adjusterBtnSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   adjusterBtn: {
     width: 48,
@@ -377,6 +534,66 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.brand600,
     minWidth: 140,
     textAlign: 'center',
+  },
+  quoteRow: {
+    flexDirection: 'row',
+    gap: TOKENS.spacing.lg,
+    marginBottom: TOKENS.spacing.lg,
+  },
+  quoteField: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  quoteFieldLabel: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+    textTransform: 'uppercase',
+  },
+  quoteFieldValue: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.textMain,
+    minWidth: 32,
+    textAlign: 'center',
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: TOKENS.colors.brand50,
+    padding: TOKENS.spacing.md,
+    borderRadius: TOKENS.geometry.radiusInput,
+    marginBottom: TOKENS.spacing.sm,
+  },
+  totalLabel: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand700,
+  },
+  totalValue: {
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand700,
+  },
+  counterOfferCard: {
+    alignItems: 'center',
+    backgroundColor: '#fffbeb',
+    padding: TOKENS.spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    gap: 8,
+  },
+  counterOfferPrice: {
+    fontSize: TOKENS.typography.sizes.xxl,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.textMain,
+  },
+  counterOfferDetail: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
   },
   actionRow: {
     flexDirection: 'row',
@@ -401,5 +618,15 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
     textAlign: 'center',
+  },
+  chatIconBtnSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: TOKENS.colors.brand50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand200,
   },
 });

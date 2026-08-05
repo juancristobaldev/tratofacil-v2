@@ -5,8 +5,9 @@ import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
+import { useMarketplace } from '../../hooks/useMarketplace';
 
-const PRODUCT_COMMISSION_RATE = 0.05; // 5% example
+const PRODUCT_COMMISSION_RATE = 0.05;
 
 export const PublishProductScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -43,15 +44,27 @@ export const PublishProductScreen: React.FC = () => {
     setTotalPrice(basePrice + comm);
   }, [price]);
 
-  const handlePublish = () => {
+  const { createProduct, createLoading: loading } = useMarketplace();
+
+  const handlePublish = async () => {
     if (!title || !price || !category || !region || !city) {
       Alert.alert('Error', 'Por favor, completa los campos obligatorios.');
       return;
     }
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      await createProduct({
+        name: title,
+        description: desc,
+        price: Number(price),
+        stock: Number(stock),
+        location: `${city}, ${region}`,
+        slug: title.toLowerCase().replace(/\s+/g, '-').slice(0, 60),
+        categoryProductId: 1,
+      });
       navigation.goBack();
-    }, 1000);
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
   };
 
   if (role === 'guest') {
@@ -267,7 +280,12 @@ export const PublishProductScreen: React.FC = () => {
         <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
         <View style={styles.footerButtons}>
           <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
-          <Button title="Publicar Ahora" onPress={handlePublish} disabled={!title || !price || !category || !region || !city} style={{ flex: 2 }} />
+          <Button
+            title={loading ? 'Publicando...' : 'Publicar Ahora'}
+            onPress={handlePublish}
+            disabled={loading || !title || !price || !category || !region || !city}
+            style={{ flex: 2 }}
+          />
         </View>
       </View>
     </View>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, ActivityIndicator, ViewStyle, TextStyle, StyleProp } from 'react-native';
+import { StyleSheet, Text, ActivityIndicator, ViewStyle, TextStyle, StyleProp, Pressable } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { TOKENS } from '../../theme';
 import { Icon, IconName } from './Icon';
 
@@ -64,36 +65,59 @@ export const Button: React.FC<ButtonProps> = ({
 
   const currentStyles = getStyles();
 
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    if (!disabled && !loading) {
+      scale.value = withSpring(0.96, TOKENS.animation.springConfig);
+    }
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, TOKENS.animation.springConfig);
+  };
+
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.8}
+    <Animated.View
       style={[
         styles.baseContainer,
         currentStyles.container,
         disabled && styles.disabledContainer,
         style,
+        animatedStyle,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={currentStyles.loaderColor} />
-      ) : (
-        <>
-          {icon && (
-            <Icon
-              name={icon}
-              size={16}
-              color={iconColor || (variant === 'secondary' ? TOKENS.colors.brand500 : variant === 'white' ? TOKENS.colors.textMain : TOKENS.colors.white)}
-              style={styles.icon}
-            />
-          )}
-          <Text style={[styles.baseText, currentStyles.text, disabled && styles.disabledText, textStyle]}>
-            {title}
-          </Text>
-        </>
-      )}
-    </TouchableOpacity>
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled || loading}
+        style={StyleSheet.absoluteFill}
+      />
+      <Animated.View style={styles.contentContainer} pointerEvents="none">
+        {loading ? (
+          <ActivityIndicator size="small" color={currentStyles.loaderColor} />
+        ) : (
+          <>
+            {icon && (
+              <Icon
+                name={icon}
+                size={16}
+                color={iconColor || (variant === 'secondary' ? TOKENS.colors.brand500 : variant === 'white' ? TOKENS.colors.textMain : TOKENS.colors.white)}
+                style={styles.icon}
+              />
+            )}
+            <Text style={[styles.baseText, currentStyles.text, disabled && styles.disabledText, textStyle]}>
+              {title}
+            </Text>
+          </>
+        )}
+      </Animated.View>
+    </Animated.View>
   );
 };
 
@@ -106,6 +130,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: TOKENS.spacing.md,
     ...TOKENS.shadows.soft,
+    overflow: 'hidden',
+  },
+  contentContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
   },
   primaryContainer: {
     backgroundColor: TOKENS.colors.brand500,

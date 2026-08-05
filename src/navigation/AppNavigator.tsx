@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { usePushNavigation } from '../push/usePushNavigation';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -7,11 +8,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navigation/drawer';
 import { TOKENS } from '../theme';
 import { Icon, Avatar, Badge, Button } from '../components/ui';
-import { AppRole, useRole, RoleProvider } from '../context/RoleContext';
+import { useAuth } from '../context/AuthContext';
 import { PanelProvider, usePanel } from '../context/PanelContext';
+import { getImageUrl } from '../utils/imageUrl';
 import { MainLayout } from '../components/layout/MainLayout';
 import { Header } from '../components/layout/Header';
+import { useRefresh } from '../context/RefreshContext';
 const ROUTE_TITLES: Record<string, string> = {
+  GuestCheckout: 'Datos de Contacto',
   ProviderProfile: 'Perfil Profesional',
   Wallet: 'Mi Billetera',
   Plans: 'Planes y Suscripción',
@@ -30,10 +34,33 @@ const ROUTE_TITLES: Record<string, string> = {
   ProductDetail: 'Detalle del Producto',
   Shipping: 'Datos de Envío',
   Purchase: 'Confirmar Compra',
+  OrderDetail: 'Detalle del Pedido',
+  ManageSale: 'Gestionar Venta',
+};
+
+const HEADER_CONFIG: Record<string, { showBell?: boolean; subtitle?: string }> = {
+  Settings: { showBell: false },
+  Wallet: { showBell: false },
+  Billing: { showBell: false },
+  Plans: { showBell: false, subtitle: 'Elige tu plan ideal' },
+  Support: { showBell: false, subtitle: 'Centro de ayuda' },
+  VerificationCenter: { subtitle: 'Completa tu perfil para operar sin restricciones' },
+  MyProfile: { subtitle: 'Tu información personal' },
+  ReviewsList: { showBell: false },
+  PublishService: { showBell: false, subtitle: 'Agrega un nuevo servicio a tu catálogo' },
+  PublishJob: { showBell: false, subtitle: 'Ofrece trabajo a profesionales' },
+  PublishProduct: { showBell: false, subtitle: 'Publica tu producto en el marketplace' },
+  Shipping: { showBell: false, subtitle: 'Ingresa los datos de envío' },
+  Purchase: { showBell: false },
+  OrderDetail: { showBell: false },
+  ManageSale: { showBell: false },
+  MyServices: { subtitle: 'Administra los servicios que ofreces' },
+  ProviderProfile: { subtitle: 'Información del profesional' },
 };
 
 const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({ currentRoute, navigationRef }) => {
-  const hiddenScreens = ['Splash', 'Onboarding', 'Login', 'Register', 'ServiceSuccess'];
+  const { isRefreshing } = useRefresh();
+  const hiddenScreens = ['Splash', 'Onboarding', 'Login', 'Register', 'GuestCheckout', 'ServiceSuccess', 'SetPassword', 'PaymentSuccess'];
   if (hiddenScreens.includes(currentRoute)) {
     return null;
   }
@@ -45,6 +72,7 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
       <Header
         showMenu={true}
         showLogo={true}
+        isRefreshing={isRefreshing}
         onMenuPress={() => {
           navigationRef.dispatch(DrawerActions.toggleDrawer());
         }}
@@ -53,6 +81,7 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
   }
 
   const title = ROUTE_TITLES[currentRoute] || 'TratoFácil';
+  const pageConfig = HEADER_CONFIG[currentRoute] || {};
   const noBackScreens = ['Rating', 'ServiceSuccess'];
   const showBack = !noBackScreens.includes(currentRoute);
 
@@ -61,6 +90,9 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
       showBack={showBack}
       showLogo={false}
       title={title}
+      subtitle={pageConfig.subtitle}
+      showBell={pageConfig.showBell !== false}
+      isRefreshing={isRefreshing}
       onBackPress={() => {
         navigationRef.goBack();
       }}
@@ -70,9 +102,11 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
 
 // SCREENS
 import { SplashScreen } from '../screens/auth/SplashScreen';
+import { SetPasswordScreen } from '../screens/auth/SetPasswordScreen';
 import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
+import { GuestCheckoutScreen } from '../screens/auth/GuestCheckoutScreen';
 import { ProviderProfileScreen } from '../screens/client/ProviderProfileScreen';
 import { ServiceSuccessScreen } from '../screens/client/ServiceSuccessScreen';
 import { WalletScreen } from '../screens/provider/WalletScreen';
@@ -95,7 +129,7 @@ import { PaymentSuccessScreen } from '../screens/shared/PaymentSuccessScreen';
 import { OrderDetailScreen } from '../screens/shared/OrderDetailScreen';
 import { ManageSaleScreen } from '../screens/shared/ManageSaleScreen';
 
-export { useRole } from '../context/RoleContext';
+export { useAuth as useRole } from '../context/AuthContext';
 
 // STACK NAVIGATORS
 const Stack = createNativeStackNavigator();
@@ -103,21 +137,25 @@ const Drawer = createDrawerNavigator();
 
 // CUSTOM DRAWER CONTENT
 const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
-  const { role, setRole } = useRole();
+  const { role, user, logout, setRole } = useAuth();
   const { openPanel } = usePanel();
   const { navigation } = props;
 
-  const handleRoleSwitch = () => {
-    if (role === 'client') {
-      setRole('provider');
-      openPanel('provider_dashboard');
-    } else if (role === 'provider') {
+  const userName = user?.displayName || user?.username || 'Usuario';
+  const userEmail = user?.email || '';
+  const userAvatar = getImageUrl(user?.provider?.logoImage?.cdnUrl || null);
+  const hasProvider = !!user?.provider;
+
+  const handleSwitchRole = () => {
+    if (role === 'provider') {
       setRole('client');
+    } else {
+      setRole('provider');
     }
   };
 
-  const handleLogout = () => {
-    setRole('guest');
+  const handleLogout = async () => {
+    await logout();
     navigation.reset({
       index: 0,
       routes: [{ name: 'MainApp' }],
@@ -138,22 +176,22 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
       ) : role === 'client' ? (
         <View style={styles.drawerHeaderClient}>
           <View style={styles.avatarRow}>
-            <Avatar uri={null} name="Juan Pérez" size={56} />
+            <Avatar uri={userAvatar} name={userName} size={56} />
             <View style={styles.ratingBadge}>
               <Icon name="Star" size={10} color={TOKENS.colors.starActive} />
               <Text style={styles.ratingBadgeText}>5.0</Text>
             </View>
           </View>
-          <Text style={styles.drawerName}>Juan Pérez</Text>
-          <Text style={styles.drawerEmail}>juan.perez@correo.com</Text>
+          <Text style={styles.drawerName}>{userName}</Text>
+          <Text style={styles.drawerEmail}>{userEmail}</Text>
           <Badge label="MODO CLIENTE" tone="brand" style={styles.drawerRoleBadge} />
         </View>
       ) : (
         <View style={styles.drawerHeaderProvider}>
           <View style={styles.avatarRow}>
             <Avatar
-              uri="https://images.unsplash.com/photo-1540569014015-19a7be504e3a?q=80&w=150&auto=format&fit=crop"
-              name="Carlos Gutiérrez"
+              uri={userAvatar}
+              name={userName}
               size={56}
             />
             <View style={styles.ratingBadge}>
@@ -161,8 +199,8 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
               <Text style={styles.ratingBadgeText}>4.9</Text>
             </View>
           </View>
-          <Text style={styles.drawerName}>Carlos Gutiérrez</Text>
-          <Text style={styles.drawerEmail}>carlos.gutierrez@correo.com</Text>
+          <Text style={styles.drawerName}>{userName}</Text>
+          <Text style={styles.drawerEmail}>{userEmail}</Text>
           <Badge label="MODO PROFESIONAL" tone="success" style={styles.drawerRoleBadge} />
         </View>
       )}
@@ -197,10 +235,6 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
               <Text style={styles.drawerItemText}>Ayuda & Soporte</Text>
             </TouchableOpacity>
             <View style={styles.drawerDivider} />
-            <TouchableOpacity style={styles.drawerItemSwitch} onPress={handleRoleSwitch}>
-              <Icon name="Briefcase" size={18} color={TOKENS.colors.brand500} />
-              <Text style={styles.drawerItemSwitchText}>Ir a Modo Profesional</Text>
-            </TouchableOpacity>
           </>
         )}
 
@@ -239,16 +273,20 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
               <Text style={styles.drawerItemText}>Ayuda & Soporte</Text>
             </TouchableOpacity>
             <View style={styles.drawerDivider} />
-            <TouchableOpacity style={styles.drawerItemSwitch} onPress={handleRoleSwitch}>
-              <Icon name="User" size={18} color={TOKENS.colors.brand500} />
-              <Text style={styles.drawerItemSwitchText}>Ir a Modo Cliente</Text>
-            </TouchableOpacity>
           </>
         )}
       </ScrollView>
 
       {/* DRAWER FOOTER */}
       <View style={styles.drawerFooter}>
+        {hasProvider && (
+          <TouchableOpacity style={styles.drawerItemSwitch} onPress={handleSwitchRole}>
+            <Icon name="Shuffle" size={16} color={TOKENS.colors.brand600} />
+            <Text style={styles.drawerItemSwitchText}>
+              {role === 'provider' ? 'Cambiar a Modo Cliente' : 'Cambiar a Modo Profesional'}
+            </Text>
+          </TouchableOpacity>
+        )}
         {role === 'guest' ? (
           <View style={styles.guestFooterBtns}>
             <Button title="Iniciar Sesión" onPress={() => navigation.navigate('Login')} style={styles.guestBtn} />
@@ -280,15 +318,19 @@ const MainDrawerNavigator: React.FC = () => {
   );
 };
 
+function PushNavigationTracker() {
+  usePushNavigation();
+  return null;
+}
+
 // MAIN ROUTING STACK
 export const AppNavigator: React.FC = () => {
   const navigationRef = useNavigationContainerRef();
   const [currentRouteName, setCurrentRouteName] = useState('Splash');
 
   return (
-    <RoleProvider>
-      <PanelProvider>
-        <NavigationContainer
+    <PanelProvider>
+      <NavigationContainer
           ref={navigationRef}
           onStateChange={() => {
             const route = navigationRef.getCurrentRoute() as any;
@@ -297,6 +339,7 @@ export const AppNavigator: React.FC = () => {
             }
           }}
         >
+          <PushNavigationTracker />
           <View style={{ flex: 1 }}>
             <HeaderGeneral currentRoute={currentRouteName} navigationRef={navigationRef} />
             <Stack.Navigator
@@ -309,8 +352,10 @@ export const AppNavigator: React.FC = () => {
               {/* Auth Stack */}
               <Stack.Screen name="Splash" component={SplashScreen} />
               <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+              <Stack.Screen name="SetPassword" component={SetPasswordScreen} options={{ headerShown: false, gestureEnabled: false }} />
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="GuestCheckout" component={GuestCheckoutScreen} />
 
               {/* Main App (Drawer + Layout + BottomNav + Panels) */}
               <Stack.Screen name="MainApp" component={MainDrawerNavigator} />
@@ -340,31 +385,30 @@ export const AppNavigator: React.FC = () => {
             </Stack.Navigator>
           </View>
         </NavigationContainer>
-      </PanelProvider>
-    </RoleProvider>
+    </PanelProvider>
   );
 };
 
 const styles = StyleSheet.create({
   drawerContainer: { flex: 1, backgroundColor: TOKENS.colors.white },
-  drawerHeaderGuest: { padding: TOKENS.spacing.lg, paddingTop: 48, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
-  guestAvatarCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: TOKENS.colors.surface200, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.sm },
-  drawerHeaderClient: { padding: TOKENS.spacing.lg, paddingTop: 48, backgroundColor: TOKENS.colors.white, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
-  drawerHeaderProvider: { padding: TOKENS.spacing.lg, paddingTop: 48, backgroundColor: TOKENS.colors.white, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
+  drawerHeaderGuest: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
+  guestAvatarCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: TOKENS.colors.surface200, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.sm },
+  drawerHeaderClient: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
+  drawerHeaderProvider: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
   avatarRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: TOKENS.spacing.sm },
-  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.surface100, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, gap: 4, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.white, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, gap: 4, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   ratingBadgeText: { fontSize: 10, fontWeight: 'bold', color: TOKENS.colors.textMain },
   drawerName: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
   drawerEmail: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.textSubtle, marginTop: 2, fontWeight: '500' },
-  drawerRoleBadge: { marginTop: 8 },
-  drawerItemsScroll: { padding: TOKENS.spacing.sm, gap: 4 },
+  drawerRoleBadge: { marginTop: 8, alignSelf: 'flex-start' },
+  drawerItemsScroll: { padding: TOKENS.spacing.sm, gap: 4, paddingTop: TOKENS.spacing.xs },
   drawerItem: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, borderRadius: 12, gap: TOKENS.spacing.md },
   drawerItemText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain },
   drawerDivider: { height: 1, backgroundColor: TOKENS.colors.surface100, marginVertical: 8, marginHorizontal: TOKENS.spacing.md },
-  drawerItemSwitch: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, borderRadius: 12, gap: TOKENS.spacing.md, backgroundColor: TOKENS.colors.surface50, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
+  drawerItemSwitch: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, borderRadius: 12, gap: TOKENS.spacing.md, backgroundColor: TOKENS.colors.brand50, borderWidth: 1, borderColor: TOKENS.colors.brand200 },
   drawerItemSwitchText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand600 },
-  drawerFooter: { padding: TOKENS.spacing.lg, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface100, backgroundColor: TOKENS.colors.white },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: TOKENS.spacing.sm, paddingVertical: 6 },
+  drawerFooter: { padding: TOKENS.spacing.lg, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, backgroundColor: TOKENS.colors.white },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: TOKENS.spacing.sm, paddingVertical: 8, paddingHorizontal: TOKENS.spacing.sm },
   logoutText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textSubtle },
   guestFooterBtns: { width: '100%' },
   guestBtn: { height: 44 },

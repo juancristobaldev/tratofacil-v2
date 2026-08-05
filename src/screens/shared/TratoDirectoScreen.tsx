@@ -1,28 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
-  SafeAreaView,
   TouchableOpacity,
   TextInput,
   Image,
+  Alert,
+  RefreshControl,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button } from '../../components/ui';
-import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
 
 export const TratoDirectoScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
-  const { role } = useRole();
+  const { role, user } = useAuth();
+  const [refreshing, setRefreshing] = useState(false);
   const [days, setDays] = useState<number>(30);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await new Promise<void>((r) => setTimeout(r, 600));
+    setRefreshing(false);
+  }, []);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [info, setInfo] = useState<string>('');
   const [link, setLink] = useState<string>('');
   const [hasImage, setHasImage] = useState(false);
+
+  const { createAd } = usePlans();
+  const loading = false; // TODO: use real loading state
 
   const pricePerDay = 1000;
 
@@ -46,8 +56,11 @@ export const TratoDirectoScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 100 }]}>
+    <View style={styles.safeArea}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
         
         {/* Header Section */}
         <View style={styles.headerSection}>
@@ -186,15 +199,34 @@ export const TratoDirectoScreen: React.FC = () => {
           </View>
           
           <Button 
-            title="Pagar Anuncio" 
-            onPress={() => {}} 
+            title={loading ? 'Procesando...' : 'Pagar Anuncio'} 
+            onPress={() => {
+              if (!selectedCategory || !selectedRegion || !info || !link) {
+                Alert.alert('Error', 'Completa todos los campos requeridos.');
+                return;
+              }
+              createAd({
+                categoryId: 1,
+                city: selectedRegion,
+                days,
+                image: 'https://via.placeholder.com/600x400',
+                info,
+                link,
+                total: finalPrice,
+                userId: user?.id || 0,
+              }).then(() => {
+                Alert.alert('Éxito', 'Tu anuncio ha sido creado.');
+              }).catch((err: any) => {
+                Alert.alert('Error', err.message);
+              });
+            }}
             style={styles.payBtn} 
-            leftIcon="CreditCard"
+            icon="CreditCard"
           />
         </View>
 
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -205,6 +237,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: TOKENS.spacing.md,
+    paddingBottom: 120,
   },
   headerSection: {
     backgroundColor: TOKENS.colors.white,

@@ -1,25 +1,28 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Input, PhoneInput, Icon } from '../../components/ui';
-import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
+import { Role } from '../../types/graphql';
 
 export const RegisterScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { setRole: setAppRole } = useRole();
+  const { register, registerLoading } = useAuth();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<'client' | 'provider'>('client');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const tempErrors: Record<string, string> = {};
 
     if (!name.trim()) tempErrors.name = 'El nombre es obligatorio';
     if (!email.trim() || !email.includes('@')) tempErrors.email = 'Ingresa un correo electrónico válido';
     if (phone.trim().length < 8) tempErrors.phone = 'Ingresa un número móvil de 9 dígitos';
+    if (!password || password.length < 6) tempErrors.password = 'La contraseña debe tener al menos 6 caracteres';
 
     if (Object.keys(tempErrors).length > 0) {
       setErrors(tempErrors);
@@ -27,113 +30,143 @@ export const RegisterScreen: React.FC = () => {
     }
 
     setErrors({});
-    setAppRole(selectedRole);
-    navigation.replace('MainApp');
+
+    try {
+      await register({
+        displayName: name.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        password,
+        role: selectedRole === 'provider' ? Role.PROVIDER : Role.CLIENT,
+      });
+      navigation.replace('MainApp');
+    } catch (err: any) {
+      const msg = err?.graphQLErrors?.[0]?.message || err?.networkError?.message || 'Error al registrarse. Intenta nuevamente.';
+      Alert.alert('Error', msg);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Back button */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Title */}
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>Crea tu cuenta gratis</Text>
-          <Text style={styles.subtitle}>Únete a la comunidad de TratoFácil para contratar o trabajar.</Text>
-        </View>
-
-        {/* Form Inputs */}
-        <View style={styles.formSection}>
-          <Input
-            label="Nombre completo"
-            placeholder="Ej. Juan Pérez"
-            icon="User"
-            value={name}
-            onChangeText={(text) => {
-              setName(text);
-              if (errors.name) setErrors({ ...errors, name: '' });
-            }}
-            error={errors.name}
-          />
-
-          <Input
-            label="Correo electrónico"
-            placeholder="Ej. juan.perez@correo.com"
-            icon="Mail"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={(text) => {
-              setEmail(text);
-              if (errors.email) setErrors({ ...errors, email: '' });
-            }}
-            error={errors.email}
-          />
-
-          <PhoneInput
-            label="Número móvil"
-            value={phone}
-            onChangeText={(text) => {
-              setPhone(text);
-              if (errors.phone) setErrors({ ...errors, phone: '' });
-            }}
-            error={errors.phone}
-          />
-
-          {/* Role selector card */}
-          <Text style={styles.sectionLabel}>¿Qué perfil deseas usar?</Text>
-          <View style={styles.roleContainer}>
-            <TouchableOpacity
-              style={[
-                styles.roleCard,
-                selectedRole === 'client' ? styles.roleCardActive : null,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => setSelectedRole('client')}
-            >
-              <View style={[styles.roleIconCircle, selectedRole === 'client' ? styles.roleIconCircleActive : null]}>
-                <Icon name="User" size={20} color={selectedRole === 'client' ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle} />
-              </View>
-              <View style={styles.roleTextContainer}>
-                <Text style={styles.roleTitle}>Cliente</Text>
-                <Text style={styles.roleSubtitle}>Quiero buscar y contratar servicios en mi zona.</Text>
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.roleCard,
-                selectedRole === 'provider' ? styles.roleCardActive : null,
-              ]}
-              activeOpacity={0.8}
-              onPress={() => setSelectedRole('provider')}
-            >
-              <View style={[styles.roleIconCircle, selectedRole === 'provider' ? styles.roleIconCircleActive : null]}>
-                <Icon name="Briefcase" size={20} color={selectedRole === 'provider' ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle} />
-              </View>
-              <View style={styles.roleTextContainer}>
-                <Text style={styles.roleTitle}>Profesional / Técnico</Text>
-                <Text style={styles.roleSubtitle}>Quiero ofrecer mis servicios y captar nuevos clientes.</Text>
-              </View>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          {/* Header Back button */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Submit */}
-        <View style={styles.actionSection}>
-          <Button title="Registrarme" onPress={handleRegister} style={styles.submitBtn} />
-          
-          <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLink}>
-            <Text style={styles.loginLinkText}>¿Ya tienes una cuenta? </Text>
-            <Text style={styles.loginLinkAction}>Inicia sesión</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+          {/* Title */}
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>Crea tu cuenta gratis</Text>
+            <Text style={styles.subtitle}>Únete a la comunidad de TratoFácil para contratar o trabajar.</Text>
+          </View>
+
+          {/* Form Inputs */}
+          <View style={styles.formSection}>
+            <Input
+              label="Nombre completo"
+              placeholder="Ej. Juan Pérez"
+              icon="User"
+              value={name}
+              onChangeText={(text) => {
+                setName(text);
+                if (errors.name) setErrors({ ...errors, name: '' });
+              }}
+              error={errors.name}
+            />
+
+            <Input
+              label="Correo electrónico"
+              placeholder="Ej. juan.perez@correo.com"
+              icon="Mail"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={(text) => {
+                setEmail(text);
+                if (errors.email) setErrors({ ...errors, email: '' });
+              }}
+              error={errors.email}
+            />
+
+            <PhoneInput
+              label="Número móvil"
+              value={phone}
+              onChangeText={(text) => {
+                setPhone(text);
+                if (errors.phone) setErrors({ ...errors, phone: '' });
+              }}
+              error={errors.phone}
+            />
+
+            <Input
+              label="Contraseña"
+              placeholder="Mínimo 6 caracteres"
+              icon="Lock"
+              secureTextEntry
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (errors.password) setErrors({ ...errors, password: '' });
+              }}
+              error={errors.password}
+            />
+
+            {/* Role selector card */}
+            <Text style={styles.sectionLabel}>¿Qué perfil deseas usar?</Text>
+            <View style={styles.roleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.roleCard,
+                  selectedRole === 'client' ? styles.roleCardActive : null,
+                ]}
+                activeOpacity={0.8}
+                onPress={() => setSelectedRole('client')}
+              >
+                <View style={[styles.roleIconCircle, selectedRole === 'client' ? styles.roleIconCircleActive : null]}>
+                  <Icon name="User" size={20} color={selectedRole === 'client' ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle} />
+                </View>
+                <View style={styles.roleTextContainer}>
+                  <Text style={styles.roleTitle}>Cliente</Text>
+                  <Text style={styles.roleSubtitle}>Quiero buscar y contratar servicios en mi zona.</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.roleCard,
+                  selectedRole === 'provider' ? styles.roleCardActive : null,
+                ]}
+                activeOpacity={0.8}
+                onPress={() => setSelectedRole('provider')}
+              >
+                <View style={[styles.roleIconCircle, selectedRole === 'provider' ? styles.roleIconCircleActive : null]}>
+                  <Icon name="Briefcase" size={20} color={selectedRole === 'provider' ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle} />
+                </View>
+                <View style={styles.roleTextContainer}>
+                  <Text style={styles.roleTitle}>Profesional / Técnico</Text>
+                  <Text style={styles.roleSubtitle}>Quiero ofrecer mis servicios y captar nuevos clientes.</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Submit */}
+          <View style={styles.actionSection}>
+            <Button title={registerLoading ? 'Registrando...' : 'Registrarme'} onPress={handleRegister} style={styles.submitBtn} disabled={registerLoading} />
+            
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.loginLink}>
+              <Text style={styles.loginLinkText}>¿Ya tienes una cuenta? </Text>
+              <Text style={styles.loginLinkAction}>Inicia sesión</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

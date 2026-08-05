@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Icon, Button } from '../../components';
-import { useRole } from '../../context/RoleContext';
+import { Icon, Button, Input } from '../../components';
+import { useAuth } from '../../context/AuthContext';
+import { useProfile } from '../../hooks/useProfile';
 
 type SectionState = {
   personal: boolean;
@@ -14,18 +13,22 @@ type SectionState = {
 };
 
 export const VerificationCenterScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
-  const { role } = useRole();
-
+  const { role, user } = useAuth();
+  const { updateProfile, updateProviderProfile, updateProviderBank, saving } = useProfile();
   const isProvider = role === 'provider';
 
-  // Completion state
+  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [providerName, setProviderName] = useState(user?.provider?.name || '');
+  const [providerRut, setProviderRut] = useState(user?.provider?.rut || '');
+  const [bankName, setBankName] = useState(user?.provider?.bank?.bankName || '');
+  const [accountType, setAccountType] = useState(user?.provider?.bank?.accountType || '');
+  const [accountNumber, setAccountNumber] = useState(user?.provider?.bank?.accountNumber || '');
+
   const [completed, setCompleted] = useState({
-    personal: false,
-    email: false,
-    identity: false,
-    bank: false,
+    personal: !!user?.displayName,
+    email: !!user?.emailVerified,
+    identity: !!(user?.provider?.name && user?.provider?.rut),
+    bank: !!(user?.provider?.bank),
   });
 
   // Accordion state
@@ -54,17 +57,9 @@ export const VerificationCenterScreen: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Centro de Verificación</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <ScrollView contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 20 }]}>
+    <View style={styles.container}>
+      
+      <ScrollView contentContainerStyle={styles.scrollBody}>
         
         <Text style={styles.pageSubtitle}>
           {isProvider 
@@ -107,18 +102,20 @@ export const VerificationCenterScreen: React.FC = () => {
           {openSections.personal && !completed.personal && (
             <View style={styles.accordionBody}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Nombres</Text>
-                <TextInput style={styles.input} placeholder="Ej: Juan" />
+                <Input label="Nombres y Apellidos" placeholder="Ej: Juan Pérez" value={displayName} onChangeText={setDisplayName} icon="User" />
               </View>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Apellidos</Text>
-                <TextInput style={styles.input} placeholder="Ej: Pérez" />
+                <Input label="Fecha de Nacimiento" placeholder="DD/MM/AAAA" keyboardType="numeric" icon="Calendar" />
               </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Fecha de Nacimiento</Text>
-                <TextInput style={styles.input} placeholder="DD/MM/AAAA" keyboardType="numeric" />
-              </View>
-              <Button title="Guardar datos" onPress={() => { setCompleted(prev => ({ ...prev, personal: true })); setOpenSections(prev => ({ ...prev, personal: false, email: true })); }} />
+              <Button title={saving ? 'Guardando...' : 'Guardar datos'} disabled={saving} onPress={async () => {
+                try {
+                  await updateProfile({ displayName: displayName || undefined });
+                  setCompleted(prev => ({ ...prev, personal: true }));
+                  setOpenSections(prev => ({ ...prev, personal: false, email: true }));
+                } catch (_err) {
+                  Alert.alert('Error', 'No se pudo guardar.');
+                }
+              }} />
             </View>
           )}
         </View>
@@ -144,11 +141,10 @@ export const VerificationCenterScreen: React.FC = () => {
           {openSections.email && !completed.email && (
             <View style={styles.accordionBody}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Código de Verificación (Enviado a tu correo)</Text>
-                <TextInput style={[styles.input, { letterSpacing: 8, textAlign: 'center', fontSize: 20 }]} placeholder="XXXXXX" maxLength={6} keyboardType="numeric" />
+                <Input label="Código de Verificación (Enviado a tu correo)" placeholder="XXXXXX" maxLength={6} keyboardType="numeric" icon="Key" style={{ letterSpacing: 8, textAlign: 'center', fontSize: 20 }} />
               </View>
               <Button title="Confirmar código" onPress={() => { setCompleted(prev => ({ ...prev, email: true })); setOpenSections(prev => ({ ...prev, email: false, identity: isProvider })); }} />
-              <Button title="Reenviar código" variant="secondary" style={{ marginTop: 8 }} />
+              <Button title="Reenviar código" variant="secondary" onPress={() => {}} style={{ marginTop: 8 }} />
             </View>
           )}
         </View>
@@ -177,14 +173,22 @@ export const VerificationCenterScreen: React.FC = () => {
               {openSections.identity && !completed.identity && (
                 <View style={styles.accordionBody}>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Nombre Comercial o Público</Text>
-                    <TextInput style={styles.input} placeholder="Ej: Reparaciones Rápidas JP" />
+                    <Input label="Nombre Comercial o Público" placeholder="Ej: Reparaciones Rápidas JP" value={providerName} onChangeText={setProviderName} icon="Store" />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>RUT del Proveedor</Text>
-                    <TextInput style={styles.input} placeholder="12345678-9" />
+                    <Input label="RUT del Proveedor" placeholder="12345678-9" value={providerRut} onChangeText={setProviderRut} icon="FileText" />
                   </View>
-                  <Button title="Confirmar identidad" onPress={() => { setCompleted(prev => ({ ...prev, identity: true })); setOpenSections(prev => ({ ...prev, identity: false, bank: true })); }} />
+                  <Button title={saving ? 'Guardando...' : 'Confirmar identidad'} disabled={saving || !user?.provider?.id} onPress={async () => {
+                    try {
+                      if (user?.provider?.id && providerName) {
+                        await updateProviderProfile(user.provider.id, { name: providerName, rut: providerRut || undefined });
+                        setCompleted(prev => ({ ...prev, identity: true }));
+                        setOpenSections(prev => ({ ...prev, identity: false, bank: isProvider }));
+                      }
+                    } catch (_err) {
+                      Alert.alert('Error', 'No se pudo guardar la identidad.');
+                    }
+                  }} />
                 </View>
               )}
             </View>
@@ -210,18 +214,29 @@ export const VerificationCenterScreen: React.FC = () => {
               {openSections.bank && !completed.bank && (
                 <View style={styles.accordionBody}>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Banco</Text>
-                    <TextInput style={styles.input} placeholder="Ej: Banco Estado" />
+                    <Input label="Banco" placeholder="Ej: Banco Estado" value={bankName} onChangeText={setBankName} icon="Landmark" />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Tipo de Cuenta</Text>
-                    <TextInput style={styles.input} placeholder="Ej: Cuenta RUT" />
+                    <Input label="Tipo de Cuenta" placeholder="Ej: Cuenta RUT" value={accountType} onChangeText={setAccountType} icon="CreditCard" />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Número de Cuenta</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" />
+                    <Input label="Número de Cuenta" placeholder="Ej: 123456789" value={accountNumber} onChangeText={setAccountNumber} keyboardType="numeric" icon="Hash" />
                   </View>
-                  <Button title="Guardar cuenta bancaria" onPress={() => { setCompleted(prev => ({ ...prev, bank: true })); setOpenSections(prev => ({ ...prev, bank: false })); }} />
+                  <Button title={saving ? 'Guardando...' : 'Guardar cuenta bancaria'} disabled={saving || !user?.provider?.id} onPress={async () => {
+                    try {
+                      if (user?.provider?.id && bankName && accountNumber) {
+                        await updateProviderBank(user.provider.id, {
+                          bankName,
+                          accountType: accountType || 'Cuenta Corriente',
+                          accountNumber,
+                        });
+                        setCompleted(prev => ({ ...prev, bank: true }));
+                        setOpenSections(prev => ({ ...prev, bank: false }));
+                      }
+                    } catch (_err) {
+                      Alert.alert('Error', 'No se pudo guardar la cuenta bancaria.');
+                    }
+                  }} />
                 </View>
               )}
             </View>
@@ -235,10 +250,7 @@ export const VerificationCenterScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: TOKENS.spacing.md, backgroundColor: TOKENS.colors.white, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.lg },
+  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.lg, paddingBottom: 40 },
   pageSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, lineHeight: 22 },
   summaryBanner: { flexDirection: 'row', alignItems: 'flex-start', padding: TOKENS.spacing.md, borderRadius: 16, borderWidth: 1, gap: 12 },
   summaryBannerPending: { backgroundColor: TOKENS.colors.brand50, borderColor: TOKENS.colors.brand200 },

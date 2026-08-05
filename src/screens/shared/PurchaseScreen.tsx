@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TextInput, Modal as RNModal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Modal as RNModal } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Button, Icon } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
+import { useNotification } from '../../context/NotificationContext';
+import { useMarketplace } from '../../hooks/useMarketplace';
+import { WEB_CALLBACK_URL } from '../../config/endpoints';
+import { useFlow } from '../../hooks/useFlow';
 
 // Mock rule similar to Next.js
 const getCommission = (total: number) => {
@@ -18,6 +22,10 @@ export const PurchaseScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { product, shippingData } = route.params || {};
   const { role, setRole } = useRole();
+  const { showNotification } = useNotification();
+
+  const { createOrder } = useMarketplace();
+  const { pay } = useFlow();
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showGuestCheckout, setShowGuestCheckout] = useState(false);
@@ -42,7 +50,7 @@ export const PurchaseScreen: React.FC = () => {
   if (!product) {
     return (
       <View style={styles.errorContainer}>
-        <Icon name="AlertTriangle" size={48} color={TOKENS.colors.error500} />
+        <Icon name="AlertTriangle" size={48} color={TOKENS.colors.statusError} />
         <Text style={styles.errorText}>Producto no encontrado</Text>
         <Button title="Volver atrás" onPress={() => navigation.goBack()} variant="secondary" />
       </View>
@@ -53,17 +61,45 @@ export const PurchaseScreen: React.FC = () => {
   const basePrice = Math.round(product.price / (1 + commission.rate));
   const commissionAmount = product.price - basePrice;
 
-  const processPayment = () => {
+  const processPayment = async () => {
     setIsProcessing(true);
-    // Simulate API flow and Flow/Webpay integration
-    setTimeout(() => {
-      setIsProcessing(false);
-      navigation.navigate('PaymentSuccess', {
-        title: '¡Compra Exitosa!',
-        subtitle: 'Tu pago se ha procesado correctamente y el vendedor ha sido notificado.',
-        type: 'product'
-      });
-    }, 2000);
+    try {
+      const orderResult = await createOrder(
+        { productId: parseInt(product.id, 10), quantity: 1 },
+        shippingData ? {
+          street: shippingData.street,
+          number: shippingData.number,
+          commune: shippingData.city,
+          region: shippingData.region,
+          phone: shippingData.phone,
+          reference: shippingData.additional || '',
+        } : {
+          street: '', number: '', commune: '', region: '', phone: '',
+        },
+      );
+      const orderProductId = orderResult.id;
+      if (orderProductId) {
+        const flowResult = await pay({
+          type: 'product',
+          orderId: orderProductId,
+          returnUrl: `${WEB_CALLBACK_URL}?type=product&source=mobile`,
+        });
+        if (flowResult.url) {
+          navigation.navigate('PaymentSuccess', {
+            title: '¡Compra Exitosa!',
+            subtitle: 'Redirigiendo al pago seguro...',
+            type: 'product',
+            flowUrl: flowResult.url,
+          });
+          setIsProcessing(false);
+          return;
+        }
+      }
+      showNotification({ title: 'Error', message: 'No se pudo iniciar el pago. Intenta de nuevo.', type: 'error' });
+    } catch (err: any) {
+      showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
+    }
+    setIsProcessing(false);
   };
 
   const handleConfirm = () => {

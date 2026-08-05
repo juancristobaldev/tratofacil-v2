@@ -1,25 +1,88 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar } from '../ui';
+import { Icon } from '../ui';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
+import { useRefresh } from '../../context/RefreshContext';
 
 type DateFilter = 'Hoy' | 'Semana' | 'Mes' | 'Total';
+
+function getFilterStartDate(filter: DateFilter): Date | null {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  switch (filter) {
+    case 'Hoy':
+      return now;
+    case 'Semana': {
+      const d = new Date(now);
+      d.setDate(d.getDate() - d.getDay());
+      return d;
+    }
+    case 'Mes': {
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    default:
+      return null;
+  }
+}
 
 export const EarningsTab: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<DateFilter>('Semana');
-  
+  const { user } = useAuth();
+  const { wallet, paymentHistory, refetch } = usePlans();
+  const { setIsRefreshing } = useRefresh();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setIsRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+    setIsRefreshing(false);
+  }, [refetch, setIsRefreshing]);
+
+  const balance = wallet?.balance || 0;
+  const transactions = wallet?.transactions || [];
+  const completedCount = user?.provider?.completedOrdersCount || 0;
+
+  const filterStart = getFilterStartDate(filter);
+
+  const earningTransactions = useMemo(() => {
+    const earnings = transactions.filter((t) => t.type === 'EARNING');
+    if (!filterStart) return earnings;
+    return earnings.filter((t) => {
+      const txDate = new Date(t.createdAt);
+      return txDate >= filterStart;
+    });
+  }, [transactions, filterStart]);
+
+  const totalEarningsLifetime = useMemo(
+    () => transactions.filter((t) => t.type === 'EARNING').reduce((sum, t) => sum + t.amount, 0),
+    [transactions],
+  );
+
+  const filteredTotal = useMemo(
+    () => earningTransactions.reduce((sum, t) => sum + t.amount, 0),
+    [earningTransactions],
+  );
+
+  const averagePerService = completedCount > 0 ? totalEarningsLifetime / completedCount : 0;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      >
 
-        {/* Filters */}
         <View style={styles.filtersScroll}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersContainer}>
             {['Hoy', 'Semana', 'Mes', 'Total'].map((f) => (
-              <TouchableOpacity 
-                key={f} 
+              <TouchableOpacity
+                key={f}
                 onPress={() => setFilter(f as DateFilter)}
                 style={[styles.filterChip, filter === f && styles.filterChipActive]}
               >
@@ -29,50 +92,55 @@ export const EarningsTab: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Main KPI */}
         <View style={styles.kpiCard}>
           <View style={styles.kpiHeader}>
             <Text style={styles.kpiLabel}>Total Ganado ({filter})</Text>
             <Icon name="TrendingUp" size={20} color={TOKENS.colors.statusSuccess} />
           </View>
-          <Text style={styles.kpiValue}>$ 345.900</Text>
+          <Text style={styles.kpiValue}>${filteredTotal.toLocaleString('es-CL')}</Text>
           <View style={styles.kpiFooter}>
-            <Text style={styles.kpiChange}>+12% vs periodo anterior</Text>
+            <Text style={styles.kpiChange}>{paymentHistory?.length || 0} transacciones totales</Text>
           </View>
         </View>
 
-        {/* Secondary KPIs */}
         <View style={styles.secondaryKpiRow}>
           <View style={styles.secondaryKpiCard}>
             <Text style={styles.secKpiLabel}>Servicios Completados</Text>
-            <Text style={styles.secKpiValue}>14</Text>
+            <Text style={styles.secKpiValue}>{completedCount}</Text>
           </View>
           <View style={styles.secondaryKpiCard}>
             <Text style={styles.secKpiLabel}>Promedio por Servicio</Text>
-            <Text style={styles.secKpiValue}>$ 24.700</Text>
+            <Text style={styles.secKpiValue}>${averagePerService.toLocaleString('es-CL')}</Text>
           </View>
         </View>
 
-        {/* History Table */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Servicios Completados</Text>
+          <Text style={styles.sectionTitle}>Movimientos</Text>
         </View>
-        
+
         <View style={styles.list}>
-          {[1, 2, 3, 4].map((item) => (
-            <View key={item} style={styles.historyRow}>
-              <View style={styles.historyLeft}>
-                <View style={styles.historyIconBox}>
-                  <Icon name="Wrench" size={16} color={TOKENS.colors.brand500} />
-                </View>
-                <View>
-                  <Text style={styles.historyTitle}>Reparación de Cañería</Text>
-                  <Text style={styles.historyDate}>Ayer, 16:00 hrs</Text>
-                </View>
-              </View>
-              <Text style={styles.historyAmount}>+$ 35.000</Text>
+          {earningTransactions.length === 0 ? (
+            <View style={styles.emptyRow}>
+              <Text style={styles.emptyText}>Sin movimientos recientes</Text>
             </View>
-          ))}
+          ) : (
+            earningTransactions.map((tx) => (
+              <View key={tx.id} style={styles.historyRow}>
+                <View style={styles.historyLeft}>
+                  <View style={styles.historyIconBox}>
+                    <Icon name="DollarSign" size={16} color={TOKENS.colors.brand500} />
+                  </View>
+                  <View>
+                    <Text style={styles.historyTitle}>{tx.description || 'Servicio completado'}</Text>
+                    <Text style={styles.historyDate}>
+                      {new Date(tx.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.historyAmount}>+${tx.amount.toLocaleString('es-CL')}</Text>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -121,7 +189,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: TOKENS.spacing.xl,
     marginBottom: TOKENS.spacing.md,
-    ...TOKENS.shadows.medium,
   },
   kpiHeader: {
     flexDirection: 'row',
@@ -164,7 +231,6 @@ const styles = StyleSheet.create({
     padding: TOKENS.spacing.md,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    ...TOKENS.shadows.soft,
   },
   secKpiLabel: {
     fontSize: TOKENS.typography.sizes.xs,
@@ -191,7 +257,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     overflow: 'hidden',
-    ...TOKENS.shadows.soft,
   },
   historyRow: {
     flexDirection: 'row',
@@ -228,5 +293,13 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.md,
     fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.statusSuccess,
+  },
+  emptyRow: {
+    padding: TOKENS.spacing.xl,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
   },
 });
