@@ -134,4 +134,26 @@ export const TOKENS = {
       stiffness: 120,
     },
   },
+  motion: {
+    duration: {
+      instant: 100,
+      fast: 180,
+      normal: 280,
+      slow: 450,
+      pulse: 2400,
+    },
+    scale: {
+      pressed: 0.96,
+      subtlePress: 0.98,
+      selectedPin: 1.12,
+      bouncePop: 1.25,
+    },
+    spring: {
+      snappy: { damping: 18, stiffness: 220, mass: 0.6 },
+      gentle: { damping: 15, stiffness: 120, mass: 1 },
+      bouncy: { damping: 10, stiffness: 160, mass: 0.8 },
+    },
+  },
 };
+
+export const MOTION = TOKENS.motion;

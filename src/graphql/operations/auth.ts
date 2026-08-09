@@ -42,6 +42,10 @@ export const ME_QUERY = gql`
         status
         total
       }
+      reviewsReceived {
+        id
+        rating
+      }
       provider {
         id
         name
@@ -84,6 +88,10 @@ export const ME_QUERY = gql`
           comment
           clientId
           createdAt
+        }
+        reviews {
+          id
+          rating
         }
       }
       wallet {

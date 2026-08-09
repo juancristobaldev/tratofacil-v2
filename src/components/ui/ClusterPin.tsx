@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { TOKENS } from '../../theme';
@@ -14,14 +14,26 @@ export const ClusterPin: React.FC<ClusterPinProps> = ({
   pointCount,
   onPress,
 }) => {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [pointCount, coordinate.latitude, coordinate.longitude]);
+
   // Dynamic size based on point count
-  const size = Math.min(60, 36 + (pointCount * 1.5));
+  const size = Math.min(54, 38 + Math.min(pointCount, 15) * 1.2);
   const borderRadius = size / 2;
 
   return (
     <Marker
       coordinate={coordinate}
-      tracksViewChanges={false}
+      tracksViewChanges={tracksViewChanges}
+      anchor={{ x: 0.5, y: 0.5 }}
       onPress={(e) => {
         e.stopPropagation();
         onPress();
@@ -39,13 +51,13 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.brand500,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: TOKENS.colors.white,
     ...TOKENS.shadows.floating,
   },
   text: {
     color: TOKENS.colors.white,
     fontWeight: TOKENS.typography.weights.extrabold,
-    fontSize: TOKENS.typography.sizes.md,
+    fontSize: TOKENS.typography.sizes.sm,
   },
 });

@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, Dimensions, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Icon, IconName } from '../../components/ui';
 
 const ONBOARDING_KEY = '@tratofacil_onboarding_done';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Slide {
   id: number;
@@ -114,7 +112,7 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    paddingHorizontal: TOKENS.spacing.lg,
+    paddingHorizontal: TOKENS.spacing.md,
   },
   skipText: {
     color: TOKENS.colors.textSubtle,
@@ -125,7 +123,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: TOKENS.spacing.xl,
+    paddingHorizontal: TOKENS.spacing.lg,
   },
   iconWrapper: {
     width: 140,
@@ -152,8 +150,8 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.medium,
   },
   footer: {
-    paddingHorizontal: TOKENS.spacing.lg,
-    paddingBottom: TOKENS.spacing.lg,
+    paddingHorizontal: TOKENS.spacing.md,
+    paddingBottom: TOKENS.spacing.md,
     alignItems: 'center',
     gap: TOKENS.spacing.lg,
   },

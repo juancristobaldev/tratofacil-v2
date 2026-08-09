@@ -1,7 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { TOKENS } from '../../theme';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon } from './Icon';
 
 interface ProviderPinProps {
@@ -18,23 +18,45 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
   onPress,
 }) => {
   const markerRef = useRef<any>(null);
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  // Warmup lifecycle whenever selection or avatar changes
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [isSelected, provider.avatar, provider.id]);
 
   return (
     <Marker
       ref={markerRef}
       coordinate={coordinate}
-      tracksViewChanges={false}
+      tracksViewChanges={tracksViewChanges}
+      zIndex={isSelected ? 995 : 100}
       onPress={(e) => {
         e.stopPropagation();
         onPress();
       }}
     >
-      <View style={[styles.container, isSelected && styles.containerSelected]}>
+      <View
+        style={[
+          styles.container,
+          isSelected && styles.containerSelected,
+          { transform: [{ scale: isSelected ? MOTION.scale.selectedPin : 1 }] },
+        ]}
+      >
         {provider.avatar ? (
           <Image
             source={{ uri: provider.avatar }}
             style={styles.avatar}
-            onLoad={() => markerRef.current?.redraw()}
+            onLoad={() => {
+              setTracksViewChanges(true);
+              markerRef.current?.redraw();
+              setTimeout(() => setTracksViewChanges(false), 200);
+            }}
           />
         ) : (
           <View style={styles.avatarPlaceholder}>

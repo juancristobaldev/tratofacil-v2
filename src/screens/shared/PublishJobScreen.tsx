@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Pl
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Icon } from '../../components';
+import { Button, Input, Icon } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useJobs } from '../../hooks/useJobs';
 
@@ -50,22 +50,14 @@ export const PublishJobScreen: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (role === 'guest') {
+      navigation.replace('Login');
+    }
+  }, [role, navigation]);
+
   if (role === 'guest') {
-    return (
-      <View style={[styles.container, { paddingBottom: insets.bottom, justifyContent: 'center', alignItems: 'center' }]}>
-        <Icon name="Lock" size={48} color={TOKENS.colors.textSubtle} />
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: TOKENS.colors.textMain, marginTop: 16 }}>
-          Acceso Restringido
-        </Text>
-        <Text style={{ fontSize: 14, color: TOKENS.colors.textSubtle, textAlign: 'center', marginHorizontal: 32, marginTop: 8 }}>
-          Debes iniciar sesión o registrarte para publicar un trabajo.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
-          <Button title="Iniciar Sesión" onPress={() => navigation.navigate('Login')} />
-          <Button title="Registrarme" variant="secondary" onPress={() => navigation.navigate('Register')} />
-        </View>
-      </View>
-    );
+    return null;
   }
 
   return (
@@ -88,21 +80,20 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>¿Qué necesitas?</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Título del anuncio *</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: Gasfitería urgente, Instalación eléctrica..."
-                value={title}
-                onChangeText={setTitle}
-              />
-            </View>
+            <Input 
+              label="Título del anuncio *"
+              placeholder="Ej: Gasfitería urgente, Instalación eléctrica..."
+              value={title}
+              onChangeText={setTitle}
+              containerStyle={styles.inputGroup}
+            />
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Descripción detallada *</Text>
               <TextInput 
                 style={[styles.input, styles.textArea]} 
                 placeholder="Explica qué necesitas exactamente, materiales incluidos, horarios de preferencia..."
+                placeholderTextColor={TOKENS.colors.textMuted}
                 multiline
                 numberOfLines={5}
                 value={desc}
@@ -118,31 +109,23 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Ubicación del trabajo</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Región *</Text>
-              <View style={styles.inputWithIcon}>
-                <Icon name="MapPin" size={18} color={TOKENS.colors.textSubtle} />
-                <TextInput 
-                  style={styles.innerInput} 
-                  placeholder="Ej: Región Metropolitana"
-                  value={region}
-                  onChangeText={setRegion}
-                />
-              </View>
-            </View>
+            <Input 
+              label="Región *"
+              placeholder="Ej: Región Metropolitana"
+              value={region}
+              onChangeText={setRegion}
+              leftIcon="MapPin"
+              containerStyle={styles.inputGroup}
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ciudad / Comuna *</Text>
-              <View style={styles.inputWithIcon}>
-                <Icon name="MapPin" size={18} color={TOKENS.colors.textSubtle} />
-                <TextInput 
-                  style={styles.innerInput} 
-                  placeholder="Ej: Santiago Centro"
-                  value={city}
-                  onChangeText={setCity}
-                />
-              </View>
-            </View>
+            <Input 
+              label="Ciudad / Comuna *"
+              placeholder="Ej: Santiago Centro"
+              value={city}
+              onChangeText={setCity}
+              leftIcon="MapPin"
+              containerStyle={styles.inputGroup}
+            />
           </View>
 
           {/* SECTION 3: BUDGET */}
@@ -152,20 +135,16 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Presupuesto</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Monto que pagarás ($) *</Text>
-              <View style={styles.inputWithIcon}>
-                <Text style={styles.currencySymbol}>$</Text>
-                <TextInput 
-                  style={[styles.innerInput, { fontWeight: 'bold', fontSize: 18 }]} 
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={price}
-                  onChangeText={setPrice}
-                />
-              </View>
-              <Text style={styles.helperText}>Este es el presupuesto total que estás dispuesto a pagar por el trabajo completo.</Text>
-            </View>
+            <Input 
+              label="Monto que pagarás ($) *"
+              placeholder="0"
+              keyboardType="numeric"
+              value={price}
+              onChangeText={setPrice}
+              leftIcon="DollarSign"
+              helperText="Este es el presupuesto total que estás dispuesto a pagar por el trabajo completo."
+              containerStyle={styles.inputGroup}
+            />
 
             {/* Financial Breakdown */}
             <View style={styles.breakdownBox}>
@@ -178,7 +157,7 @@ export const PublishJobScreen: React.FC = () => {
               
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Comisión de plataforma:</Text>
-                <Text style={[styles.breakdownValue, { color: TOKENS.colors.error600 }]}>
+                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>
                   - ${commissionAmount.toLocaleString("es-CL")}
                 </Text>
               </View>
@@ -217,27 +196,19 @@ export const PublishJobScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  header: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, backgroundColor: TOKENS.colors.white, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
-  backBtn: { padding: 4 },
-  headerTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginLeft: 12 },
+  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 120 },
+  introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.md, lineHeight: 20 },
   
-  scrollBody: { padding: TOKENS.spacing.lg, paddingBottom: 120 },
-  introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.lg, lineHeight: 20 },
-  
-  section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.lg, marginBottom: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
+  section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   
-  inputGroup: { marginBottom: TOKENS.spacing.lg },
+  inputGroup: { marginBottom: TOKENS.spacing.md },
   label: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
   input: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
   textArea: { height: 120, textAlignVertical: 'top' },
-  inputWithIcon: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, paddingHorizontal: TOKENS.spacing.md, height: 50, gap: 12 },
-  innerInput: { flex: 1, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
-  currencySymbol: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
-  helperText: { fontSize: 12, color: TOKENS.colors.textSubtle, marginTop: 8 },
   
-  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.brand200 },
+  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.brand200, marginTop: TOKENS.spacing.sm },
   breakdownTitle: { fontSize: 12, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand700, textAlign: 'center', marginBottom: TOKENS.spacing.md, letterSpacing: 0.5 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   breakdownLabel: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },

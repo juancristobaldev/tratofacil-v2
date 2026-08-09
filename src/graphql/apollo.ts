@@ -4,9 +4,14 @@ import { ErrorLink } from '@apollo/client/link/error';
 import { GRAPHQL_ENDPOINT } from '../config/endpoints';
 
 let cachedToken: string | null = null;
+let onAuthError: (() => void) | null = null;
 
 export const setAuthToken = (token: string | null) => {
   cachedToken = token;
+};
+
+export const setAuthErrorHandler = (fn: (() => void) | null) => {
+  onAuthError = fn;
 };
 
 const httpLink = new HttpLink({
@@ -29,6 +34,7 @@ const errorLink = new ErrorLink(({ error }) => {
     );
     if (authError) {
       cachedToken = null;
+      onAuthError?.();
     }
   }
 });

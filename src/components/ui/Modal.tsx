@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Modal as RNModal,
   Pressable,
   ViewStyle,
+  Animated,
 } from 'react-native';
-import { TOKENS } from '../../theme';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon } from './Icon';
 
 interface ModalProps {
@@ -24,6 +25,29 @@ export const Modal: React.FC<ModalProps> = ({
   showCloseButton = true,
   contentStyle,
 }) => {
+  const scale = useRef(new Animated.Value(0.92)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      scale.setValue(0.92);
+      opacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(scale, {
+          toValue: 1,
+          damping: 18,
+          stiffness: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: MOTION.duration.fast,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, scale, opacity]);
+
   return (
     <RNModal
       visible={visible}
@@ -33,14 +57,23 @@ export const Modal: React.FC<ModalProps> = ({
     >
       <View style={styles.overlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.dialog, contentStyle]}>
+        <Animated.View
+          style={[
+            styles.dialog,
+            contentStyle,
+            {
+              opacity,
+              transform: [{ scale }],
+            },
+          ]}
+        >
           {showCloseButton && (
             <Pressable onPress={onClose} style={styles.closeBtn}>
               <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
             </Pressable>
           )}
           {children}
-        </View>
+        </Animated.View>
       </View>
     </RNModal>
   );

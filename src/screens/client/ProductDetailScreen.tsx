@@ -31,6 +31,7 @@ export const ProductDetailScreen: React.FC = () => {
         description: p.description || '',
         provider: { name: p.user?.provider?.name || p.user?.displayName || 'Vendedor' },
         images: [imgUrl],
+        shippingDisabled: p.shippingDisabled ?? p.categoryProduct?.shippingDisabled ?? false,
       };
     }
     return {
@@ -41,6 +42,7 @@ export const ProductDetailScreen: React.FC = () => {
       description: '',
       provider: { name: '' },
       images: ['https://picsum.photos/400/400?random=10'],
+      shippingDisabled: false,
     };
   }, [apiProduct, id]);
 
@@ -62,7 +64,11 @@ export const ProductDetailScreen: React.FC = () => {
   }
 
   const handleBuy = () => {
-    navigation.navigate('Shipping', { product });
+    if (product.shippingDisabled) {
+      navigation.navigate('Purchase', { product, shippingData: { shippingDisabled: true } });
+    } else {
+      navigation.navigate('Shipping', { product });
+    }
   };
 
   return (
@@ -87,6 +93,13 @@ export const ProductDetailScreen: React.FC = () => {
           
           <View style={styles.stockBadge}>
             <Text style={styles.stockText}>Stock disponible: {product.stock}</Text>
+          </View>
+
+          <View style={[styles.stockBadge, { backgroundColor: product.shippingDisabled ? TOKENS.colors.warning50 : TOKENS.colors.success50 }]}>
+            <Icon name={product.shippingDisabled ? 'Store' : 'Truck'} size={14} color={product.shippingDisabled ? TOKENS.colors.warning700 : TOKENS.colors.success700} />
+            <Text style={[styles.stockText, { color: product.shippingDisabled ? TOKENS.colors.warning700 : TOKENS.colors.success700, marginLeft: 6 }]}>
+              {product.shippingDisabled ? 'Producto sin envío' : 'Envío coordinado'}
+            </Text>
           </View>
 
           <View style={styles.providerRow}>
@@ -143,7 +156,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface100,
   },
   detailsContainer: {
-    padding: TOKENS.spacing.lg,
+    padding: TOKENS.spacing.md,
   },
   title: {
     fontSize: TOKENS.typography.sizes.xl,
@@ -152,7 +165,7 @@ const styles = StyleSheet.create({
     marginBottom: TOKENS.spacing.sm,
   },
   price: {
-    fontSize: 28,
+    fontSize: TOKENS.typography.sizes.xxxl,
     fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.brand600,
     marginBottom: TOKENS.spacing.md,

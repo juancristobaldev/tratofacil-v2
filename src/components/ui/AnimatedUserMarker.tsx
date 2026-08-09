@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Marker, Circle } from 'react-native-maps';
-import { TOKENS } from '../../theme';
+import { TOKENS, MOTION } from '../../theme';
 
 const AnimatedMapCircle = Animated.createAnimatedComponent(Circle);
 
@@ -13,16 +13,27 @@ interface AnimatedUserMarkerProps {
 }
 
 export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordinate }) => {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const progress1 = useRef(new Animated.Value(0)).current;
   const progress2 = useRef(new Animated.Value(0)).current;
+
+  // Warmup lifecycle for Marker snapshot to ensure complete 360 layout before freezing
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [coordinate.latitude, coordinate.longitude]);
 
   useEffect(() => {
     const createAnimation = (value: Animated.Value) =>
       Animated.loop(
         Animated.timing(value, {
           toValue: 1,
-          duration: 2500,
-          easing: Easing.linear,
+          duration: MOTION.duration.pulse,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
           useNativeDriver: false,
         })
       );
@@ -34,7 +45,7 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
     
     const timeout = setTimeout(() => {
       anim2.start();
-    }, 1250);
+    }, 1200);
 
     return () => {
       anim1.stop();
@@ -45,32 +56,32 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
 
   const radius1 = progress1.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 150], // Expansion from 0 to 150 meters
+    outputRange: [0, 140], // Soft pulse radius in meters
   });
 
   const fillColor1 = progress1.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.25)', 'rgba(230, 0, 126, 0)'],
   });
 
   const strokeColor1 = progress1.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.5)', 'rgba(230, 0, 126, 0)'],
   });
 
   const radius2 = progress2.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 150],
+    outputRange: [0, 140],
   });
 
   const fillColor2 = progress2.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.25)', 'rgba(230, 0, 126, 0)'],
   });
 
   const strokeColor2 = progress2.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.5)', 'rgba(230, 0, 126, 0)'],
   });
 
   return (
@@ -91,10 +102,18 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
         strokeWidth={1}
         zIndex={998}
       />
-      <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} zIndex={999} tracksViewChanges={false}>
+      <Marker
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        centerOffset={{ x: 0, y: 0 }}
+        zIndex={999}
+        tracksViewChanges={tracksViewChanges}
+      >
         <View style={styles.container}>
-          <View style={styles.dot}>
-            <View style={styles.innerDot} />
+          <View style={styles.outerGlow}>
+            <View style={styles.whiteRing}>
+              <View style={styles.innerDot} />
+            </View>
           </View>
         </View>
       </Marker>
@@ -104,28 +123,36 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
 
 const styles = StyleSheet.create({
   container: {
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+  outerGlow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(230, 0, 126, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  whiteRing: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: TOKENS.colors.brand500,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.35,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 5,
   },
   innerDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
     backgroundColor: TOKENS.colors.brand500,
-  }
+  },
 });

@@ -1,27 +1,101 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  SafeAreaView,
+  TouchableOpacity,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useLazyQuery, useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
 import { Button, Icon, Input } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
+import {
+  CHECK_LOGIN_EMAIL_EXISTS,
+  REQUEST_PASSWORD_RESET,
+} from '../../graphql/operations/auth';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { login, loginLoading } = useAuth();
-  const [step, setStep] = useState<'identifier' | 'password'>('identifier');
-  const [identifier, setIdentifier] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleIdentifierSubmit = () => {
-    const val = identifier.trim();
-    if (!val) {
+  const [step, setStep] = useState<'email' | 'password' | 'noPassword'>('email');
+  const [email, setEmail] = useState('');
+  const [checkedEmail, setCheckedEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+
+  const [checkEmailExists, { loading: checkingEmail }] = useLazyQuery<{
+    checkLoginEmailExists: { exists: boolean; hasPassword: boolean };
+  }, { email: string }>(
+    CHECK_LOGIN_EMAIL_EXISTS,
+    { fetchPolicy: 'network-only' },
+  );
+
+  const [requestReset, { loading: requestingReset }] = useMutation<
+    { requestPasswordReset: boolean },
+    { email: string }
+  >(REQUEST_PASSWORD_RESET);
+
+  const handleEmailSubmit = async () => {
+    setError('');
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       setError('Por favor, ingresa tu correo electrónico.');
       return;
     }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setError('Ingresa un correo electrónico válido.');
+      return;
+    }
+
+    try {
+      const { data } = await checkEmailExists({
+        variables: { email: normalizedEmail },
+      });
+
+      const result = data?.checkLoginEmailExists;
+
+      if (result?.exists) {
+        setCheckedEmail(normalizedEmail);
+        setEmail(normalizedEmail);
+        if (!result.hasPassword) {
+          setStep('noPassword');
+        } else {
+          setStep('password');
+        }
+        return;
+      }
+
+      // Si no existe, llevar a Register con el email prellenado
+      navigation.navigate('Register', { initialEmail: normalizedEmail });
+    } catch (err: any) {
+      const msg =
+        err?.graphQLErrors?.[0]?.message ||
+        err?.networkError?.message ||
+        'No pudimos validar tu correo. Intenta nuevamente.';
+      setError(msg);
+    }
+  };
+
+  const handleRequestReset = async () => {
     setError('');
-    setStep('password');
+    try {
+      await requestReset({ variables: { email: checkedEmail || email.trim().toLowerCase() } });
+      setResetSent(true);
+      setStep('noPassword');
+    } catch {
+      setError('No pudimos enviar el enlace. Intenta nuevamente.');
+    }
   };
 
   const handlePasswordSubmit = async () => {
@@ -32,11 +106,19 @@ export const LoginScreen: React.FC = () => {
     setError('');
 
     try {
-      await login(identifier.trim(), password);
+      await login((checkedEmail || email).trim().toLowerCase(), password);
       navigation.replace('MainApp');
     } catch (err: any) {
-      const msg = err?.graphQLErrors?.[0]?.message || err?.networkError?.message || 'Error al iniciar sesión. Verifica tus credenciales.';
-      setError(msg);
+      const msg =
+        err?.graphQLErrors?.[0]?.message ||
+        err?.networkError?.message ||
+        '';
+
+      if (msg.includes('Unauthorized') || msg.includes('found') || msg.toLowerCase().includes('password')) {
+        setError('Correo o contraseña incorrectos.');
+      } else {
+        setError(msg || 'Error al iniciar sesión. Verifica tus credenciales.');
+      }
     }
   };
 
@@ -44,21 +126,33 @@ export const LoginScreen: React.FC = () => {
     navigation.replace('MainApp');
   };
 
+  const handleEditEmail = () => {
+    setStep('email');
+    setPassword('');
+    setError('');
+    setResetSent(false);
+  };
+
+  const isBusy = checkingEmail || loginLoading || requestingReset;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Decorative Blobs (Premium Vibe) */}
+      {/* Ambient Glow Blobs (Light Premium) */}
       <View style={[styles.blob, styles.blobTopLeft]} />
       <View style={[styles.blob, styles.blobBottomRight]} />
 
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header navigation */}
           <View style={styles.header}>
-            {step === 'password' ? (
-              <TouchableOpacity onPress={() => setStep('identifier')} style={styles.backBtn}>
+            {step !== 'email' ? (
+              <TouchableOpacity onPress={handleEditEmail} style={styles.backBtn}>
                 <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
               </TouchableOpacity>
             ) : (
@@ -66,17 +160,27 @@ export const LoginScreen: React.FC = () => {
             )}
           </View>
 
+          {/* Main Card */}
           <View style={styles.card}>
+            {/* Header Icon */}
             <View style={styles.iconWrapper}>
-              <Icon name="Lock" size={28} color={TOKENS.colors.brand500} />
+              <Icon
+                name={step === 'noPassword' && resetSent ? 'Mail' : 'Lock'}
+                size={28}
+                color={TOKENS.colors.brand500}
+              />
             </View>
+
             <Text style={styles.welcomeTitle}>¡Bienvenido!</Text>
             <Text style={styles.welcomeSubtitle}>
-              {step === 'identifier'
-                ? 'Ingresa tu correo o teléfono para continuar de forma segura.'
-                : 'Ingresa tu contraseña para acceder a tu cuenta.'}
+              {step === 'email'
+                ? 'Ingresa tu correo para continuar de forma segura.'
+                : step === 'password'
+                ? 'Ingresa tu contraseña para acceder a tu cuenta.'
+                : 'Configuración de acceso seguro.'}
             </Text>
 
+            {/* Error Alert Box */}
             {error ? (
               <View style={styles.errorBox}>
                 <Icon name="Info" size={16} color="#dc2626" />
@@ -84,69 +188,144 @@ export const LoginScreen: React.FC = () => {
               </View>
             ) : null}
 
-            <View style={styles.formSection}>
-              {step === 'identifier' ? (
-                  <Input
-                    label="Correo Electrónico o Teléfono"
-                    icon="User"
-                    placeholder="tu@correo.com o +569..."
-                    value={identifier}
-                    onChangeText={(text) => {
-                      setIdentifier(text);
-                      if (error) setError('');
-                    }}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                  />
-              ) : (
-                <View style={styles.passwordSection}>
-                  <View style={styles.verifiedPill}>
-                    <Icon name="User" size={16} color={TOKENS.colors.textSubtle} />
-                    <Text style={styles.verifiedText} numberOfLines={1}>{identifier}</Text>
-                    <TouchableOpacity onPress={() => setStep('identifier')} style={styles.editBtn}>
-                      <Text style={styles.editBtnText}>Editar</Text>
+            {/* Step 1: Email Input */}
+            {step === 'email' && (
+              <View style={styles.formSection}>
+                <Input
+                  label="Correo Electrónico"
+                  icon="Mail"
+                  placeholder="tu@correo.com"
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (error) setError('');
+                  }}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoCorrect={false}
+                  editable={!isBusy}
+                  onSubmitEditing={handleEmailSubmit}
+                  returnKeyType="next"
+                />
+              </View>
+            )}
+
+            {/* Step 2: Password Input & Verified Email Pill */}
+            {step === 'password' && (
+              <View style={styles.formSection}>
+                {/* Verified Email Pill */}
+                <View style={styles.verifiedPill}>
+                  <Icon name="User" size={16} color={TOKENS.colors.textSubtle} />
+                  <Text style={styles.verifiedText} numberOfLines={1}>
+                    {checkedEmail || email}
+                  </Text>
+                  <TouchableOpacity onPress={handleEditEmail} style={styles.editBtn}>
+                    <Text style={styles.editBtnText}>Editar</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.passwordLabelRow}>
+                  <Text style={styles.label}>Contraseña</Text>
+                  <TouchableOpacity onPress={handleRequestReset} disabled={requestingReset}>
+                    <Text style={styles.forgotText}>¿Olvidaste tu clave?</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Input
+                  icon="Lock"
+                  placeholder="••••••••"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (error) setError('');
+                  }}
+                  isPassword
+                  editable={!isBusy}
+                  onSubmitEditing={handlePasswordSubmit}
+                  returnKeyType="done"
+                />
+              </View>
+            )}
+
+            {/* Step 3: No Password State */}
+            {step === 'noPassword' && (
+              <View style={styles.noPasswordSection}>
+                {resetSent ? (
+                  <View style={styles.noPasswordContent}>
+                    <Text style={styles.noPasswordTitle}>Revisa tu correo</Text>
+                    <Text style={styles.noPasswordDesc}>
+                      Te enviamos un enlace a <Text style={styles.boldText}>{checkedEmail || email}</Text> para que crees tu contraseña.
+                    </Text>
+                    <TouchableOpacity onPress={handleEditEmail} style={styles.secondaryActionBtn}>
+                      <Text style={styles.secondaryActionText}>Volver al inicio</Text>
                     </TouchableOpacity>
                   </View>
-
-                    <View style={styles.passwordLabelRow}>
-                      <Text style={styles.label}>Contraseña</Text>
-                      <TouchableOpacity>
-                        <Text style={styles.forgotText}>¿Olvidaste tu clave?</Text>
+                ) : (
+                  <View style={styles.noPasswordContent}>
+                    <Text style={styles.noPasswordTitle}>Tu cuenta no tiene contraseña</Text>
+                    <Text style={styles.noPasswordDesc}>
+                      Te enviaremos un enlace a <Text style={styles.boldText}>{checkedEmail || email}</Text> para que puedas crear una.
+                    </Text>
+                    <View style={styles.noPasswordBtnRow}>
+                      <TouchableOpacity
+                        onPress={handleEditEmail}
+                        style={styles.noPasswordCancelBtn}
+                      >
+                        <Text style={styles.noPasswordCancelText}>Cambiar correo</Text>
                       </TouchableOpacity>
+                      <Button
+                        title={requestingReset ? 'Enviando...' : 'Enviar enlace'}
+                        onPress={handleRequestReset}
+                        disabled={requestingReset}
+                        style={styles.noPasswordSubmitBtn}
+                      />
                     </View>
-                    <Input
-                      icon="Lock"
-                      placeholder="••••••••"
-                      value={password}
-                      onChangeText={(text) => {
-                        setPassword(text);
-                        if (error) setError('');
-                      }}
-                      secureTextEntry={!showPassword}
-                    />
-                </View>
-              )}
-            </View>
+                  </View>
+                )}
+              </View>
+            )}
 
-            <Button
-              title={loginLoading ? 'Verificando...' : step === 'identifier' ? 'Continuar' : 'Iniciar Sesión'}
-              icon={step === 'identifier' ? 'ArrowRight' : undefined}
-              onPress={step === 'identifier' ? handleIdentifierSubmit : handlePasswordSubmit}
-              style={styles.submitBtn}
-              disabled={loginLoading}
-            />
+            {/* Main Action Button (For email & password steps) */}
+            {step !== 'noPassword' && (
+              <Button
+                title={
+                  checkingEmail
+                    ? 'Verificando...'
+                    : loginLoading
+                    ? 'Iniciando sesión...'
+                    : step === 'email'
+                    ? 'Continuar'
+                    : 'Iniciar Sesión'
+                }
+                icon={step === 'email' && !checkingEmail ? 'ArrowRight' : undefined}
+                onPress={step === 'email' ? handleEmailSubmit : handlePasswordSubmit}
+                style={styles.submitBtn}
+                disabled={isBusy || (step === 'email' && !email.trim())}
+              />
+            )}
 
-            {step === 'identifier' && (
-              <TouchableOpacity onPress={handleGuestLogin} style={styles.guestLink}>
+            {/* Guest Login option */}
+            {step === 'email' && (
+              <TouchableOpacity
+                onPress={handleGuestLogin}
+                style={styles.guestLink}
+                disabled={isBusy}
+              >
                 <Text style={styles.guestLinkText}>Continuar como Invitado</Text>
               </TouchableOpacity>
             )}
 
+            {/* Footer */}
             <View style={styles.footerDivider}>
-              <Text style={styles.footerText}>
-                ¿No tienes cuenta?{' '}
-              </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.footerText}>¿No tienes cuenta? </Text>
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate('Register', {
+                    initialEmail: email.trim().toLowerCase() || undefined,
+                  })
+                }
+                disabled={isBusy}
+              >
                 <Text style={styles.registerLink}>Regístrate gratis</Text>
               </TouchableOpacity>
             </View>
@@ -258,7 +437,6 @@ const styles = StyleSheet.create({
   formSection: {
     marginBottom: TOKENS.spacing.xl,
   },
-  passwordSection: {},
   verifiedPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -303,9 +481,6 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.textSubtle,
   },
-  eyeBtn: {
-    padding: 4,
-  },
   submitBtn: {
     width: '100%',
     height: 56,
@@ -326,6 +501,57 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
     textDecorationLine: 'underline',
   },
+  noPasswordSection: {
+    marginBottom: TOKENS.spacing.xl,
+  },
+  noPasswordContent: {
+    alignItems: 'center',
+  },
+  noPasswordTitle: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.textMain,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  noPasswordDesc: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    marginBottom: TOKENS.spacing.lg,
+    lineHeight: 20,
+  },
+  noPasswordBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  noPasswordCancelBtn: {
+    flex: 1,
+    height: 50,
+    backgroundColor: TOKENS.colors.surface100,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noPasswordCancelText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  noPasswordSubmitBtn: {
+    flex: 1,
+    height: 50,
+  },
+  secondaryActionBtn: {
+    marginTop: TOKENS.spacing.sm,
+    padding: TOKENS.spacing.sm,
+  },
+  secondaryActionText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand600,
+  },
   footerDivider: {
     marginTop: TOKENS.spacing.xl,
     paddingTop: TOKENS.spacing.lg,
@@ -344,5 +570,11 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.black,
     color: TOKENS.colors.textMain,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  boldText: {
+    fontWeight: 'bold',
   },
 });

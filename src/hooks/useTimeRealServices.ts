@@ -94,8 +94,7 @@ interface ClientReviewInput {
 
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-interface UseTimeRealServicesReturn {
-  loading: boolean;
+export interface UseTimeRealServicesReturn {  loading: boolean;
   activeOrder: OrderRealTime | null;
   localActiveOrder: OrderRealTime | null;
   setLocalActiveOrder: React.Dispatch<React.SetStateAction<OrderRealTime | null>>;
@@ -143,6 +142,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const socketRef = useRef<Socket | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationTsRef = useRef<Record<number, number>>({});
 
   const { data, loading, refetch } = useQuery<RealtimeStateData>(
     GET_MY_REALTIME_STATE,
@@ -197,6 +197,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const clientId = data?.me?.id ?? null;
 
   useEffect(() => {
+    if (!__DEV__) return;
     const p = activeOrder?.provider;
     const prov = providerState;
     if (p || prov) {
@@ -212,21 +213,33 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const [localActiveOrder, _setLocalActiveOrder] = useState<OrderRealTime | null>(null);
 
   useEffect(() => {
-    if (!activeOrder && localActiveOrder) {
-      const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-      if (TERMINAL.includes(localActiveOrder.status)) {
-        return;
+    const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+
+    // El socket es la fuente de verdad de una orden viva: mientras haya una
+    // localActiveOrder no debe pisarse con el snapshot del poll (que puede estar
+    // más atrasado). El poll solo la inicializa (null) y adopta estados terminales.
+    if (localActiveOrder) {
+      const pollOrder = activeOrder;
+      if (pollOrder && pollOrder.id === localActiveOrder.id) {
+        if (TERMINAL.includes(pollOrder.status) && !TERMINAL.includes(localActiveOrder.status)) {
+          _setLocalActiveOrder(pollOrder);
+        }
+      } else {
+        // El poll dejó de reportar esta orden: si clientOrders la marca terminal, la
+        // cerramos; en caso contrario la mantenemos viva (evita el null-clear de R2).
+        const match = clientOrders.find((o: any) => o.id === localActiveOrder.id);
+        if (match && TERMINAL.includes(match.status)) {
+          _setLocalActiveOrder(match);
+        }
       }
-      const match = clientOrders.find((o: any) => o.id === localActiveOrder.id);
-      if (match && TERMINAL.includes(match.status)) {
-        _setLocalActiveOrder(match);
-        return;
-      }
+      return;
     }
-    if (activeOrder !== localActiveOrder) {
+
+    // Sin orden local viva: bootstrap desde el poll.
+    if (activeOrder) {
       _setLocalActiveOrder(activeOrder);
     }
-  }, [activeOrder, clientOrders]);
+  }, [activeOrder, clientOrders, localActiveOrder]);
 
   const setLocalActiveOrder: React.Dispatch<React.SetStateAction<OrderRealTime | null>> = (value) => {
     _setLocalActiveOrder(value);
@@ -328,8 +341,17 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       clientLng: number;
       providerLat: number | null;
       providerLng: number | null;
+      timestamp?: number;
     }) => {
       logSocketIn('order-realtime:location-updated', payload);
+
+      // Guard de recencia client-side: descarta eventos fuera de orden/duplicados.
+      if (payload.timestamp && Number.isFinite(payload.timestamp)) {
+        const prev = locationTsRef.current[payload.orderRealtimeId] ?? 0;
+        if (payload.timestamp <= prev) return;
+        locationTsRef.current[payload.orderRealtimeId] = payload.timestamp;
+      }
+
       setLocalActiveOrder((prev) => {
         if (!prev || prev.id !== payload.orderRealtimeId) return prev;
         return {
@@ -366,7 +388,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     socket.on('provider:location-updated', (payload) => {
       logSocketIn('provider:location-updated', payload);
-      refetch();
+      // No refetch: la ubicación del proveedor llega vía `order-realtime:location-updated`
+      // para la orden activa. Un refetch aquí amplifica el tráfico con cada movimiento
+      // de CUALQUIER proveedor (evento broadcast a find:public).
     });
 
     socket.on('provider:disconnected', (payload: { orderRealtimeId: number }) => {
@@ -384,7 +408,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     });
 
     const appStateHandler = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active' && socketRef.current?.disconnected) {
+      if (nextAppState === 'active' && socketRef.current) {
         logSocketOut('reconnect_manual', { reason: 'app_foreground' });
         socketRef.current.connect();
       }
@@ -405,14 +429,16 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
   const toggleAvailability = useCallback(
     (active: boolean, lat?: number | null, lng?: number | null) => {
-      setAvailability({ variables: { active, lat, lng } });
+      return setAvailability({ variables: { active, lat, lng } });
     },
     [setAvailability],
   );
 
   const updateProviderLocation = useCallback(
-    async (lat: number, lng: number) => {
-      await updateProviderLocMut({ variables: { lat, lng } });
+    async (lat: number, lng: number, timestamp?: number) => {
+      await updateProviderLocMut({
+        variables: { lat, lng, timestamp: timestamp ?? undefined },
+      });
     },
     [updateProviderLocMut],
   );
@@ -428,6 +454,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           updateProviderLocation(
             position.coords.latitude,
             position.coords.longitude,
+            position.timestamp,
           ).catch(() => {});
         },
         () => {},
@@ -538,9 +565,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const updateLocation = useCallback(
-    async (orderRealtimeId: number, lat: number, lng: number) => {
+    async (orderRealtimeId: number, lat: number, lng: number, timestamp?: number) => {
       await updateLocMut({
-        variables: { orderRealtimeId, lat, lng },
+        variables: { orderRealtimeId, lat, lng, timestamp: timestamp ?? undefined },
       });
     },
     [updateLocMut],
@@ -564,6 +591,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
             order.id,
             position.coords.latitude,
             position.coords.longitude,
+            position.timestamp,
           ).catch(() => {});
         },
         () => {},

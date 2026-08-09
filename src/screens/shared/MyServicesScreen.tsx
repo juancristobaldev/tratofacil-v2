@@ -6,10 +6,16 @@ import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Badge, EmptyState, ErrorState } from '../../components';
 import { useServices } from '../../hooks/useServices';
 import { useRefresh } from '../../context/RefreshContext';
+import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
+import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
 
 export const MyServicesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { role } = useRole();
+  const { user } = useAuth();
+  const hasProvider = !!user?.provider;
   const { setIsRefreshing } = useRefresh();
 
   const {
@@ -54,6 +60,7 @@ export const MyServicesScreen: React.FC = () => {
   }
 
   return (
+    <ProviderOnlyGate hasProvider={hasProvider} role={role}>
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollBody}
@@ -99,16 +106,28 @@ export const MyServicesScreen: React.FC = () => {
         )}
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
-        <Button title="Publicar Nuevo Servicio" onPress={() => navigation.navigate('PublishService')} icon="Plus" style={styles.publishBtn} />
+        <Button
+          title="Publicar Nuevo Servicio"
+          onPress={() => {
+            if (role === 'guest') {
+              navigation.navigate('Login');
+            } else {
+              navigation.navigate('PublishService');
+            }
+          }}
+          icon="Plus"
+          style={styles.publishBtn}
+        />
       </View>
     </View>
+    </ProviderOnlyGate>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
+  container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white },
-  scrollBody: { padding: TOKENS.spacing.lg, paddingBottom: 90 },
+  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 90 },
   introRow: { marginBottom: TOKENS.spacing.md },
   subtitle: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, lineHeight: 18 },
   servicesList: { gap: TOKENS.spacing.md },
@@ -123,6 +142,6 @@ const styles = StyleSheet.create({
   priceVal: { fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
   actionRow: { flexDirection: 'row', gap: 12 },
   actionBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: TOKENS.colors.surface100, alignItems: 'center', justifyContent: 'center' },
-  footer: { backgroundColor: TOKENS.colors.white, borderTopWidth: 1, borderColor: TOKENS.colors.surface200, paddingHorizontal: TOKENS.spacing.lg, justifyContent: 'center' },
+  footer: { backgroundColor: TOKENS.colors.white, borderTopWidth: 1, borderColor: TOKENS.colors.surface200, paddingHorizontal: TOKENS.spacing.md, justifyContent: 'center' },
   publishBtn: { width: '100%' },
 });

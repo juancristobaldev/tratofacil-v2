@@ -1,51 +1,105 @@
-import React, { useRef } from 'react';
-import { StyleSheet, Text, TextInput, View, ViewStyle, TextInputProps } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { StyleSheet, Text, TextInput, View, ViewStyle, StyleProp, TextInputProps, TouchableOpacity } from 'react-native';
 import { TOKENS } from '../../theme';
 import { Icon, IconName } from './Icon';
 
 interface InputProps extends TextInputProps {
   label?: string;
   icon?: IconName;
+  leftIcon?: IconName;
   iconColor?: string;
-  containerStyle?: ViewStyle;
+  rightIcon?: IconName;
+  onRightIconPress?: () => void;
+  rightElement?: React.ReactNode;
+  isPassword?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
   error?: string;
+  helperText?: string;
 }
 
 export const Input: React.FC<InputProps> = ({
   label,
   icon,
+  leftIcon,
   iconColor,
+  rightIcon,
+  onRightIconPress,
+  rightElement,
+  isPassword,
   containerStyle,
   error,
+  helperText,
+  secureTextEntry,
   ...props
 }) => {
-  const [isFocused, setIsFocused] = React.useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const isSecure = isPassword ? !showPassword : secureTextEntry;
+  const activeIcon = icon || leftIcon;
+
   return (
     <View style={[styles.outerContainer, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <View
         style={[
           styles.inputContainer,
+          isFocused ? styles.inputFocusedBorder : null,
           error ? styles.inputErrorBorder : null,
         ]}
       >
-        {icon && (
+        {activeIcon && (
           <Icon
-            name={icon}
+            name={activeIcon}
             size={18}
-            color={iconColor || TOKENS.colors.brand500}
+            color={iconColor || (isFocused ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle)}
             style={styles.icon}
           />
         )}
         <TextInput
           placeholderTextColor={TOKENS.colors.textMuted}
           style={styles.textInput}
+          secureTextEntry={isSecure}
           onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
           onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
           {...props}
         />
+        {isPassword && (
+          <TouchableOpacity
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.rightIconBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Icon
+              name={showPassword ? 'EyeOff' : 'Eye'}
+              size={18}
+              color={showPassword ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
+            />
+          </TouchableOpacity>
+        )}
+        {!isPassword && rightIcon && (
+          <TouchableOpacity
+            onPress={onRightIconPress}
+            disabled={!onRightIconPress}
+            style={styles.rightIconBtn}
+            activeOpacity={0.7}
+          >
+            <Icon
+              name={rightIcon}
+              size={18}
+              color={TOKENS.colors.textSubtle}
+            />
+          </TouchableOpacity>
+        )}
+        {!isPassword && rightElement && (
+          <View style={styles.rightElementContainer}>
+            {rightElement}
+          </View>
+        )}
       </View>
       {error && <Text style={styles.errorText}>{error}</Text>}
+      {!error && helperText && <Text style={styles.helperText}>{helperText}</Text>}
     </View>
   );
 };
@@ -63,18 +117,19 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   error,
   ...props
 }) => {
-  const [isFocused, setIsFocused] = React.useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   return (
     <View style={[styles.outerContainer, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <View
         style={[
           styles.inputContainer,
+          isFocused ? styles.inputFocusedBorder : null,
           error ? styles.inputErrorBorder : null,
         ]}
       >
         <View style={styles.countryPrefixContainer}>
-          <Text style={styles.countryPrefixText}>CL +56</Text>
+          <Text style={[styles.countryPrefixText, isFocused && { color: TOKENS.colors.brand500 }]}>CL +56</Text>
         </View>
         <TextInput
           value={value}
@@ -83,6 +138,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           placeholder="9 1234 5678"
           placeholderTextColor={TOKENS.colors.textMuted}
           style={[styles.textInput, styles.phoneInput]}
+          maxLength={9}
           onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
           onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
           {...props}
@@ -93,28 +149,30 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   );
 };
 
-interface VerificationCodeInputProps {
+interface CodeInputProps {
   label?: string;
-  code: string[];
-  onChangeCode: (code: string[]) => void;
+  length?: number;
+  value: string;
+  onChangeText: (code: string) => void;
   containerStyle?: ViewStyle;
 }
 
-export const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
-  label = 'Código de verificación',
-  code,
-  onChangeCode,
+export const CodeInput: React.FC<CodeInputProps> = ({
+  label,
+  value,
+  onChangeText,
   containerStyle,
 }) => {
-  const inputsRef = useRef<any[]>([]);
+  const [code, setCode] = useState<string[]>(value.split('').slice(0, 4));
+  const inputsRef = useRef<Array<TextInput | null>>([]);
 
   const handleChange = (text: string, index: number) => {
     const newCode = [...code];
     newCode[index] = text;
-    onChangeCode(newCode);
+    setCode(newCode);
+    onChangeText(newCode.join(''));
 
-    // Auto-focus next input
-    if (text && index < 3) {
+    if (text.length > 0 && index < 3) {
       inputsRef.current[index + 1]?.focus();
     }
   };
@@ -122,15 +180,12 @@ export const VerificationCodeInput: React.FC<VerificationCodeInputProps> = ({
   const handleKeyPress = (e: any, index: number) => {
     if (e.nativeEvent.key === 'Backspace' && !code[index] && index > 0) {
       inputsRef.current[index - 1]?.focus();
-      const newCode = [...code];
-      newCode[index - 1] = '';
-      onChangeCode(newCode);
     }
   };
 
   return (
     <View style={[styles.outerContainer, containerStyle]}>
-      {label && <Text style={[styles.label, { textAlign: 'center', marginBottom: 12 }]}>{label}</Text>}
+      {label && <Text style={[styles.label, styles.codeLabel]}>{label}</Text>}
       <View style={styles.codeInputsContainer}>
         {Array(4)
           .fill(0)
@@ -167,6 +222,10 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMain,
     marginBottom: 6,
   },
+  codeLabel: {
+    textAlign: 'center',
+    marginBottom: 12,
+  },
   inputContainer: {
     backgroundColor: TOKENS.colors.white,
     borderRadius: TOKENS.geometry.radiusInput,
@@ -200,6 +259,12 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.statusError,
     fontSize: TOKENS.typography.sizes.xxs,
     fontWeight: TOKENS.typography.weights.semibold,
+    marginTop: 4,
+    marginLeft: 4,
+  },
+  helperText: {
+    color: TOKENS.colors.textSubtle,
+    fontSize: 11,
     marginTop: 4,
     marginLeft: 4,
   },
@@ -241,5 +306,16 @@ const styles = StyleSheet.create({
   codeInputActive: {
     borderColor: TOKENS.colors.brand500,
     borderWidth: 2,
+  },
+  rightIconBtn: {
+    padding: TOKENS.spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: TOKENS.spacing.xs,
+  },
+  rightElementContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: TOKENS.spacing.xs,
   },
 });

@@ -7,11 +7,12 @@ import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useLocation } from '../../context/LocationContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 import { useRoutePolyline } from '../../hooks/useRoute';
 import type { OrderRealTime } from '../../types/graphql';
 import { useNotification } from '../../context/NotificationContext';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
+import { summarizeForRole } from '../../utils/ratings';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -43,7 +44,7 @@ export const FocusModeProviderScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
   const { location } = useLocation();
-  const realtime = useTimeRealServices();
+  const realtime = useRealtime();
 
   const [orderState, setOrderState] = useState<ProviderOrderState>(panelData?.orderState || 'VIEW_REQUEST');
   const lastOrderState = useRef<ProviderOrderState | null>(null);
@@ -98,14 +99,15 @@ export const FocusModeProviderScreen: React.FC = () => {
   const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
 
   const handleFinish = () => {
+    const clientSummary = summarizeForRole(activeOrder?.client, 'client');
     clearPanel();
     navigation.navigate('Rating', {
       role: 'provider',
       targetUser: {
         name: activeOrder?.client?.displayName || 'Cliente',
         avatar: null,
-        rating: 0,
-        reviewsCount: 0,
+        rating: clientSummary?.rating ?? 0,
+        reviewsCount: clientSummary?.count ?? 0,
         subtext: activeOrder?.serviceProvider?.service?.name || '',
       },
       serviceDetails: activeOrder?.clientDescription || '',

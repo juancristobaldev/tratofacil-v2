@@ -9,12 +9,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { WEB_CALLBACK_URL } from '../../config/endpoints';
 import { useFlow } from '../../hooks/useFlow';
-
-// Mock rule similar to Next.js
-const getCommission = (total: number) => {
-  if (total <= 50000) return { rate: 0.10, label: 'Tarifa Estándar' };
-  return { rate: 0.05, label: 'Tarifa Reducida' };
-};
+import { getProductCommission } from '../../utils/comission';
 
 export const PurchaseScreen: React.FC = () => {
   const route = useRoute<any>();
@@ -57,7 +52,7 @@ export const PurchaseScreen: React.FC = () => {
     );
   }
 
-  const commission = getCommission(product.price);
+  const commission = getProductCommission(product.price);
   const basePrice = Math.round(product.price / (1 + commission.rate));
   const commissionAmount = product.price - basePrice;
 
@@ -66,7 +61,7 @@ export const PurchaseScreen: React.FC = () => {
     try {
       const orderResult = await createOrder(
         { productId: parseInt(product.id, 10), quantity: 1 },
-        shippingData ? {
+        shippingData && !shippingData.shippingDisabled ? {
           street: shippingData.street,
           number: shippingData.number,
           commune: shippingData.city,
@@ -111,21 +106,7 @@ export const PurchaseScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      
-      {/* HEADER */}
-      <View style={styles.header}>
-        <Button 
-          title="" 
-          icon="ArrowLeft" 
-          variant="secondary" 
-          onPress={() => navigation.goBack()} 
-          style={styles.backBtn}
-        />
-        <Text style={styles.headerTitle}>Confirmar Pago</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
         
         {/* PRODUCT SUMMARY */}
@@ -292,26 +273,6 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: TOKENS.typography.sizes.lg,
     fontWeight: 'bold',
-    color: TOKENS.colors.textMain,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: TOKENS.spacing.md,
-    backgroundColor: TOKENS.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface100,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    paddingHorizontal: 0,
-    borderRadius: 20,
-  },
-  headerTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
     color: TOKENS.colors.textMain,
   },
   scrollBody: {

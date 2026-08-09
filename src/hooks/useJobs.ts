@@ -35,7 +35,7 @@ interface UpdateJobInput {
 
 interface CreateOrderInput {
   jobId: number;
-  total: number;
+  workerId?: number;
 }
 
 interface ReviewsJobInput {
@@ -137,7 +137,7 @@ export function useJobs(): UseJobsReturn {
 
   const createOrder = async (input: CreateOrderInput) => {
     const { data: result } = await createOrderMut({
-      variables: { input },
+      variables: { input: { jobId: input.jobId, workerId: input.workerId } },
     });
     return result!.createOrderJobWithPayment;
   };

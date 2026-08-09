@@ -8,12 +8,14 @@ import {
   UPDATE_PRODUCT,
   REMOVE_PRODUCT,
   CREATE_ORDER_PRODUCT_WITH_PAYMENT,
+  CONFIRM_ORDER_PRODUCT_RECEIPT,
 } from '../graphql/operations/products';
 import {
   GET_MY_SALES,
   MY_ORDERS,
   UPDATE_ORDER_PRODUCT_SHIPPING,
   UPDATE_ORDER_PRODUCT_STATUS,
+  CANCEL_ORDER_PRODUCT,
 } from '../graphql/operations/orders';
 import type {
   Product,
@@ -31,6 +33,8 @@ interface CreateProductInput {
   location?: string;
   slug: string;
   categoryProductId: number;
+  shippingDisabled?: boolean;
+  imageUrls?: string[];
 }
 
 interface UpdateProductInput {
@@ -90,6 +94,8 @@ interface UseMarketplaceReturn {
   createOrder: (input: CreateOrderInput, shipping: CreateShippingInput) => Promise<{ id: number; status: string; total: number }>;
   updateShipping: (input: { orderId: number; shippingCompany: string; trackingCode: string }) => Promise<void>;
   updateOrderStatus: (orderId: number, status: string) => Promise<void>;
+  confirmOrderReceipt: (orderId: number) => Promise<void>;
+  cancelOrder: (orderId: number) => Promise<void>;
   refetchSales: () => void;
   refetchOrders: () => void;
 }
@@ -191,23 +197,35 @@ export function useMarketplace(): UseMarketplaceReturn {
 
   const [updateShippingMut] = useMutation(UPDATE_ORDER_PRODUCT_SHIPPING);
   const [updateStatusMut] = useMutation(UPDATE_ORDER_PRODUCT_STATUS);
+  const [cancelOrderMut] = useMutation(CANCEL_ORDER_PRODUCT);
+  const [confirmReceiptMut] = useMutation(CONFIRM_ORDER_PRODUCT_RECEIPT);
 
   const createProduct = async (input: CreateProductInput) => {
-    const { data: result } = await createProdMut({ variables: { input } });
+    const { data: result } = await createProdMut({
+      variables: { input },
+      refetchQueries: ['GetMarketplaceData'],
+    });
     return result!.createProduct;
   };
 
   const updateProduct = async (input: UpdateProductInput) => {
-    await updateProdMut({ variables: { input } });
+    await updateProdMut({
+      variables: { input },
+      refetchQueries: ['GetMarketplaceData'],
+    });
   };
 
   const removeProduct = async (id: number) => {
-    await removeProdMut({ variables: { id } });
+    await removeProdMut({
+      variables: { id },
+      refetchQueries: ['GetMarketplaceData'],
+    });
   };
 
   const createOrder = async (input: CreateOrderInput, shipping: CreateShippingInput) => {
     const { data: result } = await createOrderMut({
       variables: { input, shippingInput: shipping },
+      refetchQueries: ['MyOrders', 'GetMarketplaceData'],
     });
     return result!.createOrderProductWithPayment;
   };
@@ -219,6 +237,17 @@ export function useMarketplace(): UseMarketplaceReturn {
 
   const updateOrderStatus = async (orderId: number, status: string) => {
     await updateStatusMut({ variables: { orderId, status } });
+    refetchSales();
+  };
+
+  const confirmOrderReceipt = async (orderId: number) => {
+    await confirmReceiptMut({ variables: { orderId } });
+    refetchOrders();
+  };
+
+  const cancelOrder = async (orderId: number) => {
+    await cancelOrderMut({ variables: { orderId } });
+    refetchOrders();
     refetchSales();
   };
 
@@ -257,6 +286,8 @@ export function useMarketplace(): UseMarketplaceReturn {
     createOrder,
     updateShipping,
     updateOrderStatus,
+    confirmOrderReceipt,
+    cancelOrder,
     refetchSales,
     refetchOrders,
   };

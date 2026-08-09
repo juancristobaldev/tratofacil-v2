@@ -3,15 +3,17 @@ import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, RefreshCo
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Modal, ErrorState } from '../../components';
+import { Icon, Button, Card, Modal, ErrorState, EmptyState } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
+import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
 
 export const WalletScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const hasProvider = !!user?.provider;
   const { setIsRefreshing } = useRefresh();
   const [modalVisible, setModalVisible] = useState(false);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
@@ -55,7 +57,8 @@ export const WalletScreen: React.FC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ProviderOnlyGate hasProvider={hasProvider} role={role}>
+      <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollBody}
         showsVerticalScrollIndicator={false}
@@ -76,7 +79,7 @@ export const WalletScreen: React.FC = () => {
         <View style={styles.transactionsSection}>
           <Text style={styles.sectionTitle}>Historial de transacciones</Text>
           {transactions.length === 0 ? (
-            <Text style={styles.emptyText}>Sin movimientos recientes</Text>
+            <EmptyState icon="TrendingUp" title="Sin movimientos recientes" description="Tus ingresos y retiros se reflejarán aquí." />
           ) : (
             transactions.map((t) => {
               const isIncome = t.type === 'EARNING';
@@ -124,15 +127,16 @@ export const WalletScreen: React.FC = () => {
           <Button title="Entendido" onPress={handleSuccessClose} style={styles.successBtn} />
         </View>
       </Modal>
-    </View>
+      </View>
+    </ProviderOnlyGate>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: TOKENS.colors.white },
+  container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white, gap: 12 },
   loadingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
-  scrollBody: { padding: TOKENS.spacing.lg },
+  scrollBody: { padding: TOKENS.spacing.md },
   balanceCard: { backgroundColor: TOKENS.colors.brand50, borderColor: TOKENS.colors.brand100, alignItems: 'center', paddingVertical: 24, marginBottom: TOKENS.spacing.lg },
   balanceLabel: { fontSize: 10, color: TOKENS.colors.brand600, fontWeight: 'bold', textTransform: 'uppercase' },
   balanceVal: { fontSize: 36, fontWeight: TOKENS.typography.weights.black, color: TOKENS.colors.textMain, marginTop: 6 },

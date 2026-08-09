@@ -8,7 +8,9 @@ import { usePanel } from '../../context/PanelContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useLocation } from '../../context/LocationContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
+import { useNotification } from '../../context/NotificationContext';
+import { useServices } from '../../hooks/useServices';
 
 export const ProviderPanelContent: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -16,7 +18,9 @@ export const ProviderPanelContent: React.FC = () => {
   const { user } = useAuth();
   const { wallet } = usePlans();
   const { location } = useLocation();
-  const realtime = useTimeRealServices();
+  const realtime = useRealtime();
+  const { showNotification } = useNotification();
+  const { myServices } = useServices();
 
   const [online, setOnline] = useState(realtime?.isRealtimeActive || false);
 
@@ -24,7 +28,33 @@ export const ProviderPanelContent: React.FC = () => {
     setOnline(realtime?.isRealtimeActive || false);
   }, [realtime?.isRealtimeActive]);
 
+  // Reglas de negocio para activar el modo en línea (coherente con el backend):
+  // perfil completo + al menos un servicio publicado.
+  const canGoOnline =
+    user?.isProfileFullyComplete === true && (myServices?.length || 0) > 0;
+
   const handleToggleOnline = async (value: boolean) => {
+    // Solo se bloquea el ENCENDIDO. Apagar siempre está permitido.
+    if (value && !canGoOnline) {
+      setOnline(false);
+      if (!user?.isProfileFullyComplete) {
+        showNotification({
+          title: 'Perfil incompleto',
+          message: 'Completa tu perfil profesional para activar el modo en línea.',
+          type: 'error',
+        });
+        navigation.navigate('VerificationCenter');
+      } else {
+        showNotification({
+          title: 'Publica un servicio',
+          message: 'Necesitas al menos un servicio publicado para activar el modo en línea.',
+          type: 'error',
+        });
+        navigation.navigate('MyServices');
+      }
+      return;
+    }
+
     setOnline(value);
     let lat: number | null | undefined = null;
     let lng: number | null | undefined = null;
@@ -44,7 +74,17 @@ export const ProviderPanelContent: React.FC = () => {
         lng = location?.coords?.longitude ?? null;
       }
     }
-    realtime?.toggleAvailability(value, lat, lng);
+    try {
+      await realtime?.toggleAvailability(value, lat, lng);
+    } catch (err: any) {
+      // El backend puede rechazar la activación (reglas de negocio).
+      setOnline(false);
+      showNotification({
+        title: 'No se pudo activar el modo en línea',
+        message: err?.message || 'Completa tu perfil y publica un servicio para continuar.',
+        type: 'error',
+      });
+    }
   };
 
   const handleRejectRequest = async (orderId: number) => {

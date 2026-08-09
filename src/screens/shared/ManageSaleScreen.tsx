@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Avatar, Rating, Badge, ErrorState } from '../../components/ui';
@@ -17,6 +17,7 @@ export const ManageSaleScreen: React.FC = () => {
     mySalesLoading: loading,
     mySalesError: error,
     updateShipping,
+    updateOrderStatus,
     refetchSales,
   } = useMarketplace();
 
@@ -53,6 +54,7 @@ export const ManageSaleScreen: React.FC = () => {
     product: {
       name: orderData.product.name,
       price: orderData.unitPrice,
+      shippingDisabled: (orderData.product as any).shippingDisabled ?? false,
     },
     buyer: orderData.client ? {
       id: orderData.client.id,
@@ -72,6 +74,21 @@ export const ManageSaleScreen: React.FC = () => {
   };
 
   const earnings = (orderData.unitPrice * orderData.quantity) - orderData.commission;
+  const gross = orderData.unitPrice * orderData.quantity;
+  const commissionPct = gross > 0 ? Math.round((orderData.commission / gross) * 100) : 0;
+  const isCompleted = orderData.status === 'COMPLETED';
+  const isShipped = orderData.status === 'PROCESSING';
+
+  const confirmShipping = async () => {
+    try {
+      const target = isCompleted ? null : (orderData.status === 'PENDING' ? 'PROCESSING' : 'COMPLETED');
+      if (!target) return;
+      await updateOrderStatus(orderData.id, target);
+      await refetchSales();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo actualizar el envío.');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -84,9 +101,9 @@ export const ManageSaleScreen: React.FC = () => {
         
         {/* SUMMARY */}
         <View style={styles.card}>
-          <View style={styles.orderHeader}>
+            <View style={styles.orderHeader}>
             <Text style={styles.orderNumber}>Orden #{sale.id}</Text>
-            <Badge label={sale.status} tone={id === 3 ? 'success' : 'neutral'} />
+            <Badge label={sale.status} tone={isCompleted ? 'success' : 'neutral'} />
           </View>
           <Text style={styles.orderDate}>Publicado el {sale.date}</Text>
           
@@ -120,17 +137,11 @@ export const ManageSaleScreen: React.FC = () => {
                 onPress={() => navigation.navigate('ProviderProfile', { providerId: sale.buyer!.id })} 
                 style={{ flex: 1 }}
               />
-              <Button 
-                title="Mensaje" 
-                icon="MessageCircle"
-                onPress={() => {}}
-                style={{ flex: 1 }}
-              />
             </View>
           </View>
         )}
 
-        {sale.shippingInfo && (
+        {!sale.product.shippingDisabled && sale.shippingInfo && (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Icon name="Truck" size={20} color={TOKENS.colors.brand600} />
@@ -148,6 +159,17 @@ export const ManageSaleScreen: React.FC = () => {
           </View>
         )}
 
+        {sale.product.shippingDisabled && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Icon name="Store" size={20} color={TOKENS.colors.brand600} />
+              <Text style={styles.cardTitle}>Retiro en Tienda</Text>
+            </View>
+            <Text style={styles.shippingType}>Producto sin envío</Text>
+            <Text style={styles.shippingText}>El comprador debe retirar el producto en tu ubicación.</Text>
+          </View>
+        )}
+
         {/* EARNINGS */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Resumen de Ganancias</Text>
@@ -155,14 +177,14 @@ export const ManageSaleScreen: React.FC = () => {
             <Text style={styles.summaryLabel}>Precio de Venta</Text>
             <Text style={styles.summaryValue}>${sale.product.price.toLocaleString('es-CL')}</Text>
           </View>
-          {sale.shippingInfo && (
+          {!sale.product.shippingDisabled && sale.shippingInfo && (
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Cobro por Envío</Text>
               <Text style={styles.summaryValue}>${sale.shippingInfo.buyerPaidShipping.toLocaleString('es-CL')}</Text>
             </View>
           )}
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Comisión de plataforma (5%)</Text>
+            <Text style={styles.summaryLabel}>Comisión de plataforma ({commissionPct}%)</Text>
             <Text style={[styles.summaryValue, { color: TOKENS.colors.error600 }]}>
               -${(sale.product.price - earnings).toLocaleString('es-CL')}
             </Text>
@@ -177,13 +199,9 @@ export const ManageSaleScreen: React.FC = () => {
       </ScrollView>
 
       {/* FOOTER ACTION */}
-      {id === 3 ? (
+      {!isCompleted && (
         <View style={styles.footer}>
-          <Button title="Confirmar Envío o Entrega" icon="CheckCircle" onPress={() => {}} style={styles.confirmBtn} />
-        </View>
-      ) : (
-        <View style={styles.footer}>
-          <Button title="Editar Publicación" variant="outline" icon="Edit" onPress={() => {}} style={styles.confirmBtn} />
+          <Button title={isShipped ? 'Confirmar Entrega' : 'Confirmar Envío'} icon="CheckCircle" onPress={confirmShipping} style={styles.confirmBtn} />
         </View>
       )}
     </View>

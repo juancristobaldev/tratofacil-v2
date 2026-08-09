@@ -10,6 +10,7 @@ import { AuthProvider } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
 import { RefreshProvider } from './src/context/RefreshContext';
 import { PushProvider } from './src/push/PushProvider';
+import { RealtimeProvider } from './src/realtime/RealtimeContext';
 import { client } from './src/graphql/apollo';
 import { initializeDeepLinks } from './src/utils/deepLinks';
 
@@ -33,9 +34,11 @@ function App() {
                 <LocationProvider>
                   <NotificationProvider>
                   <DeepLinkSetup />
+                  <RealtimeProvider>
                   <RefreshProvider>
                     <AppNavigator />
                   </RefreshProvider>
+                  </RealtimeProvider>
                   </NotificationProvider>
                 </LocationProvider>
               </PushProvider>

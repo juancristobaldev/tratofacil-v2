@@ -31,9 +31,12 @@ export const MyProfileScreen: React.FC = () => {
   const [city, setCity] = useState('');
   const [providerTab, setProviderTab] = useState(0);
 
-  const updateUser = async (args: any) => {
-    // Placeholder to satisfy the missing function call
-    console.log('Update user', args);
+  const updateUser = async () => {
+    await updateProfile({
+      displayName: name,
+      email,
+      phone,
+    });
   };
 
   useEffect(() => {
@@ -52,16 +55,12 @@ export const MyProfileScreen: React.FC = () => {
 
   const handleSave = async () => {
     if (!user) return;
-    setSaving(true);
     try {
-      await updateUser({
-        variables: { input: { id: user.id, displayName: name, email, phone } },
-      });
+      await updateUser();
       Alert.alert('Perfil', 'Perfil actualizado exitosamente');
     } catch (err: any) {
       Alert.alert('Error', err.message);
     }
-    setSaving(false);
   };
 
   const handleLogout = async () => {

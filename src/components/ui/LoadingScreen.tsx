@@ -1,17 +1,27 @@
-import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { TOKENS } from '../../theme';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet, Animated } from 'react-native';
+import { TOKENS, MOTION } from '../../theme';
 
 interface Props {
   message?: string;
 }
 
 export const LoadingScreen: React.FC<Props> = ({ message = 'Cargando...' }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: MOTION.duration.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [opacity]);
+
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity }]}>
       <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
       <Text style={styles.text}>{message}</Text>
-    </View>
+    </Animated.View>
   );
 };
 

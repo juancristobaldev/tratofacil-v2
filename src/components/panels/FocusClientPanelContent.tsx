@@ -11,7 +11,6 @@ import {
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge } from '../ui';
 import { WEB_CALLBACK_URL, START_ORDER_DISTANCE_KM } from '../../config/endpoints';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
 import { useNotification } from '../../context/NotificationContext';
 import { usePanel } from '../../context/PanelContext';
 import type { OrderRealTime } from '../../types/graphql';
@@ -130,7 +129,7 @@ export const FocusClientPanelContent: React.FC = () => {
   if (!provider) return null;
 
 
-  console.log({status})
+  if (__DEV__) console.log({status})
   return (
     <View style={styles.container}>
       {/* PENDING — Esperando cotización */}

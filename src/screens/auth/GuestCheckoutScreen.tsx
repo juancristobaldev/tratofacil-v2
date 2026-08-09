@@ -6,15 +6,15 @@ import { Button, Input, Icon } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { usePanel } from '../../context/PanelContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 
 export const GuestCheckoutScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { setSession } = useAuth();
-  const { location } = useLocation();
+  const { location, refreshLocation } = useLocation();
   const { openPanel } = usePanel();
-  const { guestCreateContactRequest } = useTimeRealServices();
+  const { guestCreateContactRequest } = useRealtime();
 
   const provider = route.params?.provider;
   const [name, setName] = useState('');
@@ -39,8 +39,14 @@ export const GuestCheckoutScreen: React.FC = () => {
     setLoading(true);
 
     try {
-      const lat = location?.coords?.latitude ?? -33.42098;
-      const lng = location?.coords?.longitude ?? -70.60862;
+      const lat = location?.coords?.latitude;
+      const lng = location?.coords?.longitude;
+
+      if (lat == null || lng == null) {
+        refreshLocation();
+        Alert.alert('Ubicación requerida', 'No pudimos obtener tu ubicación. Intenta nuevamente en un momento.');
+        return;
+      }
 
       const result = await guestCreateContactRequest({
         guestEmail: email.trim().toLowerCase(),

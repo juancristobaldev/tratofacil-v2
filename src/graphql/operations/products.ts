@@ -10,6 +10,7 @@ export const GET_PRODUCTS = gql`
       stock
       description
       location
+      shippingDisabled
       categoryProductId
       subCategorySlug
       images {
@@ -48,6 +49,7 @@ export const GET_PRODUCT = gql`
       stock
       description
       location
+      shippingDisabled
       categoryProductId
       subCategorySlug
       categoryProduct {
@@ -92,6 +94,7 @@ export const GET_PRODUCT_BY_SLUG = gql`
       stock
       description
       location
+      shippingDisabled
       subCategorySlug
       categoryProduct {
         shippingDisabled
@@ -125,9 +128,9 @@ export const CREATE_PRODUCT = gql`
       name
       slug
       price
+      shippingDisabled
     }
-  }
-`;
+  }`;
 
 export const UPDATE_PRODUCT = gql`
   mutation UpdateProduct($input: UpdateProductInput!) {
@@ -183,6 +186,7 @@ export const GET_MARKETPLACE_DATA = gql`
         location
         stock
         description
+        shippingDisabled
         categoryProductId
         subCategorySlug
         user {
@@ -231,6 +235,15 @@ export const INIT_FLOW_PRODUCT = gql`
 export const CONFIRM_FLOW_PRODUCT = gql`
   mutation ConfirmFlowProduct($token: String!) {
     confirmFlowProduct(token: $token) {
+      id
+      status
+    }
+  }
+`;
+
+export const CONFIRM_ORDER_PRODUCT_RECEIPT = gql`
+  mutation ConfirmOrderProductReceipt($orderId: Int!) {
+    confirmOrderProductReceipt(orderId: $orderId) {
       id
       status
     }

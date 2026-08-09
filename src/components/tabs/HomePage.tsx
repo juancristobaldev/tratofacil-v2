@@ -9,7 +9,7 @@ import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarke
 import { usePanel } from '../../context/PanelContext';
 import { useRole } from '../../context/RoleContext';
 import { useLocation } from '../../context/LocationContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCategories } from '../../hooks/useCategories';
 import { ENDPOINT } from '../../config/endpoints';
@@ -54,7 +54,7 @@ export const HomePage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isEditingRadius, setIsEditingRadius] = useState(false);
   const [radiusKm, setRadiusKm] = useState(5);
-  const realtime = useTimeRealServices();
+  const realtime = useRealtime();
 
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
@@ -77,15 +77,17 @@ export const HomePage: React.FC = () => {
     // Calculate zoom level. MapView uses latitudeDelta/longitudeDelta
     const zoom = Math.max(0, Math.min(20, Math.round(Math.log2(360 / currentRegion.longitudeDelta))));
 
-    console.log('[AUDIT:7] getClusters params | bbox:', bbox.map((v: any) => Number(v).toFixed(5)).join(' / '), '| zoom:', zoom);
+    if (__DEV__) console.log('[AUDIT:7] getClusters params | bbox:', bbox.map((v: any) => Number(v).toFixed(5)).join(' / '), '| zoom:', zoom);
 
     const newClusters = superclusterRef.current.getClusters(bbox, zoom);
 
-    console.log('[AUDIT:8] getClusters result | count:', newClusters.length);
-    newClusters.forEach((c: any, i: number) => {
-      const isCl = c.properties.cluster;
-      console.log('[AUDIT:8]   cluster[' + i + '] | isCluster:', isCl, '| coords:', c.geometry.coordinates, isCl ? ('| point_count:' + c.properties.point_count) : ('| providerId:' + c.properties.provider?.id));
-    });
+    if (__DEV__) {
+      console.log('[AUDIT:8] getClusters result | count:', newClusters.length);
+      newClusters.forEach((c: any, i: number) => {
+        const isCl = c.properties.cluster;
+        console.log('[AUDIT:8]   cluster[' + i + '] | isCluster:', isCl, '| coords:', c.geometry.coordinates, isCl ? ('| point_count:' + c.properties.point_count) : ('| providerId:' + c.properties.provider?.id));
+      });
+    }
 
     setClusters(newClusters);
   }, []);
@@ -192,7 +194,7 @@ export const HomePage: React.FC = () => {
         const lat = p.lat ?? fallbackCoords?.lat ?? null;
         const lng = p.lng ?? fallbackCoords?.lng ?? null;
         if (service.slug === 'reparacion-de-llaves-de-agua' || service.slug === 'albanileria-en-general') {
-          console.log('[DEBUG:MAP] Provider found | service:', service.slug, '| catSlug:', service.category?.slug, '| provider:', p.name, '| lat:', lat, '| lng:', lng, '| city:', cityKey, '| hasFallback:', !!fallbackCoords, '| isRealtime:', p.isRealtimeActive);
+          if (__DEV__) console.log('[DEBUG:MAP] Provider found | service:', service.slug, '| catSlug:', service.category?.slug, '| provider:', p.name, '| lat:', lat, '| lng:', lng, '| city:', cityKey, '| hasFallback:', !!fallbackCoords, '| isRealtime:', p.isRealtimeActive);
         }
         providers.push({
           id: String(p.id),
@@ -203,7 +205,7 @@ export const HomePage: React.FC = () => {
             ? p.reviews.reduce((s: number, r: any) => s + r.rating, 0) / p.reviews.length
             : 0,
           reviewsCount: p.reviews?.length || 0,
-          verified: true,
+          verified: !!(p.certificates?.some((c: any) => c.verified)),
           isRealtimeActive: p.isRealtimeActive || false,
           serviceName: service.name,
           categorySlug: service.category?.slug || '',
@@ -238,15 +240,34 @@ export const HomePage: React.FC = () => {
       selectedSlugs.includes(p.categorySlug),
     );
 
-    console.log('[DEBUG:MAP] filteredProviders | selectedCategory:', selectedCategory.slug, '| resolvedSlugs:', selectedSlugs, '| displayProviders:', displayProviders.length, '| filtered:', result.length);
-    if (result.length > 0) {
-      result.forEach((p: any) => console.log('[DEBUG:MAP]  → provider:', p.name, '| catSlug:', p.categorySlug, '| lat:', p.lat, '| lng:', p.lng));
+    if (__DEV__) {
+      console.log('[DEBUG:MAP] filteredProviders | selectedCategory:', selectedCategory.slug, '| resolvedSlugs:', selectedSlugs, '| displayProviders:', displayProviders.length, '| filtered:', result.length);
+      if (result.length > 0) {
+        result.forEach((p: any) => console.log('[DEBUG:MAP]  → provider:', p.name, '| catSlug:', p.categorySlug, '| lat:', p.lat, '| lng:', p.lng));
+      }
     }
     return result;
   }, [displayProviders, selectedCategory, categories]);
 
+  // Proveedores de la categoría seleccionada, con coordenadas válidas y ordenados por
+  // distancia al usuario (cercano → lejano). Permite "viajar" entre ellos desde el sheet.
+  const orderedFilteredProviders = useMemo(() => {
+    const withCoords = (filteredProviders as any[]).filter(
+      (p: any) =>
+        p.lat != null && p.lng != null && Number.isFinite(p.lat) && Number.isFinite(p.lng),
+    );
+    const lat = location?.coords?.latitude;
+    const lng = location?.coords?.longitude;
+    if (lat == null || lng == null) return withCoords;
+    return [...withCoords].sort((a: any, b: any) => {
+      const da = getDistanceKm(lat, lng, a.lat, a.lng);
+      const db = getDistanceKm(lat, lng, b.lat, b.lng);
+      return da - db;
+    });
+  }, [filteredProviders, location?.coords?.latitude, location?.coords?.longitude]);
+
   useEffect(() => {
-    console.log('[AUDIT:1] supercluster effect START | selectedCategory:', selectedCategory?.slug, '| filteredProviders.length:', filteredProviders.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5), '| latDelta:', region.latitudeDelta, '| lngDelta:', region.longitudeDelta);
+    if (__DEV__) console.log('[AUDIT:1] supercluster effect START | selectedCategory:', selectedCategory?.slug, '| filteredProviders.length:', filteredProviders.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5), '| latDelta:', region.latitudeDelta, '| lngDelta:', region.longitudeDelta);
 
     if (!selectedCategory) {
       superclusterRef.current.load([]);
@@ -256,7 +277,7 @@ export const HomePage: React.FC = () => {
 
     filteredProviders.forEach((p: any) => {
       const hasCoords = p.lat != null && p.lng != null;
-      console.log('[AUDIT:2] provider filter | name:', p.name, '| id:', p.id, '| lat:', p.lat, 'type:', typeof p.lat, '| lng:', p.lng, 'type:', typeof p.lng, '| isFinite:', hasCoords ? (Number.isFinite(p.lat) && Number.isFinite(p.lng)) : 'N/A', '| passes:', hasCoords);
+      if (__DEV__) console.log('[AUDIT:2] provider filter | name:', p.name, '| id:', p.id, '| lat:', p.lat, 'type:', typeof p.lat, '| lng:', p.lng, 'type:', typeof p.lng, '| isFinite:', hasCoords ? (Number.isFinite(p.lat) && Number.isFinite(p.lng)) : 'N/A', '| passes:', hasCoords);
     });
 
     const uniqueProvidersMap = new Map();
@@ -268,7 +289,7 @@ export const HomePage: React.FC = () => {
         }
       });
 
-    console.log('[AUDIT:3] uniqueProviders | count:', uniqueProvidersMap.size, '| items:', Array.from(uniqueProvidersMap.values()).map((p: any) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng })));
+    if (__DEV__) console.log('[AUDIT:3] uniqueProviders | count:', uniqueProvidersMap.size, '| items:', Array.from(uniqueProvidersMap.values()).map((p: any) => ({ id: p.id, name: p.name, lat: p.lat, lng: p.lng })));
 
     const points = Array.from(uniqueProvidersMap.values())
       .map((p: any) => {
@@ -277,17 +298,17 @@ export const HomePage: React.FC = () => {
           properties: { cluster: false, provider: p },
           geometry: { type: 'Point', coordinates: [p.lng, p.lat] }
         };
-        console.log('[AUDIT:4] GeoJSON point | id:', p.id, '| coords:', feature.geometry.coordinates);
+        if (__DEV__) console.log('[AUDIT:4] GeoJSON point | id:', p.id, '| coords:', feature.geometry.coordinates);
         return feature;
       }) as any[];
     
-    console.log('[AUDIT:5] loading into supercluster | points.length:', points.length);
+    if (__DEV__) console.log('[AUDIT:5] loading into supercluster | points.length:', points.length);
     superclusterRef.current.load(points);
     const allPoints = superclusterRef.current.getClusters([-180, -90, 180, 90], 0);
-    console.log('[AUDIT:6] supercluster total indexed | count:', allPoints.length);
+    if (__DEV__) console.log('[AUDIT:6] supercluster total indexed | count:', allPoints.length);
 
     updateClusters(region);
-    console.log('[DEBUG:MAP] clusters loaded | points prepared:', points.length, '| filteredProviders total:', filteredProviders.length, '| filtered with coords:', uniqueProvidersMap.size);
+    if (__DEV__) console.log('[DEBUG:MAP] clusters loaded | points prepared:', points.length, '| filteredProviders total:', filteredProviders.length, '| filtered with coords:', uniqueProvidersMap.size);
   }, [filteredProviders, updateClusters]);
 
   const onCategoryPressRef = useRef<(category: Category) => void>(null);
@@ -350,6 +371,33 @@ export const HomePage: React.FC = () => {
     };
   }, [selectedProvider, location?.coords?.latitude, location?.coords?.longitude]);
 
+  // Centra la cámara en un proveedor (desplazado al norte para no quedar tapado por el sheet).
+  const animateToProvider = useCallback((provider: any) => {
+    if (!provider || provider.lat == null || provider.lng == null) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: provider.lat + 0.005,
+        longitude: provider.lng,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      },
+      500,
+    );
+  }, []);
+
+  // Navegación desde el carrusel: selecciona proveedor, centra cámara y sincroniza el sheet
+  // SIN reabrir el panel (usa updatePanelData para evitar loops de openPanel).
+  const handleNavigateProvider = useCallback(
+    (provider: any) => {
+      setSelectedProvider(provider);
+      animateToProvider(provider);
+      const idx = orderedFilteredProviders.findIndex(
+        (p: any) => String(p.id) === String(provider.id),
+      );
+      updatePanelData({ provider, selectedIndex: idx < 0 ? 0 : idx });
+    },
+    [setSelectedProvider, animateToProvider, orderedFilteredProviders, updatePanelData],
+  );
 
   const selectedCategoryRef = useRef(selectedCategory);
   selectedCategoryRef.current = selectedCategory;
@@ -405,10 +453,12 @@ export const HomePage: React.FC = () => {
           />
         )}
         {(() => {
-          console.log('[AUDIT:9] MapView render | clusters.length:', clusters.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5));
-          clusters.forEach((c: any, i: number) => {
-            console.log('[AUDIT:9]   render['+i+'] | isCluster:', c.properties.cluster, '| coords:', c.geometry.coordinates, '| key:', c.properties.cluster ? ('cluster-'+i) : ('provider-'+c.properties.provider?.id));
-          });
+          if (__DEV__) {
+            console.log('[AUDIT:9] MapView render | clusters.length:', clusters.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5));
+            clusters.forEach((c: any, i: number) => {
+              console.log('[AUDIT:9]   render['+i+'] | isCluster:', c.properties.cluster, '| coords:', c.geometry.coordinates, '| key:', c.properties.cluster ? ('cluster-'+i) : ('provider-'+c.properties.provider?.id));
+            });
+          }
           return null;
         })()}
         {clusters.map((cluster: any, index: number) => {
@@ -448,9 +498,15 @@ export const HomePage: React.FC = () => {
               coordinate={{ latitude, longitude }}
               isSelected={isSelected}
               onPress={() => {
+                const idx = orderedFilteredProviders.findIndex(
+                  (p: any) => String(p.id) === String(provider.id),
+                );
                 setSelectedProvider(provider);
                 openPanel('provider_preview', {
                   provider,
+                  providers: orderedFilteredProviders,
+                  selectedIndex: idx < 0 ? 0 : idx,
+                  onIndexChange: handleNavigateProvider,
                   onViewProfile: (p: any) => {
                     closePanel();
                     setSelectedProvider(null);

@@ -91,7 +91,7 @@ export function useCategories(): UseCategoriesReturn {
         if (sp.provider?.logoImage?.cdnUrl) withCdnUrl++;
       });
     });
-    if (total > 0) {
+    if (__DEV__ && total > 0) {
       console.log('[TRACE:QUERY] GetServicesByCategory | providers:', total, '| withCdnUrl:', withCdnUrl, '| services:', svcs.length);
 
       svcs.forEach((s: any, si: number) => {

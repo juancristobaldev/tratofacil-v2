@@ -7,10 +7,11 @@ import { PanelContainer } from './PanelContainer';
 import { useRole } from '../../context/RoleContext';
 import { HomePage } from '../tabs/HomePage';
 import { usePanel } from '../../context/PanelContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 import { useFlow } from '../../hooks/useFlow';
 import { setPaymentCallbackHandler } from '../../utils/deepLinks';
 import { getImageUrl } from '../../utils/imageUrl';
+import { summarizeForRole } from '../../utils/ratings';
 import { FocusModeClientScreen } from '../../screens/client/FocusModeClientScreen';
 import { FocusModeProviderScreen } from '../../screens/provider/FocusModeProviderScreen';
 import { MarketplaceTab } from '../tabs/MarketplaceTab';
@@ -52,7 +53,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   }, [role, openPanel]);
 
-  const realtime = useTimeRealServices();
+  const realtime = useRealtime();
   const flow = useFlow();
 
   useEffect(() => {
@@ -79,6 +80,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const p = order.provider;
     if (!p) return;
 
+    const providerSummary = summarizeForRole(p, 'provider');
+
     openPanel('focus_client', {
       order,
       provider: {
@@ -86,9 +89,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         name: p.name,
         providerName: p.name,
         avatar: getImageUrl((p as any).logoImage?.cdnUrl || null),
-        rating: 0,
-        reviewsCount: 0,
-        verified: false,
+        rating: providerSummary?.rating ?? 0,
+        reviewsCount: providerSummary?.count ?? 0,
+        verified: !!(p as any).certificates?.some((c: any) => c.verified),
         isRealtimeActive: true,
         serviceName: order.serviceProvider?.service?.name || '',
         serviceProviderId: order.serviceProvider?.id,
@@ -187,7 +190,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         activeTab={activeTab}
         onTabChange={handleTabChange}
         role={role}
-        notificationCount={3}
       />
     </View>
   );

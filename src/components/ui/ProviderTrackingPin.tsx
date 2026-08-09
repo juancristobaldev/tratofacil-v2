@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Marker, Circle } from 'react-native-maps';
-import { TOKENS } from '../../theme';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon } from './Icon';
 
 const AnimatedMapCircle = Animated.createAnimatedComponent(Circle);
@@ -15,16 +15,27 @@ interface ProviderTrackingPinProps {
 }
 
 export const ProviderTrackingPin: React.FC<ProviderTrackingPinProps> = ({ coordinate }) => {
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const progress1 = useRef(new Animated.Value(0)).current;
   const progress2 = useRef(new Animated.Value(0)).current;
+
+  // Warmup lifecycle for Marker snapshot
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [coordinate.latitude, coordinate.longitude]);
 
   useEffect(() => {
     const createAnimation = (value: Animated.Value) =>
       Animated.loop(
         Animated.timing(value, {
           toValue: 1,
-          duration: 2500,
-          easing: Easing.linear,
+          duration: MOTION.duration.pulse,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
           useNativeDriver: false,
         })
       );
@@ -36,7 +47,7 @@ export const ProviderTrackingPin: React.FC<ProviderTrackingPinProps> = ({ coordi
     
     const timeout = setTimeout(() => {
       anim2.start();
-    }, 1250);
+    }, 1200);
 
     return () => {
       anim1.stop();
@@ -47,32 +58,32 @@ export const ProviderTrackingPin: React.FC<ProviderTrackingPinProps> = ({ coordi
 
   const radius1 = progress1.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 200], // Slightly larger for provider
+    outputRange: [0, 180], // Slightly larger for provider in transit
   });
 
   const fillColor1 = progress1.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.25)', 'rgba(230, 0, 126, 0)'],
   });
 
   const strokeColor1 = progress1.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.5)', 'rgba(230, 0, 126, 0)'],
   });
 
   const radius2 = progress2.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 200],
+    outputRange: [0, 180],
   });
 
   const fillColor2 = progress2.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.4)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.25)', 'rgba(230, 0, 126, 0)'],
   });
 
   const strokeColor2 = progress2.interpolate({
-    inputRange: [0, 0.1, 1],
-    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.6)', 'rgba(230, 0, 126, 0)'],
+    inputRange: [0, 0.15, 1],
+    outputRange: ['rgba(230, 0, 126, 0)', 'rgba(230, 0, 126, 0.5)', 'rgba(230, 0, 126, 0)'],
   });
 
   return (
@@ -93,7 +104,13 @@ export const ProviderTrackingPin: React.FC<ProviderTrackingPinProps> = ({ coordi
         strokeWidth={1.5}
         zIndex={997}
       />
-      <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 0.5 }} zIndex={998} tracksViewChanges={false}>
+      <Marker
+        coordinate={coordinate}
+        anchor={{ x: 0.5, y: 0.5 }}
+        centerOffset={{ x: 0, y: 0 }}
+        zIndex={998}
+        tracksViewChanges={tracksViewChanges}
+      >
         <View style={styles.container}>
           <View style={styles.circle}>
             <View style={styles.iconContainer}>
@@ -120,8 +137,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderWidth: 2,
+    borderColor: TOKENS.colors.white,
     ...TOKENS.shadows.floating,
   },
   iconContainer: {

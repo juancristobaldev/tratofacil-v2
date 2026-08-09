@@ -9,6 +9,7 @@ import {
   REQUEST_WITHDRAWAL,
   MY_PAYMENT_HISTORY,
   CREATE_ORDER_AD_WITH_PAYMENT,
+  CREATE_FLOW_AD_TRANSACTION,
 } from '../graphql/operations/wallet';
 import { useAuth } from '../context/AuthContext';
 import type {
@@ -47,7 +48,6 @@ interface CreateAdInput {
   link: string;
   serviceId?: number;
   total: number;
-  userId: number;
 }
 
 interface UsePlansReturn {
@@ -68,6 +68,7 @@ interface UsePlansReturn {
   requestWithdrawal: () => Promise<WithdrawalResult>;
   withdrawalLoading: boolean;
   createAd: (input: CreateAdInput) => Promise<{ id: number; status: string; total: number }>;
+  createFlowAd: (orderId: number) => Promise<{ url: string; token: string }>;
   refetch: () => void;
 }
 
@@ -116,6 +117,10 @@ export function usePlans(): UsePlansReturn {
     createOrderAdWithPayment: { id: number; status: string; total: number };
   }>(CREATE_ORDER_AD_WITH_PAYMENT);
 
+  const [createFlowAdMut] = useMutation<{
+    createFlowAdTransaction: { url: string; token: string };
+  }>(CREATE_FLOW_AD_TRANSACTION);
+
   const providerPlan = planData?.myProviderPlan || null;
   const marketplacePlans = user?.marketplacePlanOrders || [];
   const marketplacePlan = marketplacePlans.length > 0 ? marketplacePlans[0] : null;
@@ -154,6 +159,11 @@ export function usePlans(): UsePlansReturn {
     return result!.createOrderAdWithPayment;
   };
 
+  const createFlowAd = async (orderId: number) => {
+    const { data: result } = await createFlowAdMut({ variables: { orderId } });
+    return result!.createFlowAdTransaction;
+  };
+
   return {
     providerPlan,
     providerPlanLoading,
@@ -172,6 +182,7 @@ export function usePlans(): UsePlansReturn {
     requestWithdrawal,
     withdrawalLoading,
     createAd,
+    createFlowAd,
     refetch,
   };
 }

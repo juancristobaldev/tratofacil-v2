@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, ErrorState } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
+import { REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
 
 export const BillingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -16,9 +17,20 @@ export const BillingScreen: React.FC = () => {
   const cardBrand = user?.creditCardType || 'VISA';
   const cardLast4 = user?.last4CardDigits || '****';
 
-  const { paymentHistory: payments, paymentHistoryLoading: loading, paymentHistoryError: error, refetch } = usePlans();
+  const {
+    paymentHistory: payments,
+    paymentHistoryLoading: loading,
+    paymentHistoryError: error,
+    registerCard,
+    providerPlan,
+    marketplacePlan,
+    cancelSubscription,
+    reactivateSubscription,
+    refetch,
+  } = usePlans();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -28,6 +40,54 @@ export const BillingScreen: React.FC = () => {
     setIsRefreshing(false);
   }, [refetch, setIsRefreshing]);
 
+  const handleRegisterCard = async () => {
+    if (registering) return;
+    setRegistering(true);
+    try {
+      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      if (result.alreadyRegistered) {
+        Alert.alert('Tarjeta', 'Ya tienes una tarjeta vinculada.');
+      } else if (result.url) {
+        await Linking.openURL(result.url);
+      } else {
+        Alert.alert('Error', 'No se pudo iniciar el registro de la tarjeta.');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'No se pudo vincular la tarjeta.');
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  const handleCancel = (flowId: string, type: 'PROVIDER' | 'MARKETPLACE') => {
+    Alert.alert('Cancelar suscripción', '¿Seguro que deseas cancelar esta suscripción?', [
+      { text: 'No' },
+      {
+        text: 'Sí, cancelar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await cancelSubscription({ subscriptionFlowId: flowId, type });
+            Alert.alert('Cancelada', 'Suscripción cancelada.');
+            refetch();
+          } catch (err: any) {
+            Alert.alert('Error', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleReactivate = async (flowId: string, type: 'PROVIDER' | 'MARKETPLACE') => {
+    try {
+      await reactivateSubscription({ subscriptionFlowId: flowId, type });
+      Alert.alert('Reactivada', 'Suscripción reactivada.');
+      refetch();
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    }
+  };
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={TOKENS.colors.brand500} /></View>;
   }
@@ -35,6 +95,37 @@ export const BillingScreen: React.FC = () => {
   if (error) {
     return <ErrorState message="Error al cargar historial de pagos." />;
   }
+
+  const renderSubscription = (
+    plan: { planActive: boolean; planEndsAt: string | null; subscriptionFlowId: string | null; plan: string } | null,
+    type: 'PROVIDER' | 'MARKETPLACE'
+  ) => {
+    if (!plan || !plan.subscriptionFlowId) return null;
+    const ended = plan.planEndsAt ? new Date(plan.planEndsAt).getTime() < Date.now() : false;
+    return (
+      <View style={styles.subscriptionBox}>
+        <View style={styles.subsHeader}>
+          <Icon name="Crown" size={20} color={TOKENS.colors.brand600} />
+          <Text style={styles.subsPlan}>
+            {type === 'PROVIDER' ? plan.plan.replace('TRATOFACIL_SRV_', '') : plan.plan.replace('TRATOFACIL_PUB_', '') || 'FREE'}
+          </Text>
+        </View>
+        <Text style={styles.subsStatus}>
+          {plan.planActive ? 'Activa' : ended ? 'Finalizada' : 'Cancelada'}
+        </Text>
+        {plan.planEndsAt && (
+          <Text style={styles.subsEnds}>Vence el {new Date(plan.planEndsAt).toLocaleDateString('es-CL')}</Text>
+        )}
+        {plan.planActive ? (
+          <Button title="Cancelar Suscripción" variant="outline" onPress={() => handleCancel(plan.subscriptionFlowId!, type)} style={styles.subsBtn} />
+        ) : (
+          !ended && (
+            <Button title="Reactivar Suscripción" variant="outline" onPress={() => handleReactivate(plan.subscriptionFlowId!, type)} style={styles.subsBtn} />
+          )
+        )}
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -62,6 +153,24 @@ export const BillingScreen: React.FC = () => {
               <Icon name="CreditCard" size={32} color={TOKENS.colors.textSubtle} />
               <Text style={styles.emptyCardText}>No tienes tarjetas vinculadas</Text>
             </View>
+          )}
+          <Button
+            title={hasCard ? 'Cambiar Tarjeta' : 'Vincular Tarjeta'}
+            icon="CreditCard"
+            variant={hasCard ? 'outline' : 'primary'}
+            loading={registering}
+            disabled={registering}
+            onPress={handleRegisterCard}
+            style={styles.cardBtn}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Suscripciones</Text>
+          {renderSubscription(providerPlan, 'PROVIDER')}
+          {renderSubscription(marketplacePlan, 'MARKETPLACE')}
+          {(!providerPlan?.subscriptionFlowId && !marketplacePlan?.subscriptionFlowId) && (
+            <Text style={styles.emptyText}>Sin suscripciones activas</Text>
           )}
         </View>
 
@@ -187,6 +296,20 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
     fontSize: TOKENS.typography.sizes.sm,
   },
+  cardBtn: { marginTop: TOKENS.spacing.md },
+  subscriptionBox: {
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 16,
+    padding: TOKENS.spacing.lg,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginBottom: TOKENS.spacing.md,
+  },
+  subsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  subsPlan: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
+  subsStatus: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.semibold },
+  subsEnds: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, marginTop: 4 },
+  subsBtn: { marginTop: TOKENS.spacing.md },
   transactionsList: {
     backgroundColor: TOKENS.colors.white,
     borderRadius: 20,

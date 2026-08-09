@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Avatar, Rating, ErrorState } from '../../components/ui';
+import { Icon, Button, Avatar, Rating, ErrorState, ServiceTimeline, TimelineStep } from '../../components/ui';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { useRefresh } from '../../context/RefreshContext';
 
@@ -16,8 +16,11 @@ export const OrderDetailScreen: React.FC = () => {
     myOrders: ordersObj,
     myOrdersLoading: loading,
     myOrdersError: error,
+    confirmOrderReceipt,
     refetchOrders,
   } = useMarketplace();
+
+  const [isReceiving, setIsReceiving] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -39,11 +42,12 @@ export const OrderDetailScreen: React.FC = () => {
           name: productOrder.product.name,
           price: productOrder.unitPrice,
           shippingPrice: 0,
+          shippingDisabled: (productOrder.product as any).shippingDisabled ?? false,
         },
         seller: {
-          id: productOrder.product.user?.id || 99,
+          id: productOrder.product.user?.id ?? null,
           name: productOrder.product.user?.provider?.name || productOrder.product.user?.displayName || 'Vendedor',
-          rating: 4.0,
+          rating: 0,
           reviews: 0,
         },
         shipping: {
@@ -58,6 +62,58 @@ export const OrderDetailScreen: React.FC = () => {
     return null;
   }, [ordersObj, id]);
 
+  const timelineSteps: TimelineStep[] = useMemo(() => {
+    if (!order) return [];
+    if (order.product.shippingDisabled) {
+      return [
+        {
+          time: 'Paso 1',
+          title: 'Pago Aprobado',
+          description: 'El pago ha sido acreditado exitosamente.',
+          iconName: 'CheckCircle',
+          status: 'completed',
+        },
+        {
+          time: 'Paso 2',
+          title: 'Compra Completada',
+          description: order.shipping.status === 'COMPLETED' ? 'Producto listo para retiro.' : 'Esperando confirmación del vendedor.',
+          iconName: 'Package',
+          status: order.shipping.status === 'COMPLETED' ? 'completed' : 'current',
+        },
+      ];
+    }
+    return [
+      {
+        time: 'Paso 1',
+        title: 'Pago Aprobado',
+        description: 'El pago ha sido acreditado exitosamente.',
+        iconName: 'CheckCircle',
+        status: 'completed',
+      },
+      {
+        time: 'Paso 2',
+        title: 'Preparando Envío',
+        description: order.shipping.status !== 'PENDING' ? 'Producto empaquetado y listo.' : 'El vendedor está preparando tu paquete.',
+        iconName: 'Package',
+        status: order.shipping.status !== 'PENDING' ? 'completed' : 'current',
+      },
+      {
+        time: 'Paso 3',
+        title: 'En Camino',
+        description: `Seguimiento: ${order.shipping.tracking}`,
+        iconName: 'Truck',
+        status: order.shipping.status === 'SUCCESS' || order.shipping.status === 'COMPLETED' ? 'completed' : order.shipping.status === 'PROCESSING' ? 'current' : 'pending',
+      },
+      {
+        time: 'Paso 4',
+        title: 'Entregado',
+        description: order.shipping.status === 'COMPLETED' ? 'Entregado en destino.' : 'Pendiente de entrega en destino.',
+        iconName: 'Home',
+        status: order.shipping.status === 'COMPLETED' ? 'completed' : 'pending',
+      },
+    ];
+  }, [order]);
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={TOKENS.colors.brand500} /></View>;
   }
@@ -69,13 +125,6 @@ export const OrderDetailScreen: React.FC = () => {
   if (!order) {
     return <ErrorState message="Orden no encontrada." onRetry={() => navigation.goBack()} />;
   }
-
-  const steps = [
-    { label: 'Pago Aprobado', completed: true },
-    { label: 'Preparando Envío', completed: order.shipping.status !== 'PENDING' },
-    { label: 'En Camino', completed: order.shipping.status === 'SUCCESS' || order.shipping.status === 'COMPLETED', active: order.shipping.status === 'PROCESSING' },
-    { label: 'Entregado', completed: order.shipping.status === 'COMPLETED' },
-  ];
 
   const total = order.product.price;
 
@@ -107,31 +156,7 @@ export const OrderDetailScreen: React.FC = () => {
           </View>
           <Text style={styles.trackingText}>Seguimiento: {order.shipping.tracking}</Text>
 
-          <View style={styles.timeline}>
-            {steps.map((step, index) => (
-              <View key={index} style={styles.timelineStep}>
-                <View style={styles.timelineIconBox}>
-                  {step.completed ? (
-                    <Icon name="Check" size={12} color={TOKENS.colors.white} />
-                  ) : (
-                    <View style={styles.timelineEmptyDot} />
-                  )}
-                  <View style={[
-                    styles.timelineDotBg, 
-                    step.completed ? styles.timelineDotBgCompleted : null,
-                    step.active ? styles.timelineDotBgActive : null
-                  ]} />
-                </View>
-                <Text style={[
-                  styles.timelineLabel, 
-                  step.active && styles.timelineLabelActive,
-                  !step.completed && !step.active && styles.timelineLabelPending
-                ]}>
-                  {step.label}
-                </Text>
-              </View>
-            ))}
-          </View>
+          <ServiceTimeline steps={timelineSteps} />
           
           <View style={styles.addressBox}>
             <Icon name="MapPin" size={16} color={TOKENS.colors.textSubtle} />
@@ -150,18 +175,22 @@ export const OrderDetailScreen: React.FC = () => {
             <Avatar uri={null} name={order.seller.name} size={48} />
             <View style={styles.sellerInfo}>
               <Text style={styles.sellerName}>{order.seller.name}</Text>
-              <View style={styles.ratingRow}>
-                <Rating rating={order.seller.rating} size={14} showText textSuffix={`(${order.seller.reviews} reseñas)`} />
-              </View>
+              {order.seller.reviews > 0 && (
+                <View style={styles.ratingRow}>
+                  <Rating rating={order.seller.rating} size={14} showText textSuffix={`(${order.seller.reviews} reseñas)`} />
+                </View>
+              )}
             </View>
           </View>
 
-          <Button 
-            title="Ver Perfil del Vendedor" 
-            variant="outline" 
-            onPress={() => navigation.navigate('ProviderProfile', { providerId: order.seller.id })} 
-            style={{ marginTop: TOKENS.spacing.md }}
-          />
+          {order.seller.id && (
+            <Button 
+              title="Ver Perfil del Vendedor" 
+              variant="outline" 
+              onPress={() => navigation.navigate('ProviderProfile', { providerId: order.seller.id })} 
+              style={{ marginTop: TOKENS.spacing.md }}
+            />
+          )}
         </View>
 
         {/* FINANCIAL SUMMARY */}
@@ -185,9 +214,20 @@ export const OrderDetailScreen: React.FC = () => {
       </ScrollView>
 
       {/* FOOTER ACTION */}
-      <View style={styles.footer}>
-        <Button title="Recibí mi Producto" icon="CheckCircle" onPress={() => {}} style={styles.confirmBtn} />
-      </View>
+      {order.shipping.status !== 'COMPLETED' && order.shipping.status !== 'SUCCESS' && (
+        <View style={styles.footer}>
+          <Button title={isReceiving ? 'Confirmando...' : 'Recibí mi Producto'} icon="CheckCircle" disabled={isReceiving} onPress={async () => {
+            setIsReceiving(true);
+            try {
+              await confirmOrderReceipt(parseInt(String(id), 10));
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'No se pudo confirmar la recepción.');
+            } finally {
+              setIsReceiving(false);
+            }
+          }} style={styles.confirmBtn} />
+        </View>
+      )}
     </View>
   );
 };
@@ -257,59 +297,7 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textMain,
     fontWeight: TOKENS.typography.weights.semibold,
-    marginBottom: TOKENS.spacing.lg,
-  },
-  timeline: {
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: TOKENS.colors.surface200,
-    marginLeft: 8,
-    marginBottom: TOKENS.spacing.lg,
-  },
-  timelineStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    marginLeft: -17,
-  },
-  timelineIconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.surface50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  timelineDotBg: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.surface300,
-    zIndex: -1,
-  },
-  timelineDotBgCompleted: {
-    backgroundColor: TOKENS.colors.success500,
-  },
-  timelineDotBgActive: {
-    backgroundColor: TOKENS.colors.brand500,
-  },
-  timelineEmptyDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: TOKENS.colors.white,
-  },
-  timelineLabel: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  timelineLabelActive: {
-    color: TOKENS.colors.brand600,
-  },
-  timelineLabelPending: {
-    color: TOKENS.colors.textSubtle,
-    fontWeight: TOKENS.typography.weights.regular,
+    marginBottom: TOKENS.spacing.md,
   },
   addressBox: {
     flexDirection: 'row',

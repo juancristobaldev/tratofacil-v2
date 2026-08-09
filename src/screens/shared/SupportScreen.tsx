@@ -1,9 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
 import { Icon, Card, Button, Input } from '../../components';
 import { useRefresh } from '../../context/RefreshContext';
+import { useAuth } from '../../context/AuthContext';
+import { CREATE_SUPPORT_TICKET } from '../../graphql/operations/support';
 
 interface FaqItem { question: string; answer: string; }
 
@@ -17,8 +20,11 @@ const FAQ_ITEMS: FaqItem[] = [
 export const SupportScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { setIsRefreshing } = useRefresh();
+  const { user } = useAuth();
+  const [createTicket] = useMutation(CREATE_SUPPORT_TICKET);
   const [searchQuery, setSearchQuery] = useState('');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,10 +41,28 @@ export const SupportScreen: React.FC = () => {
     item.question.toLowerCase().includes(searchQuery.toLowerCase()) || item.answer.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSubmitTicket = () => {
+  const handleSubmitTicket = async () => {
+    const email = user?.email || '';
     if (!message.trim()) return;
+    if (!email) {
+      Alert.alert('Error', 'Debes iniciar sesión para enviar un ticket de soporte.');
+      return;
+    }
     setSubmitting(true);
-    setTimeout(() => { setSubmitting(false); setMessage(''); Alert.alert('Soporte', 'Tu ticket de soporte ha sido enviado exitosamente.'); }, 1200);
+    try {
+      await createTicket({
+        variables: {
+          input: { email, subject: subject.trim() || 'Consulta de soporte', message: message.trim() },
+        },
+      });
+      setMessage('');
+      setSubject('');
+      Alert.alert('Soporte', 'Tu ticket de soporte ha sido enviado exitosamente.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo enviar tu ticket. Intenta nuevamente.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -75,8 +99,9 @@ export const SupportScreen: React.FC = () => {
         <Card style={styles.contactFormCard}>
           <Text style={styles.contactFormTitle}>¿No encontraste solución?</Text>
           <Text style={styles.contactFormSub}>Déjanos tu mensaje y un agente de TratoFácil te responderá al correo.</Text>
+          <TextInput placeholder="Asunto (ej: Problema con un pago)" placeholderTextColor={TOKENS.colors.textMuted} value={subject} onChangeText={setSubject} style={[styles.textarea, { height: 48, marginBottom: TOKENS.spacing.md }]} />
           <TextInput placeholder="Describe tu consulta o inconveniente en detalle..." placeholderTextColor={TOKENS.colors.textMuted} value={message} onChangeText={setMessage} multiline style={styles.textarea} />
-          <Button title="Enviar mensaje" onPress={handleSubmitTicket} loading={submitting} disabled={!message.trim()} style={styles.submitBtn} />
+          <Button title="Enviar mensaje" onPress={handleSubmitTicket} loading={submitting} disabled={!message.trim() || submitting} style={styles.submitBtn} />
         </Card>
       </ScrollView>
     </View>

@@ -97,6 +97,10 @@ export const GET_SERVICES_BY_CATEGORY = gql`
             comment
             createdAt
           }
+          certificates {
+            id
+            verified
+          }
         }
       }
     }

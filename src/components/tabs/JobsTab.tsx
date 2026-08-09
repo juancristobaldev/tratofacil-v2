@@ -9,8 +9,10 @@ import { ModalApplyJob } from '../ui/ModalApplyJob';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
+import { useSearchLocation } from '../../hooks/useSearchLocation';
 import { WEB_CALLBACK_URL } from '../../config/endpoints';
 import { useRefresh } from '../../context/RefreshContext';
+import { useRole } from '../../context/RoleContext';
 import type { Job, JobApplication } from '../../types/graphql';
 
 type JobTabMode = 'Ofertas' | 'Mis Postulaciones' | 'Mis Ofertas';
@@ -18,6 +20,7 @@ type JobTabMode = 'Ofertas' | 'Mis Postulaciones' | 'Mis Ofertas';
 export const JobsTab: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { role } = useRole();
   const {
     jobs,
     jobsLoading,
@@ -44,7 +47,7 @@ export const JobsTab: React.FC = () => {
   }, [refetchJobs, setIsRefreshing]);
 
   const [activeTab, setActiveTab] = useState<JobTabMode>('Ofertas');
-  const [location, setLocation] = useState('Providencia, RM');
+  const { location, setLocation, loaded: locationLoaded } = useSearchLocation();
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [appliedIds, setAppliedIds] = useState<Set<number>>(new Set());
 
@@ -81,7 +84,6 @@ export const JobsTab: React.FC = () => {
     try {
       const order = await createOrder({
         jobId: selectedJobForCandidates.id,
-        total: selectedJobForCandidates.price || 0,
       });
       const result = await pay({
         type: 'job',
@@ -103,7 +105,7 @@ export const JobsTab: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container]}>
 
       <View style={styles.topHeader}>
         <TouchableOpacity
@@ -116,7 +118,7 @@ export const JobsTab: React.FC = () => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.locationLabel}>Ubicación de búsqueda</Text>
-            <Text style={styles.locationValue} numberOfLines={1}>{location}</Text>
+            <Text style={styles.locationValue} numberOfLines={1}>{locationLoaded ? location : 'Obteniendo ubicación...'}</Text>
           </View>
           <Icon name="ChevronDown" size={20} color={TOKENS.colors.textSubtle} />
         </TouchableOpacity>
@@ -127,7 +129,13 @@ export const JobsTab: React.FC = () => {
           <TouchableOpacity
             key={tab}
             style={[styles.mainTab, activeTab === tab && styles.mainTabActive]}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => {
+              if (tab !== 'Ofertas' && role === 'guest') {
+                navigation.navigate('Login');
+              } else {
+                setActiveTab(tab);
+              }
+            }}
           >
             <Text style={[styles.mainTabText, activeTab === tab && styles.mainTabTextActive]}>{tab}</Text>
           </TouchableOpacity>
@@ -333,7 +341,13 @@ export const JobsTab: React.FC = () => {
         <Button
           title="Ofrecer Trabajo"
           icon="Plus"
-          onPress={() => navigation.navigate('PublishJob')}
+          onPress={() => {
+            if (role === 'guest') {
+              navigation.navigate('Login');
+            } else {
+              navigation.navigate('PublishJob');
+            }
+          }}
           style={styles.ctaBtn}
         />
       </View>

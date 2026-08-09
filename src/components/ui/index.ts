@@ -3,6 +3,7 @@ export * from './ProviderPin';
 export * from './ClusterPin';
 export * from './ServiceTimeline';
 export * from './AnimatedUserMarker';
+export * from './AnimatedProviderMarker';
 export * from './Button';
 export * from './Input';
 export * from './Card';

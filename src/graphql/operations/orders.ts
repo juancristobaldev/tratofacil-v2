@@ -26,12 +26,13 @@ export const MY_ORDERS = gql`
         commission
         shippingCompany
         trackingCode
-        product {
-          id
-          name
-          images { id image { id cdnUrl } url }
-          user { id displayName provider { id name } }
-        }
+      product {
+        id
+        name
+        images { id image { id cdnUrl } url }
+        user { id displayName provider { id name } }
+        shippingDisabled
+      }
         shippingInfo {
           id
           street
@@ -69,6 +70,7 @@ export const GET_MY_SALES = gql`
         id
         name
         images { id image { id cdnUrl } url }
+        shippingDisabled
       }
       client {
         id
@@ -103,6 +105,15 @@ export const UPDATE_ORDER_PRODUCT_SHIPPING = gql`
 export const UPDATE_ORDER_PRODUCT_STATUS = gql`
   mutation UpdateOrderProductStatus($orderId: Int!, $status: OrderStatus!) {
     updateOrderProductStatus(orderId: $orderId, status: $status) {
+      id
+      status
+    }
+  }
+`;
+
+export const CANCEL_ORDER_PRODUCT = gql`
+  mutation CancelOrderProduct($orderId: Int!) {
+    cancelOrderProduct(orderId: $orderId) {
       id
       status
     }

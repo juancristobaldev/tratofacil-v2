@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Animated, Image, TouchableOpacity, Linking, Dimensions, Modal } from 'react-native';
+import { StyleSheet, View, Text, Animated, Image, TouchableOpacity, Linking, Modal } from 'react-native';
 import { ChevronLeft, ChevronRight, MessageCircle, Globe, Sparkles, X, ImageIcon } from 'lucide-react-native';
 import { TOKENS } from '../../theme';
 import { mediaUrl, getImageUrl } from '../../utils/imageUrl';
@@ -88,7 +88,7 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
             />
           </View>
         ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#f1f5f9' }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: TOKENS.colors.surface100 }]} />
         )}
 
         {activeOrder && (
@@ -103,7 +103,7 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
               </View>
             )}
             <View style={styles.tratoDirectoBadge}>
-              <Sparkles size={14} color="#64748b" />
+              <Sparkles size={14} color={TOKENS.colors.textSubtle} />
               <Text style={styles.tratoDirectoText}>TratoDirecto</Text>
             </View>
           </View>
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 6,
     borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#f8fafc',
+    backgroundColor: TOKENS.colors.surface50,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.05)',
   },
@@ -308,23 +308,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   badgeText: {
-    color: '#fff',
+    color: TOKENS.colors.white,
     fontSize: 9,
     fontWeight: 'bold',
   },
   tratoDirectoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: TOKENS.colors.surface100,
     paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 8,
     gap: 4,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderColor: TOKENS.colors.surface200,
   },
   tratoDirectoText: {
-    color: '#334155',
+    color: TOKENS.colors.textMain,
     fontSize: 10,
     fontWeight: 'bold',
   },
@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   userName: {
-    color: '#fff',
+    color: TOKENS.colors.white,
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 2,
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   userInfo: {
-    color: '#e2e8f0',
+    color: TOKENS.colors.surface200,
     fontSize: 12,
   },
   actionsContainer: {
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   actionButtonText: {
-    color: '#fff',
+    color: TOKENS.colors.white,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -412,8 +412,8 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 16,
-    backgroundColor: '#fff',
-    shadowColor: '#fff',
+    backgroundColor: TOKENS.colors.white,
+    shadowColor: TOKENS.colors.white,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 4,
@@ -433,29 +433,29 @@ const modalStyles = StyleSheet.create({
     padding: 16,
   },
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: TOKENS.colors.white,
     padding: 24,
     borderRadius: 16,
     alignItems: 'center',
   },
   errorText: {
-    color: '#64748b',
+    color: TOKENS.colors.textSubtle,
     marginBottom: 16,
   },
   closeButton: {
-    backgroundColor: '#0f172a',
+    backgroundColor: TOKENS.colors.textMain,
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 8,
   },
   closeButtonText: {
-    color: '#fff',
+    color: TOKENS.colors.white,
     fontWeight: 'bold',
   },
   contentWrapper: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#fff',
+    backgroundColor: TOKENS.colors.white,
     borderRadius: 20,
     overflow: 'hidden',
   },
@@ -471,7 +471,7 @@ const modalStyles = StyleSheet.create({
   imageArea: {
     width: '100%',
     height: 220,
-    backgroundColor: '#0f172a',
+    backgroundColor: TOKENS.colors.textMain,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -484,7 +484,7 @@ const modalStyles = StyleSheet.create({
     opacity: 0.7,
   },
   noImageText: {
-    color: '#94a3b8',
+    color: TOKENS.colors.textMuted,
     marginTop: 8,
     fontWeight: '500',
   },
@@ -494,7 +494,7 @@ const modalStyles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#0f172a',
+    color: TOKENS.colors.textMain,
     marginBottom: 12,
   },
   publisherRow: {
@@ -507,19 +507,19 @@ const modalStyles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#3b82f6',
+    backgroundColor: TOKENS.colors.brand500,
   },
   publisherText: {
     fontSize: 13,
-    color: '#64748b',
+    color: TOKENS.colors.textSubtle,
   },
   publisherBold: {
     fontWeight: 'bold',
-    color: '#0f172a',
+    color: TOKENS.colors.textMain,
   },
   infoText: {
     fontSize: 14,
-    color: '#475569',
+    color: TOKENS.colors.textSubtle,
     lineHeight: 22,
     marginBottom: 24,
   },
@@ -537,7 +537,7 @@ const modalStyles = StyleSheet.create({
     gap: 8,
   },
   actionBtnText: {
-    color: '#fff',
+    color: TOKENS.colors.white,
     fontWeight: '600',
     fontSize: 14,
   },

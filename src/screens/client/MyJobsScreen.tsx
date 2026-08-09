@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState } from '../../components';
 import { useJobs } from '../../hooks/useJobs';
+import { useFlow } from '../../hooks/useFlow';
+import { WEB_CALLBACK_URL } from '../../config/endpoints';
 
 type TabMode = 'Activos' | 'Finalizados';
 
@@ -23,23 +25,41 @@ export const MyJobsScreen: React.FC = () => {
     myJobsLoading: loading,
     myJobsError: error,
     refetchMyJobs: refetch,
+    createOrder,
   } = useJobs();
+  const { pay: payFlow } = useFlow();
 
   const activeJobs = jobs.filter((j) => j.orders?.every((o) => o.status !== 'COMPLETED'));
   const finishedJobs = jobs.filter((j) => j.orders?.some((o) => o.status === 'COMPLETED'));
 
-  const handlePayWorker = () => {
+  const handlePayWorker = async () => {
     if (!selectedCandidate || !selectedJobId) return;
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const orderResult = await createOrder({
+        jobId: selectedJobId,
+        workerId: selectedCandidate,
+      });
+      if (!orderResult?.id) {
+        throw new Error('No se pudo crear la orden de trabajo.');
+      }
+      const flowResult = await payFlow({
+        type: 'job',
+        orderId: orderResult.id,
+        returnUrl: `${WEB_CALLBACK_URL}?type=job&source=mobile`,
+      });
       setShowCandidatesModal(false);
       navigation.navigate('PaymentSuccess', {
         title: '¡Has contratado a un trabajador!',
-        subtitle: 'El profesional será notificado para comenzar.',
+        subtitle: 'Redirigiendo al pago seguro...',
         type: 'job',
+        flowUrl: flowResult?.url,
       });
-    }, 2000);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (loading) {
@@ -51,7 +71,7 @@ export const MyJobsScreen: React.FC = () => {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Mis Trabajos Publicados</Text>
         <Text style={styles.headerSubtitle}>Gestiona tus ofertas y evalúa a los profesionales.</Text>
@@ -144,7 +164,20 @@ export const MyJobsScreen: React.FC = () => {
                     </View>
                   )}
                   <View style={styles.footerActions}>
-                    <Button title="Evaluar Trabajo" icon="Star" onPress={() => {}} style={{ flex: 1 }} />
+                    <Button
+                      title="Evaluar Trabajo"
+                      icon="Star"
+                      onPress={() =>
+                        navigation.navigate('Rating', {
+                          role: 'client',
+                          jobId: job.id,
+                          workerId: completedOrder?.worker?.id,
+                          targetUser: { name: completedOrder?.worker?.displayName || 'Trabajador' },
+                          serviceDetails: job.title,
+                        })
+                      }
+                      style={{ flex: 1 }}
+                    />
                   </View>
                 </View>
               );

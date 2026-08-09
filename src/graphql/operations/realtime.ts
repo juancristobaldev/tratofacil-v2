@@ -26,6 +26,10 @@ export const GET_MY_REALTIME_ORDERS_AS_PROVIDER = gql`
       client {
         id
         displayName
+        reviewsReceived {
+          id
+          rating
+        }
       }
       serviceProvider {
         id
@@ -70,6 +74,14 @@ export const GET_MY_REALTIME_ORDERS_AS_CLIENT = gql`
           cdnUrl
         }
         location
+        reviews {
+          id
+          rating
+        }
+        certificates {
+          id
+          verified
+        }
       }
       serviceProvider {
         id
@@ -109,6 +121,10 @@ export const GET_MY_REALTIME_STATE = gql`
           client {
             id
             displayName
+            reviewsReceived {
+              id
+              rating
+            }
           }
           serviceProvider {
             id
@@ -151,6 +167,10 @@ export const GET_MY_REALTIME_STATE = gql`
           reviews {
             id
             rating
+          }
+          certificates {
+            id
+            verified
           }
         }
         serviceProvider {
@@ -291,8 +311,8 @@ export const CANCEL_REALTIME_ORDER = gql`
 `;
 
 export const UPDATE_REALTIME_ORDER_LOCATION = gql`
-  mutation UpdateRealtimeOrderLocation($orderRealtimeId: Int!, $lat: Float!, $lng: Float!) {
-    updateRealtimeOrderLocation(orderRealtimeId: $orderRealtimeId, lat: $lat, lng: $lng) {
+  mutation UpdateRealtimeOrderLocation($orderRealtimeId: Int!, $lat: Float!, $lng: Float!, $timestamp: Float) {
+    updateRealtimeOrderLocation(orderRealtimeId: $orderRealtimeId, lat: $lat, lng: $lng, timestamp: $timestamp) {
       id
       clientLat
       clientLng
@@ -304,8 +324,8 @@ export const UPDATE_REALTIME_ORDER_LOCATION = gql`
 `;
 
 export const UPDATE_PROVIDER_LOCATION = gql`
-  mutation UpdateProviderLocation($lat: Float!, $lng: Float!) {
-    updateProviderLocation(lat: $lat, lng: $lng)
+  mutation UpdateProviderLocation($lat: Float!, $lng: Float!, $timestamp: Float) {
+    updateProviderLocation(lat: $lat, lng: $lng, timestamp: $timestamp)
   }
 `;
 

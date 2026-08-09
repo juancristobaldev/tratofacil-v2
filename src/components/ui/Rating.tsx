@@ -1,6 +1,6 @@
-import React from 'react';
-import { StyleSheet, Text, View, ViewStyle, Pressable } from 'react-native';
-import { TOKENS } from '../../theme';
+import React, { useRef } from 'react';
+import { StyleSheet, Text, View, ViewStyle, Pressable, Animated } from 'react-native';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon } from './Icon';
 
 interface RatingProps {
@@ -13,6 +13,46 @@ interface RatingProps {
   onRatingChange?: (rating: number) => void;
   style?: ViewStyle;
 }
+
+const AnimatedStarItem: React.FC<{
+  index: number;
+  isFilled: boolean;
+  size: number;
+  onPress: () => void;
+}> = ({ isFilled, size, onPress }) => {
+  const scale = useRef(new Animated.Value(1)).current;
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.timing(scale, {
+        toValue: MOTION.scale.bouncePop,
+        duration: MOTION.duration.instant,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        damping: 10,
+        stiffness: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    onPress();
+  };
+
+  return (
+    <Pressable onPress={handlePress} hitSlop={8}>
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Icon
+          name="Star"
+          size={size}
+          color={isFilled ? TOKENS.colors.starActive : TOKENS.colors.surface300}
+          fill={isFilled ? TOKENS.colors.starActive : 'transparent'}
+          style={styles.star}
+        />
+      </Animated.View>
+    </Pressable>
+  );
+};
 
 export const Rating: React.FC<RatingProps> = ({
   rating,
@@ -28,25 +68,28 @@ export const Rating: React.FC<RatingProps> = ({
 
   for (let i = 1; i <= max; i++) {
     const isFilled = i <= Math.round(rating);
-    const starIcon = (
-      <Icon
-        key={i}
-        name="Star"
-        size={size}
-        color={isFilled ? TOKENS.colors.starActive : TOKENS.colors.surface300}
-        fill={isFilled ? TOKENS.colors.starActive : 'transparent'}
-        style={styles.star}
-      />
-    );
 
     if (onRatingChange) {
       stars.push(
-        <Pressable key={i} onPress={() => onRatingChange(i)} hitSlop={8}>
-          {starIcon}
-        </Pressable>
+        <AnimatedStarItem
+          key={i}
+          index={i}
+          isFilled={isFilled}
+          size={size}
+          onPress={() => onRatingChange(i)}
+        />
       );
     } else {
-      stars.push(starIcon);
+      stars.push(
+        <Icon
+          key={i}
+          name="Star"
+          size={size}
+          color={isFilled ? TOKENS.colors.starActive : TOKENS.colors.surface300}
+          fill={isFilled ? TOKENS.colors.starActive : 'transparent'}
+          style={styles.star}
+        />
+      );
     }
   }
 

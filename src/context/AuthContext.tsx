@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useApolloClient } from '@apollo/client/react';
-import { setAuthToken } from '../graphql/apollo';
+import { setAuthToken, setAuthErrorHandler } from '../graphql/apollo';
 import { saveToken, getToken, clearToken } from '../utils/secureStorage';
 import {
   ME_QUERY,
@@ -9,6 +9,7 @@ import {
   LOGIN_WITH_GOOGLE_MUTATION,
   SET_GUEST_PASSWORD,
 } from '../graphql/operations/auth';
+import { REGISTER_PROVIDER } from '../graphql/operations/providers';
 import { User, AppRole, Role } from '../types/graphql';
 
 function mapRole(role: Role): AppRole {
@@ -36,17 +37,16 @@ interface AuthContextType {
   loginLoading: boolean;
   loginError: any;
   register: (input: {
-    displayName: string;
     email: string;
-    phone: string;
     password: string;
-    role: Role;
+    role?: Role;
   }) => Promise<LoginResult>;
   registerLoading: boolean;
   registerError: any;
   loginWithGoogle: (idToken: string) => Promise<LoginResult>;
   googleLoading: boolean;
   googleError: any;
+  becomeProvider: () => Promise<void>;
   setRole: (role: AppRole) => void;
   setSession: (token: string, user: User) => Promise<void>;
   isGuest: boolean;
@@ -76,6 +76,7 @@ const AuthContext = createContext<AuthContextType>({
   setSession: async () => {},
   isGuest: false,
   setGuestPassword: async (_newPassword: string) => {},
+  becomeProvider: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -89,6 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeRole, setActiveRole] = useState<AppRole | null>(null);
 
   const client = useApolloClient();
+  const loggingOutRef = useRef(false);
 
   useEffect(() => {
     getToken().then((stored) => {
@@ -126,6 +128,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }>(LOGIN_WITH_GOOGLE_MUTATION);
 
   const [setGuestPasswordMut] = useMutation<{ setGuestPassword: boolean }>(SET_GUEST_PASSWORD);
+  const [becomeProviderMut] = useMutation<{
+    registerProvider: { accessToken: string; user: { id: number; role: Role } };
+  }>(REGISTER_PROVIDER);
+
+  const hydrateSession = useCallback(
+    async (accessToken: string) => {
+      setAuthToken(accessToken);
+      setToken(accessToken);
+      try {
+        const me = await client.query<{ me: User }>({ query: ME_QUERY });
+        if (me.data?.me) setUser(me.data.me);
+      } catch {
+        // No bloquear login/registro si la query `me` falla.
+      }
+    },
+    [client],
+  );
 
   const login = useCallback(
     async (email: string, password: string): Promise<LoginResult> => {
@@ -137,20 +156,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const { accessToken } = loginData.login;
       await saveToken(accessToken);
-      setToken(accessToken);
-      await refetch();
+      await hydrateSession(accessToken);
       return loginData.login;
     },
-    [loginMut, refetch],
+    [loginMut, hydrateSession],
   );
 
   const register = useCallback(
     async (input: {
-      displayName: string;
       email: string;
-      phone: string;
       password: string;
-      role: Role;
+      role?: Role;
     }): Promise<LoginResult> => {
       const { data: registerData } = await registerMut({
         variables: { input },
@@ -160,11 +176,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const { accessToken } = registerData.register;
       await saveToken(accessToken);
-      setToken(accessToken);
-      await refetch();
+      await hydrateSession(accessToken);
       return registerData.register;
     },
-    [registerMut, refetch],
+    [registerMut, hydrateSession],
   );
 
   const loginWithGoogle = useCallback(
@@ -177,11 +192,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const { accessToken } = googleData.loginWithGoogle;
       await saveToken(accessToken);
-      setToken(accessToken);
-      await refetch();
+      await hydrateSession(accessToken);
       return googleData.loginWithGoogle;
     },
-    [googleMut, refetch],
+    [googleMut, hydrateSession],
   );
 
   const logout = useCallback(async () => {
@@ -190,6 +204,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     await client.clearStore();
   }, [client]);
+
+  useEffect(() => {
+    setAuthErrorHandler(() => {
+      if (loggingOutRef.current) return;
+      loggingOutRef.current = true;
+      logout()
+        .catch(() => {})
+        .finally(() => {
+          loggingOutRef.current = false;
+        });
+    });
+    return () => setAuthErrorHandler(null);
+  }, [logout]);
 
   const isAuthenticated = !!user;
   const isLoading = loading && !user;
@@ -216,6 +243,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(newUser);
   }, []);
 
+  const becomeProvider = useCallback(async () => {
+    const { data } = await becomeProviderMut({
+      variables: {
+        input: { id: user?.id ?? 0, location: 'Chile', bio: '' },
+      },
+    });
+    const auth = data?.registerProvider;
+    if (!auth?.user?.id) {
+      throw new Error('No pudimos activar tu cuenta de proveedor. Intenta nuevamente.');
+    }
+    if (auth.accessToken) {
+      await saveToken(auth.accessToken);
+      setAuthToken(auth.accessToken);
+      setToken(auth.accessToken);
+      setActiveRole('provider');
+    }
+    await refetch();
+  }, [becomeProviderMut, user?.id, refetch]);
+
   const value = useMemo(() => ({
     user,
     loading: isLoading,
@@ -237,6 +283,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     googleError,
     setRole,
     setSession,
+    becomeProvider,
     isGuest,
     setGuestPassword,
   }), [
@@ -260,6 +307,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     googleError,
     setRole,
     setSession,
+    becomeProvider,
     isGuest,
     setGuestPassword,
   ]);

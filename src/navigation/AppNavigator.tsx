@@ -3,7 +3,8 @@ import { usePushNavigation } from '../push/usePushNavigation';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-import { NavigationContainer, useNavigationContainerRef, DrawerActions } from '@react-navigation/native';
+import { NavigationContainer, DrawerActions } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navigation/drawer';
 import { TOKENS } from '../theme';
@@ -11,6 +12,7 @@ import { Icon, Avatar, Badge, Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { PanelProvider, usePanel } from '../context/PanelContext';
 import { getImageUrl } from '../utils/imageUrl';
+import { summarizeForRole } from '../utils/ratings';
 import { MainLayout } from '../components/layout/MainLayout';
 import { Header } from '../components/layout/Header';
 import { useRefresh } from '../context/RefreshContext';
@@ -24,6 +26,8 @@ const ROUTE_TITLES: Record<string, string> = {
   Support: 'Soporte y Ayuda',
   MyServices: 'Mis Servicios',
   PublishService: 'Publicar Servicio',
+  BecomeProvider: 'Hazte Profesional',
+  MarketplacePlans: 'Planes para Vendedores',
   Rating: 'Calificar Servicio',
   Billing: 'Facturación',
   VerificationCenter: 'Centro de Verificación',
@@ -48,6 +52,8 @@ const HEADER_CONFIG: Record<string, { showBell?: boolean; subtitle?: string }> =
   MyProfile: { subtitle: 'Tu información personal' },
   ReviewsList: { showBell: false },
   PublishService: { showBell: false, subtitle: 'Agrega un nuevo servicio a tu catálogo' },
+  BecomeProvider: { showBell: false, subtitle: 'Activa tu cuenta profesional' },
+  MarketplacePlans: { showBell: false, subtitle: 'Elige tu plan de vendedor' },
   PublishJob: { showBell: false, subtitle: 'Ofrece trabajo a profesionales' },
   PublishProduct: { showBell: false, subtitle: 'Publica tu producto en el marketplace' },
   Shipping: { showBell: false, subtitle: 'Ingresa los datos de envío' },
@@ -116,6 +122,8 @@ import { SettingsScreen } from '../screens/shared/SettingsScreen';
 import { SupportScreen } from '../screens/shared/SupportScreen';
 import { MyServicesScreen } from '../screens/shared/MyServicesScreen';
 import { PublishServiceScreen } from '../screens/shared/PublishServiceScreen';
+import { BecomeProviderScreen } from '../screens/shared/BecomeProviderScreen';
+import { MarketplacePlansScreen } from '../screens/shared/MarketplacePlansScreen';
 import { PublishJobScreen } from '../screens/shared/PublishJobScreen';
 import { PublishProductScreen } from '../screens/shared/PublishProductScreen';
 import { RatingScreen } from '../screens/shared/RatingScreen';
@@ -146,9 +154,19 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   const userAvatar = getImageUrl(user?.provider?.logoImage?.cdnUrl || null);
   const hasProvider = !!user?.provider;
 
+  const clientRating = summarizeForRole(user, 'client');
+  const providerRating = summarizeForRole(user?.provider, 'provider');
+
   const handleSwitchRole = () => {
+    navigation.dispatch(DrawerActions.closeDrawer());
     if (role === 'provider') {
       setRole('client');
+    } else if (!hasProvider) {
+      // Cliente sin provider → flujo guiado de registro (referencia Web: registerProvider → verification-center)
+      navigation.navigate('BecomeProvider');
+    } else if (!user?.isProfileFullyComplete) {
+      // Tiene provider pero perfil incompleto → completar perfil
+      navigation.navigate('VerificationCenter');
     } else {
       setRole('provider');
     }
@@ -177,10 +195,12 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
         <View style={styles.drawerHeaderClient}>
           <View style={styles.avatarRow}>
             <Avatar uri={userAvatar} name={userName} size={56} />
-            <View style={styles.ratingBadge}>
-              <Icon name="Star" size={10} color={TOKENS.colors.starActive} />
-              <Text style={styles.ratingBadgeText}>5.0</Text>
-            </View>
+            {clientRating && (
+              <View style={styles.ratingBadge}>
+                <Icon name="Star" size={10} color={TOKENS.colors.starActive} />
+                <Text style={styles.ratingBadgeText}>{clientRating.rating.toFixed(1)}</Text>
+              </View>
+            )}
           </View>
           <Text style={styles.drawerName}>{userName}</Text>
           <Text style={styles.drawerEmail}>{userEmail}</Text>
@@ -194,10 +214,12 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
               name={userName}
               size={56}
             />
-            <View style={styles.ratingBadge}>
-              <Icon name="Star" size={10} color={TOKENS.colors.starActive} />
-              <Text style={styles.ratingBadgeText}>4.9</Text>
-            </View>
+            {providerRating && (
+              <View style={styles.ratingBadge}>
+                <Icon name="Star" size={10} color={TOKENS.colors.starActive} />
+                <Text style={styles.ratingBadgeText}>{providerRating.rating.toFixed(1)}</Text>
+              </View>
+            )}
           </View>
           <Text style={styles.drawerName}>{userName}</Text>
           <Text style={styles.drawerEmail}>{userEmail}</Text>
@@ -279,21 +301,92 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 
       {/* DRAWER FOOTER */}
       <View style={styles.drawerFooter}>
-        {hasProvider && (
-          <TouchableOpacity style={styles.drawerItemSwitch} onPress={handleSwitchRole}>
-            <Icon name="Shuffle" size={16} color={TOKENS.colors.brand600} />
-            <Text style={styles.drawerItemSwitchText}>
-              {role === 'provider' ? 'Cambiar a Modo Cliente' : 'Cambiar a Modo Profesional'}
-            </Text>
-          </TouchableOpacity>
+        {role !== 'guest' && (
+          <>
+            {(() => {
+              // Estado del CTA según rol y perfil
+              const cta = (() => {
+                if (role === 'provider') {
+                  return {
+                    label: 'Cambiar a Modo Cliente',
+                    icon: 'User' as const,
+                    color: TOKENS.colors.brand600,
+                    accent: '#059669',
+                    isProvider: true,
+                  };
+                }
+                if (!hasProvider) {
+                  return {
+                    label: 'Hazte Profesional',
+                    icon: 'Zap' as const,
+                    color: '#059669',
+                    accent: '#059669',
+                    isProvider: false,
+                    highlighted: true,
+                  };
+                }
+                if (!user?.isProfileFullyComplete) {
+                  return {
+                    label: 'Completa tu Perfil Profesional',
+                    icon: 'ShieldCheck' as const,
+                    color: TOKENS.colors.warning600,
+                    accent: TOKENS.colors.warning600,
+                    isProvider: false,
+                  };
+                }
+                return {
+                  label: 'Cambiar a Modo Profesional',
+                  icon: 'Briefcase' as const,
+                  color: '#059669',
+                  accent: '#059669',
+                  isProvider: false,
+                };
+              })();
+
+              return (
+                <TouchableOpacity
+                  style={[
+                    styles.drawerItemSwitch,
+                    cta.isProvider ? styles.drawerItemSwitchClient : styles.drawerItemSwitchProvider,
+                    cta.highlighted && styles.drawerItemSwitchHighlight,
+                  ]}
+                  onPress={handleSwitchRole}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.switchIconLabelRow}>
+                    <View
+                      style={[
+                        styles.switchIconBadge,
+                        cta.isProvider ? styles.switchIconBadgeClient : styles.switchIconBadgeProvider,
+                      ]}
+                    >
+                      <Icon name={cta.icon} size={16} color={cta.color} />
+                    </View>
+                    <Text
+                      style={[
+                        styles.drawerItemSwitchText,
+                        cta.isProvider ? styles.drawerItemSwitchTextClient : styles.drawerItemSwitchTextProvider,
+                      ]}
+                    >
+                      {cta.label}
+                    </Text>
+                  </View>
+                  <Icon name="ChevronRight" size={15} color={cta.accent} />
+                </TouchableOpacity>
+              );
+            })()}
+
+            <View style={styles.drawerFooterDivider} />
+          </>
         )}
+
         {role === 'guest' ? (
           <View style={styles.guestFooterBtns}>
             <Button title="Iniciar Sesión" onPress={() => navigation.navigate('Login')} style={styles.guestBtn} />
             <Button title="Registrarme" variant="secondary" onPress={() => navigation.navigate('Register')} style={[styles.guestBtn, { marginTop: 8 }]} />
           </View>
         ) : (
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
             <Icon name="LogOut" size={18} color={TOKENS.colors.textSubtle} />
             <Text style={styles.logoutText}>Cerrar Sesión</Text>
           </TouchableOpacity>
@@ -325,7 +418,6 @@ function PushNavigationTracker() {
 
 // MAIN ROUTING STACK
 export const AppNavigator: React.FC = () => {
-  const navigationRef = useNavigationContainerRef();
   const [currentRouteName, setCurrentRouteName] = useState('Splash');
 
   return (
@@ -370,6 +462,8 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="Support" component={SupportScreen} />
               <Stack.Screen name="MyServices" component={MyServicesScreen} />
               <Stack.Screen name="PublishService" component={PublishServiceScreen} />
+              <Stack.Screen name="BecomeProvider" component={BecomeProviderScreen} />
+              <Stack.Screen name="MarketplacePlans" component={MarketplacePlansScreen} />
               <Stack.Screen name="PublishJob" component={PublishJobScreen} />
               <Stack.Screen name="PublishProduct" component={PublishProductScreen} />
               <Stack.Screen name="Rating" component={RatingScreen} options={{ gestureEnabled: false }} />
@@ -405,11 +499,82 @@ const styles = StyleSheet.create({
   drawerItem: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, borderRadius: 12, gap: TOKENS.spacing.md },
   drawerItemText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain },
   drawerDivider: { height: 1, backgroundColor: TOKENS.colors.surface100, marginVertical: 8, marginHorizontal: TOKENS.spacing.md },
-  drawerItemSwitch: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, borderRadius: 12, gap: TOKENS.spacing.md, backgroundColor: TOKENS.colors.brand50, borderWidth: 1, borderColor: TOKENS.colors.brand200 },
-  drawerItemSwitchText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand600 },
-  drawerFooter: { padding: TOKENS.spacing.lg, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, backgroundColor: TOKENS.colors.white },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: TOKENS.spacing.sm, paddingVertical: 8, paddingHorizontal: TOKENS.spacing.sm },
-  logoutText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textSubtle },
+  drawerItemSwitch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: TOKENS.spacing.md,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  drawerItemSwitchProvider: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  drawerItemSwitchClient: {
+    backgroundColor: TOKENS.colors.brand50,
+    borderColor: TOKENS.colors.brand200,
+  },
+  drawerItemSwitchHighlight: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+    borderWidth: 2,
+  },
+  switchIconLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: TOKENS.spacing.sm,
+    flex: 1,
+  },
+  switchIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  switchIconBadgeProvider: {
+    backgroundColor: '#DCFCE7',
+  },
+  switchIconBadgeClient: {
+    backgroundColor: TOKENS.colors.brand100,
+  },
+  drawerItemSwitchText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+  },
+  drawerItemSwitchTextProvider: {
+    color: '#15803D',
+  },
+  drawerItemSwitchTextClient: {
+    color: TOKENS.colors.brand600,
+  },
+  drawerFooterDivider: {
+    height: 1,
+    backgroundColor: TOKENS.colors.surface100,
+    marginVertical: 10,
+    marginHorizontal: 4,
+  },
+  drawerFooter: {
+    padding: TOKENS.spacing.md,
+    paddingBottom: TOKENS.spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: TOKENS.colors.surface200,
+    backgroundColor: TOKENS.colors.white,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: TOKENS.spacing.sm,
+    paddingVertical: 8,
+    paddingHorizontal: TOKENS.spacing.xs,
+  },
+  logoutText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.textSubtle,
+  },
   guestFooterBtns: { width: '100%' },
   guestBtn: { height: 44 },
 });

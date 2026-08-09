@@ -176,3 +176,12 @@ export const CREATE_REVIEW_JOB = gql`
     }
   }
 `;
+
+export const CANCEL_ORDER_JOB = gql`
+  mutation CancelOrderJob($orderId: Int!) {
+    cancelOrderJob(orderId: $orderId) {
+      id
+      status
+    }
+  }
+`;

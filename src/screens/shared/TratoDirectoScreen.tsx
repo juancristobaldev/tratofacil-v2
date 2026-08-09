@@ -6,17 +6,21 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Image,
   Alert,
   RefreshControl,
+  Modal as RNModal,
+  Linking,
 } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Icon, Button } from '../../components/ui';
+import { Icon, Button, Input } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
+import { useCategories } from '../../hooks/useCategories';
+import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
 
 export const TratoDirectoScreen: React.FC = () => {
-  const { role, user } = useAuth();
+  const { user, role } = useAuth();
+  const hasProvider = !!user?.provider;
   const [refreshing, setRefreshing] = useState(false);
   const [days, setDays] = useState<number>(30);
 
@@ -25,14 +29,17 @@ export const TratoDirectoScreen: React.FC = () => {
     await new Promise<void>((r) => setTimeout(r, 600));
     setRefreshing(false);
   }, []);
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedRegion, setSelectedRegion] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedCategoryName, setSelectedCategoryName] = useState('');
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [city, setCity] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
   const [info, setInfo] = useState<string>('');
   const [link, setLink] = useState<string>('');
-  const [hasImage, setHasImage] = useState(false);
 
-  const { createAd } = usePlans();
-  const loading = false; // TODO: use real loading state
+  const { createAd, createFlowAd } = usePlans();
+  const { categories, categoriesLoading } = useCategories();
+  const [loading, setLoading] = useState(false);
 
   const pricePerDay = 1000;
 
@@ -56,6 +63,7 @@ export const TratoDirectoScreen: React.FC = () => {
   };
 
   return (
+    <ProviderOnlyGate hasProvider={hasProvider} role={role}>
     <View style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.container}
@@ -101,30 +109,33 @@ export const TratoDirectoScreen: React.FC = () => {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Categoría <Text style={styles.required}>*</Text></Text>
-            <TouchableOpacity style={styles.selectBox}>
-              <Text style={styles.selectBoxText}>Selecciona una categoría...</Text>
+            <TouchableOpacity style={styles.selectBox} onPress={() => setShowCategoryPicker(true)}>
+              <Text style={[styles.selectBoxText, selectedCategoryName ? styles.selectBoxTextSelected : null]}>
+                {selectedCategoryName || 'Selecciona una categoría...'}
+              </Text>
               <Icon name="ChevronDown" size={16} color={TOKENS.colors.textSubtle} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Región y Ciudad <Text style={styles.required}>*</Text></Text>
-            <TouchableOpacity style={styles.selectBox}>
-              <Text style={styles.selectBoxText}>Selecciona una ubicación...</Text>
-              <Icon name="ChevronDown" size={16} color={TOKENS.colors.textSubtle} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Enlace a tu Web o Red Social <Text style={styles.required}>*</Text></Text>
             <TextInput
               style={styles.textInput}
-              placeholder="https://mitienda.cl"
+              placeholder="Ej: Santiago, Metropolitana"
               placeholderTextColor={TOKENS.colors.textMuted}
-              value={link}
-              onChangeText={setLink}
+              value={city}
+              onChangeText={setCity}
             />
           </View>
+
+          <Input
+            label="Enlace a tu Web o Red Social *"
+            placeholder="https://mitienda.cl"
+            value={link}
+            onChangeText={setLink}
+            leftIcon="Globe"
+            containerStyle={styles.inputGroup}
+          />
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Descripción breve del anuncio <Text style={styles.required}>*</Text></Text>
@@ -141,24 +152,17 @@ export const TratoDirectoScreen: React.FC = () => {
 
           {/* Image Uploader */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Sube la Imagen de tu Campaña <Text style={styles.required}>*</Text></Text>
-            {!hasImage ? (
-              <TouchableOpacity style={styles.uploadBox} onPress={() => setHasImage(true)}>
-                <Icon name="UploadCloud" size={32} color={TOKENS.colors.textSubtle} />
-                <Text style={styles.uploadText}>Haz clic aquí para seleccionar</Text>
-                <Text style={styles.uploadSubtext}>Soporta JPG, PNG</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.imagePreviewBox}>
-                <Image 
-                  source={{ uri: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?q=80&w=600&auto=format&fit=crop' }}
-                  style={styles.previewImage}
-                />
-                <TouchableOpacity style={styles.removeImageBtn} onPress={() => setHasImage(false)}>
-                  <Icon name="X" size={16} color={TOKENS.colors.statusDanger} />
-                </TouchableOpacity>
-              </View>
-            )}
+            <Text style={styles.label}>URL de la Imagen de tu Campaña</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="https://tu-dominio.cl/imagen.jpg"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={imageUrl}
+              onChangeText={setImageUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={styles.helperText}>Ingresa una URL pública de la imagen de tu campaña.</Text>
           </View>
 
           {/* Days Selector */}
@@ -200,40 +204,89 @@ export const TratoDirectoScreen: React.FC = () => {
           
           <Button 
             title={loading ? 'Procesando...' : 'Pagar Anuncio'} 
-            onPress={() => {
-              if (!selectedCategory || !selectedRegion || !info || !link) {
+            onPress={async () => {
+              if (!user?.id) {
+                Alert.alert('Error', 'Debes iniciar sesión para crear un anuncio.');
+                return;
+              }
+              if (!selectedCategory || !city || !info || !link) {
                 Alert.alert('Error', 'Completa todos los campos requeridos.');
                 return;
               }
-              createAd({
-                categoryId: 1,
-                city: selectedRegion,
-                days,
-                image: 'https://via.placeholder.com/600x400',
-                info,
-                link,
-                total: finalPrice,
-                userId: user?.id || 0,
-              }).then(() => {
-                Alert.alert('Éxito', 'Tu anuncio ha sido creado.');
-              }).catch((err: any) => {
-                Alert.alert('Error', err.message);
-              });
+              setLoading(true);
+              try {
+                const orderResult = await createAd({
+                  categoryId: selectedCategory,
+                  city,
+                  days,
+                  image: imageUrl || '',
+                  info,
+                  link,
+                  total: finalPrice,
+                });
+                if (!orderResult?.id) throw new Error('No se pudo crear el anuncio.');
+                const flowResult = await createFlowAd(orderResult.id);
+                if (flowResult?.url) {
+                  await Linking.openURL(flowResult.url);
+                  Alert.alert('Éxito', 'Tu anuncio ha sido creado. Completa el pago en la ventana abierta.');
+                } else {
+                  throw new Error('No se pudo iniciar el pago.');
+                }
+              } catch (err: any) {
+                Alert.alert('Error', err.message || 'No se pudo crear el anuncio.');
+              } finally {
+                setLoading(false);
+              }
             }}
             style={styles.payBtn} 
             icon="CreditCard"
           />
         </View>
 
+        <RNModal visible={showCategoryPicker} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Selecciona una categoría</Text>
+                <TouchableOpacity onPress={() => setShowCategoryPicker(false)} style={styles.closeBtn}>
+                  <Icon name="X" size={24} color={TOKENS.colors.textMain} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView>
+                {categories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[
+                      styles.categoryOption,
+                      selectedCategory === cat.id && styles.categoryOptionActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedCategory(cat.id);
+                      setSelectedCategoryName(cat.name);
+                      setShowCategoryPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.categoryOptionText, selectedCategory === cat.id && styles.categoryOptionTextActive]}>
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {categoriesLoading && <Text style={styles.selectBoxText}>Cargando categorías...</Text>}
+              </ScrollView>
+            </View>
+          </View>
+        </RNModal>
+
       </ScrollView>
     </View>
+    </ProviderOnlyGate>
   );
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: TOKENS.colors.surface100,
+    backgroundColor: TOKENS.colors.surface50,
   },
   container: {
     padding: TOKENS.spacing.md,
@@ -470,5 +523,59 @@ const styles = StyleSheet.create({
   },
   payBtn: {
     width: '100%',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: TOKENS.colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: TOKENS.spacing.xl,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: TOKENS.spacing.lg,
+  },
+  modalTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.textMain,
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  categoryOption: {
+    paddingVertical: TOKENS.spacing.md,
+    paddingHorizontal: TOKENS.spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginBottom: 8,
+  },
+  categoryOptionActive: {
+    borderColor: TOKENS.colors.brand500,
+    backgroundColor: TOKENS.colors.brand50,
+  },
+  categoryOptionText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.textMain,
+  },
+  categoryOptionTextActive: {
+    color: TOKENS.colors.brand700,
+  },
+  selectBoxTextSelected: {
+    color: TOKENS.colors.textMain,
+  },
+  helperText: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 6,
   },
 });

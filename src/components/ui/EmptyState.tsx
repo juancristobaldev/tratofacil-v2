@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { TOKENS } from '../../theme';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon } from './Icon';
 
 interface Props {
@@ -14,12 +14,22 @@ export const EmptyState: React.FC<Props> = ({
   title,
   description,
 }) => {
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: MOTION.duration.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [opacity]);
+
   return (
-    <View style={styles.container}>
+    <Animated.View style={[styles.container, { opacity }]}>
       <Icon name={icon} size={48} color={TOKENS.colors.textMuted} />
       <Text style={styles.title}>{title}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
-    </View>
+    </Animated.View>
   );
 };
 

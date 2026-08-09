@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Icon } from '../../components/ui';
+import { Button, Input } from '../../components/ui';
 import { TOKENS } from '../../theme';
 
 export const ShippingScreen: React.FC = () => {
@@ -30,7 +30,7 @@ export const ShippingScreen: React.FC = () => {
     const p = phone.trim();
 
     if (!r || !c || !s || !num || !name || !p) {
-      Alert.alert('Error', 'Por favor, completa los campos obligatorios (*).');
+      Alert.alert('Campos incompletos', 'Por favor llena todos los campos obligatorios (*) para continuar.');
       return;
     }
 
@@ -48,15 +48,7 @@ export const ShippingScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Datos de Envío</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -65,85 +57,64 @@ export const ShippingScreen: React.FC = () => {
           
           <Text style={styles.instructions}>Ingresa la dirección donde deseas recibir el producto.</Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Región *</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Región Metropolitana" 
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={region} 
-              onChangeText={setRegion} 
-            />
-          </View>
+          <Input 
+            label="Región *"
+            placeholder="Ej: Región Metropolitana" 
+            value={region} 
+            onChangeText={setRegion} 
+            containerStyle={styles.inputGroup}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Comuna / Ciudad *</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Santiago" 
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={city} 
-              onChangeText={setCity} 
-            />
-          </View>
+          <Input 
+            label="Comuna / Ciudad *"
+            placeholder="Ej: Santiago" 
+            value={city} 
+            onChangeText={setCity} 
+            containerStyle={styles.inputGroup}
+          />
 
           <View style={styles.row}>
-            <View style={[styles.inputGroup, { flex: 2 }]}>
-              <Text style={styles.label}>Calle *</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: Av. Providencia" 
-                placeholderTextColor={TOKENS.colors.textMuted}
-                value={street} 
-                onChangeText={setStreet} 
-              />
-            </View>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.label}>Número *</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: 1234" 
-                placeholderTextColor={TOKENS.colors.textMuted}
-                value={number} 
-                onChangeText={setNumber} 
-                keyboardType="numeric"
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Depto / Casa / Info Adicional</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Depto 502, Torre B" 
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={additional} 
-              onChangeText={setAdditional} 
+            <Input 
+              label="Calle *"
+              placeholder="Ej: Av. Providencia" 
+              value={street} 
+              onChangeText={setStreet} 
+              containerStyle={[styles.inputGroup, { flex: 2 }]}
+            />
+            <Input 
+              label="Número *"
+              placeholder="Ej: 1234" 
+              value={number} 
+              onChangeText={setNumber} 
+              keyboardType="numeric"
+              containerStyle={[styles.inputGroup, { flex: 1 }]}
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nombre de quien recibe *</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Juan Pérez" 
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={receiverName} 
-              onChangeText={setReceiverName} 
-            />
-          </View>
+          <Input 
+            label="Depto / Casa / Info Adicional"
+            placeholder="Ej: Depto 502, Torre B" 
+            value={additional} 
+            onChangeText={setAdditional} 
+            containerStyle={styles.inputGroup}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Teléfono de contacto *</Text>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: +56 9 1234 5678" 
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={phone} 
-              onChangeText={setPhone} 
-              keyboardType="phone-pad"
-            />
-          </View>
+          <Input 
+            label="Nombre de quien recibe *"
+            placeholder="Ej: Juan Pérez" 
+            value={receiverName} 
+            onChangeText={setReceiverName} 
+            containerStyle={styles.inputGroup}
+          />
+
+          <Input 
+            label="Teléfono de contacto *"
+            placeholder="Ej: +56 9 1234 5678" 
+            value={phone} 
+            onChangeText={setPhone} 
+            keyboardType="phone-pad"
+            containerStyle={styles.inputGroup}
+          />
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -164,32 +135,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: TOKENS.spacing.md,
-    paddingVertical: TOKENS.spacing.sm,
-    backgroundColor: TOKENS.colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface200,
-  },
-  backBtn: {
-    padding: TOKENS.spacing.xs,
-  },
-  headerTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-  },
   scrollContent: {
-    padding: TOKENS.spacing.lg,
+    padding: TOKENS.spacing.md,
     paddingBottom: 40,
   },
   instructions: {
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
-    marginBottom: TOKENS.spacing.xl,
+    marginBottom: TOKENS.spacing.lg,
     lineHeight: 20,
   },
   row: {
@@ -197,22 +150,7 @@ const styles = StyleSheet.create({
     gap: TOKENS.spacing.md,
   },
   inputGroup: {
-    marginBottom: TOKENS.spacing.lg,
-  },
-  label: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.semibold,
-    color: TOKENS.colors.textMain,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 12,
-    padding: TOKENS.spacing.md,
-    fontSize: TOKENS.typography.sizes.md,
-    color: TOKENS.colors.textMain,
+    marginBottom: TOKENS.spacing.md,
   },
   footer: {
     padding: TOKENS.spacing.md,

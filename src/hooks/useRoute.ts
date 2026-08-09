@@ -12,6 +12,8 @@ export function useRoutePolyline(
   active: boolean,
 ) {
   const [routeCoords, setRouteCoords] = useState<Coords[]>([]);
+  const [routeDuration, setRouteDuration] = useState<number | null>(null); // segundos
+  const [routeDistance, setRouteDistance] = useState<number | null>(null); // metros
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const lastKeyRef = useRef<string>('');
@@ -20,6 +22,8 @@ export function useRoutePolyline(
   useEffect(() => {
     if (!active || !origin || !dest) {
       setRouteCoords([]);
+      setRouteDuration(null);
+      setRouteDistance(null);
       return;
     }
 
@@ -39,7 +43,13 @@ export function useRoutePolyline(
         if (controller.signal.aborted) return;
         if (result) {
           setRouteCoords(result.coordinates);
+          setRouteDuration(result.duration);
+          setRouteDistance(result.distance);
           lastKeyRef.current = key;
+        } else {
+          setRouteCoords([]);
+          setRouteDuration(null);
+          setRouteDistance(null);
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -54,5 +64,5 @@ export function useRoutePolyline(
     };
   }, [active, origin?.latitude, origin?.longitude, dest?.latitude, dest?.longitude]);
 
-  return { routeCoords, loading };
+  return { routeCoords, routeDuration, routeDistance, loading };
 }

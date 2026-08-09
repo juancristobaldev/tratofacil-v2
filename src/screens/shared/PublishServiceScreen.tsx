@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Pl
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Icon } from '../../components';
+import { Button, Input, Icon } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 import { useServices } from '../../hooks/useServices';
 
 const SERVICE_COMMISSION_RATE = 0.10;
@@ -13,6 +14,8 @@ export const PublishServiceScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { role } = useRole();
+  const { user } = useAuth();
+  const hasProvider = !!user?.provider;
 
   const [parentCat, setParentCat] = useState('');
   const [subCat, setSubCat] = useState('');
@@ -55,22 +58,19 @@ export const PublishServiceScreen: React.FC = () => {
     }
   };
 
-  if (role === 'guest') {
-    return (
-      <View style={[styles.container, { paddingBottom: insets.bottom, justifyContent: 'center', alignItems: 'center' }]}>
-        <Icon name="Lock" size={48} color={TOKENS.colors.textSubtle} />
-        <Text style={{ fontSize: 18, fontWeight: 'bold', color: TOKENS.colors.textMain, marginTop: 16 }}>
-          Acceso Restringido
-        </Text>
-        <Text style={{ fontSize: 14, color: TOKENS.colors.textSubtle, textAlign: 'center', marginHorizontal: 32, marginTop: 8 }}>
-          Debes iniciar sesión o registrarte para publicar un servicio.
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
-          <Button title="Iniciar Sesión" onPress={() => navigation.navigate('Login')} />
-          <Button title="Registrarme" variant="secondary" onPress={() => navigation.navigate('Register')} />
-        </View>
-      </View>
-    );
+  useEffect(() => {
+    if (role === 'guest') {
+      navigation.replace('Login');
+      return;
+    }
+    // Un cliente sin perfil de proveedor debe primero hacerse profesional
+    if (!hasProvider) {
+      navigation.replace('BecomeProvider');
+    }
+  }, [role, hasProvider, navigation]);
+
+  if (role === 'guest' || !hasProvider) {
+    return null;
   }
 
   return (
@@ -92,20 +92,29 @@ export const PublishServiceScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>¿Qué servicio ofreces?</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Rubro Principal *</Text>
-              <TextInput style={styles.input} placeholder="Seleccionar rubro..." value={parentCat} onChangeText={setParentCat} />
-            </View>
+            <Input 
+              label="Rubro Principal *" 
+              placeholder="Seleccionar rubro..." 
+              value={parentCat} 
+              onChangeText={setParentCat} 
+              containerStyle={styles.inputGroup}
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Subcategoría (Opcional)</Text>
-              <TextInput style={styles.input} placeholder="Ver todos los del rubro" value={subCat} onChangeText={setSubCat} />
-            </View>
+            <Input 
+              label="Subcategoría (Opcional)" 
+              placeholder="Ver todos los del rubro" 
+              value={subCat} 
+              onChangeText={setSubCat} 
+              containerStyle={styles.inputGroup}
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Servicio Específico *</Text>
-              <TextInput style={styles.input} placeholder="Selecciona el servicio exacto" value={specificService} onChangeText={setSpecificService} />
-            </View>
+            <Input 
+              label="Servicio Específico *" 
+              placeholder="Selecciona el servicio exacto" 
+              value={specificService} 
+              onChangeText={setSpecificService} 
+              containerStyle={styles.inputGroup}
+            />
           </View>
 
           {/* SECTION 2: COVERAGE */}
@@ -115,21 +124,23 @@ export const PublishServiceScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Cobertura del Servicio</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Región *</Text>
-              <View style={styles.inputWithIcon}>
-                <Icon name="MapPin" size={18} color={TOKENS.colors.textSubtle} />
-                <TextInput style={styles.innerInput} placeholder="Selecciona región" value={region} onChangeText={setRegion} />
-              </View>
-            </View>
+            <Input 
+              label="Región *" 
+              placeholder="Selecciona región" 
+              value={region} 
+              onChangeText={setRegion} 
+              leftIcon="MapPin"
+              containerStyle={styles.inputGroup}
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ciudad / Comuna *</Text>
-              <View style={styles.inputWithIcon}>
-                <Icon name="MapPin" size={18} color={TOKENS.colors.textSubtle} />
-                <TextInput style={styles.innerInput} placeholder="Selecciona tu ciudad" value={city} onChangeText={setCity} />
-              </View>
-            </View>
+            <Input 
+              label="Ciudad / Comuna *" 
+              placeholder="Selecciona tu ciudad" 
+              value={city} 
+              onChangeText={setCity} 
+              leftIcon="MapPin"
+              containerStyle={styles.inputGroup}
+            />
 
             <View style={styles.toggleRow}>
               <View style={{ flex: 1 }}>
@@ -151,27 +162,22 @@ export const PublishServiceScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Precios y Detalles</Text>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Forma de Cobro *</Text>
-              <View style={styles.inputWithIcon}>
-                <TextInput style={styles.innerInput} value={cobroType} editable={false} />
-                <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
-              </View>
-            </View>
+            <Input 
+              label="Forma de Cobro *" 
+              value={cobroType} 
+              editable={false}
+              containerStyle={styles.inputGroup}
+            />
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Precio Base ($) *</Text>
-              <View style={styles.inputWithIcon}>
-                <Text style={styles.currencySymbol}>$</Text>
-                <TextInput 
-                  style={[styles.innerInput, { fontWeight: 'bold', fontSize: 18 }]} 
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={price}
-                  onChangeText={setPrice}
-                />
-              </View>
-            </View>
+            <Input 
+              label="Precio Base ($) *" 
+              placeholder="0"
+              keyboardType="numeric"
+              value={price}
+              onChangeText={setPrice}
+              leftIcon="DollarSign"
+              containerStyle={styles.inputGroup}
+            />
 
             {/* Financial Breakdown (Service) */}
             <View style={styles.breakdownBox}>
@@ -182,19 +188,20 @@ export const PublishServiceScreen: React.FC = () => {
               </View>
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Comisión plataforma:</Text>
-                <Text style={[styles.breakdownValue, { color: '#dc2626' }]}>- ${commissionAmount.toLocaleString("es-CL")}</Text>
+                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>- ${commissionAmount.toLocaleString("es-CL")}</Text>
               </View>
               <View style={[styles.breakdownRow, styles.breakdownTotal]}>
                 <Text style={styles.breakdownTotalLabel}>Ingreso Neto para ti:</Text>
-                  <Text style={[styles.breakdownTotalValue, { color: '#16a34a' }]}>${receivingAmount.toLocaleString("es-CL")}</Text>
+                <Text style={[styles.breakdownTotalValue, { color: TOKENS.colors.statusSuccess }]}>${receivingAmount.toLocaleString("es-CL")}</Text>
               </View>
             </View>
 
-            <View style={[styles.inputGroup, { marginTop: TOKENS.spacing.lg }]}>
+            <View style={[styles.inputGroup, { marginTop: TOKENS.spacing.md }]}>
               <Text style={styles.label}>Descripción para el cliente (Opcional)</Text>
               <TextInput 
                 style={[styles.input, styles.textArea]} 
                 placeholder="Ej: Materiales e insumos incluidos..."
+                placeholderTextColor={TOKENS.colors.textMuted}
                 multiline
                 numberOfLines={4}
                 value={desc}
@@ -225,26 +232,23 @@ export const PublishServiceScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  scrollBody: { padding: TOKENS.spacing.lg, paddingBottom: 120 },
-  introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.lg, lineHeight: 20 },
+  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 120 },
+  introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.md, lineHeight: 20 },
   
-  section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.lg, marginBottom: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
+  section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   
-  inputGroup: { marginBottom: TOKENS.spacing.lg },
+  inputGroup: { marginBottom: TOKENS.spacing.md },
   label: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
   input: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
   textArea: { height: 120, textAlignVertical: 'top' },
-  inputWithIcon: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, paddingHorizontal: TOKENS.spacing.md, height: 50, gap: 12 },
-  innerInput: { flex: 1, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
-  currencySymbol: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
   
   toggleRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.surface50, padding: TOKENS.spacing.md, borderRadius: 12, borderWidth: 1, borderColor: TOKENS.colors.surface100 },
   toggleLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   toggleDesc: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 4 },
 
-  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.brand100 },
+  breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.brand100, marginTop: TOKENS.spacing.sm },
   breakdownTitle: { fontSize: 12, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand700, textAlign: 'center', marginBottom: TOKENS.spacing.md, letterSpacing: 0.5 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   breakdownLabel: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
@@ -253,7 +257,7 @@ const styles = StyleSheet.create({
   breakdownTotalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   breakdownTotalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold },
 
-  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.soft },
+  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
   footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
 });

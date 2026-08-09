@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sheetBody: {
-    paddingHorizontal: TOKENS.spacing.lg,
+    paddingHorizontal: TOKENS.spacing.md,
     paddingTop: TOKENS.spacing.xs,
     paddingBottom: TOKENS.spacing.xl,
   },
@@ -435,7 +435,7 @@ const styles = StyleSheet.create({
   timerVal: {
     fontSize: 32,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.dark900,
+    color: TOKENS.colors.textMain,
     marginTop: 2,
   },
   workingDesc: {
@@ -579,11 +579,11 @@ const styles = StyleSheet.create({
   },
   counterOfferCard: {
     alignItems: 'center',
-    backgroundColor: '#fffbeb',
+    backgroundColor: TOKENS.colors.warning50,
     padding: TOKENS.spacing.md,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#fde68a',
+    borderColor: TOKENS.colors.warning200,
     gap: 8,
   },
   counterOfferPrice: {

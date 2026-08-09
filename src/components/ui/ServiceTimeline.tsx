@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { TOKENS } from '../../theme';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { TOKENS, MOTION } from '../../theme';
 import { Icon, IconName } from './Icon';
 
 export interface TimelineStep {
@@ -15,6 +15,47 @@ interface ServiceTimelineProps {
   steps: TimelineStep[];
 }
 
+const ActiveBeacon: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: MOTION.duration.pulse,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.4],
+  });
+
+  const opacity = pulse.interpolate({
+    inputRange: [0, 0.4, 1],
+    outputRange: [0.6, 0.3, 0],
+  });
+
+  return (
+    <View style={styles.beaconWrapper}>
+      <Animated.View
+        style={[
+          styles.beaconRing,
+          {
+            opacity,
+            transform: [{ scale }],
+          },
+        ]}
+      />
+      {children}
+    </View>
+  );
+};
+
 export const ServiceTimeline: React.FC<ServiceTimelineProps> = ({ steps }) => {
   return (
     <View style={styles.container}>
@@ -22,7 +63,22 @@ export const ServiceTimeline: React.FC<ServiceTimelineProps> = ({ steps }) => {
         const isLast = index === steps.length - 1;
         const isCompleted = step.status === 'completed';
         const isCurrent = step.status === 'current';
-        
+
+        const iconNode = (
+          <View
+            style={[
+              styles.iconContainer,
+              isCompleted || isCurrent ? styles.iconCompleted : styles.iconPending,
+            ]}
+          >
+            <Icon
+              name={step.iconName}
+              size={16}
+              color={isCompleted || isCurrent ? TOKENS.colors.white : TOKENS.colors.textMuted}
+            />
+          </View>
+        );
+
         return (
           <View key={index} style={styles.stepContainer}>
             {/* Timeline Line */}
@@ -36,23 +92,12 @@ export const ServiceTimeline: React.FC<ServiceTimelineProps> = ({ steps }) => {
             )}
             
             {/* Icon */}
-            <View
-              style={[
-                styles.iconContainer,
-                isCompleted || isCurrent ? styles.iconCompleted : styles.iconPending,
-              ]}
-            >
-              <Icon
-                name={step.iconName}
-                size={16}
-                color={isCompleted || isCurrent ? TOKENS.colors.white : TOKENS.colors.textMuted}
-              />
-            </View>
+            {isCurrent ? <ActiveBeacon>{iconNode}</ActiveBeacon> : iconNode}
             
             {/* Content */}
             <View style={styles.contentContainer}>
-              <Text style={styles.time}>{step.time}</Text>
-              <Text style={styles.title}>{step.title}</Text>
+              <Text style={[styles.time, isCurrent && styles.timeCurrent]}>{step.time}</Text>
+              <Text style={[styles.title, isCurrent && styles.titleCurrent]}>{step.title}</Text>
               <Text style={styles.description}>{step.description}</Text>
             </View>
           </View>
@@ -106,9 +151,13 @@ const styles = StyleSheet.create({
   },
   time: {
     fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.semibold,
+    marginBottom: 2,
+  },
+  timeCurrent: {
     color: TOKENS.colors.brand500,
     fontWeight: TOKENS.typography.weights.bold,
-    marginBottom: 2,
   },
   title: {
     fontSize: TOKENS.typography.sizes.md,
@@ -116,8 +165,25 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMain,
     marginBottom: 2,
   },
+  titleCurrent: {
+    color: TOKENS.colors.brand500,
+  },
   description: {
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
+  },
+  beaconWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  beaconRing: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: TOKENS.colors.brand500,
+    top: 4,
+    zIndex: 0,
   },
 });

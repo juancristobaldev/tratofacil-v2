@@ -1,6 +1,7 @@
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { GET_PUBLIC_PROFILE } from '../graphql/operations/providers';
+import { SEND_EMAIL_VERIFICATION_CODE, CONFIRM_EMAIL_AND_REGISTER } from '../graphql/operations/auth';
 import {
   UPDATE_USER,
   UPDATE_PROVIDER,
@@ -68,6 +69,8 @@ interface UseProfileReturn {
   createIdentity: (input: CreateIdentityInput) => Promise<void>;
   createKycSession: (userId: number) => Promise<string | null>;
   completeKyc: (session: string) => Promise<void>;
+  sendEmailVerificationCode: (email: string) => Promise<void>;
+  confirmEmail: (code: string, email: string) => Promise<void>;
   saving: boolean;
   setSaving: Dispatch<SetStateAction<boolean>>;
 }
@@ -88,6 +91,7 @@ export function useProfile(): UseProfileReturn {
   });
 
   useEffect(() => {
+    if (!__DEV__) return;
     const p = publicData?.publicProfile?.provider;
     if (p) {
       console.log(
@@ -118,6 +122,8 @@ export function useProfile(): UseProfileReturn {
   const [createIdentityMut] = useMutation(CREATE_USER_IDENTITY);
   const [createKycMut] = useMutation<{ createKycSession: string }>(CREATE_KYC_SESSION);
   const [completeKycMut] = useMutation(COMPLETE_KYC);
+  const [sendEmailCodeMut] = useMutation(SEND_EMAIL_VERIFICATION_CODE);
+  const [confirmEmailMut] = useMutation(CONFIRM_EMAIL_AND_REGISTER);
 
   const updateProfile = async (input: UpdateUserInput) => {
     setSaving(true);
@@ -189,6 +195,15 @@ export function useProfile(): UseProfileReturn {
     await refetchAuth();
   };
 
+  const sendEmailVerificationCode = async (email: string) => {
+    await sendEmailCodeMut({ variables: { email } });
+  };
+
+  const confirmEmail = async (code: string, email: string) => {
+    await confirmEmailMut({ variables: { code, credentials: { email } } });
+    await refetchAuth();
+  };
+
   return {
     publicProfile: publicData?.publicProfile || null,
     publicProfileLoading,
@@ -203,6 +218,8 @@ export function useProfile(): UseProfileReturn {
     createIdentity,
     createKycSession,
     completeKyc,
+    sendEmailVerificationCode,
+    confirmEmail,
     saving,
     setSaving,
   };

@@ -208,7 +208,6 @@ export const CREATE_ORDER_AD_WITH_PAYMENT = gql`
     $link: String!
     $serviceId: Int
     $total: Float!
-    $userId: Int!
   ) {
     createOrderAdWithPayment(
       adId: $adId
@@ -222,11 +221,19 @@ export const CREATE_ORDER_AD_WITH_PAYMENT = gql`
       link: $link
       serviceId: $serviceId
       total: $total
-      userId: $userId
     ) {
       id
       status
       total
+    }
+  }
+`;
+
+export const CREATE_FLOW_AD_TRANSACTION = gql`
+  mutation CreateFlowAdTransaction($orderId: Int!) {
+    createFlowAdTransaction(orderId: $orderId) {
+      url
+      token
     }
   }
 `;

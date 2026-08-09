@@ -88,6 +88,7 @@ export interface User {
   identitys: Identity[];
   planOrders: PlanOrder[];
   marketplacePlanOrders: PlanUserOrder[];
+  reviewsReceived: ClientReview[] | null;
 }
 
 export interface Identity {
@@ -223,6 +224,7 @@ export interface Product {
   description: string | null;
   location: string | null;
   stock: number;
+  shippingDisabled: boolean;
   categoryProductId: number;
   subCategorySlug: string | null;
   categoryProduct: CategoryProduct | null;

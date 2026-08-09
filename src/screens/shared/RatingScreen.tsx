@@ -12,10 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Badge, Rating } from '../../components/ui';
+import { Icon, Button, Card, Rating } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useRole } from '../../context/RoleContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
+import { useJobs } from '../../hooks/useJobs';
 
 export const RatingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -23,7 +24,8 @@ export const RatingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { clearPanel } = usePanel();
   const { role: userRole } = useRole();
-  const { createProviderReview, createClientReview } = useTimeRealServices();
+  const { createProviderReview, createClientReview } = useRealtime();
+  const { reviewJob } = useJobs();
 
   const {
     role = 'client',
@@ -35,6 +37,8 @@ export const RatingScreen: React.FC = () => {
     orderRealtimeId,
     providerId,
     clientId,
+    jobId,
+    workerId,
   } = route.params || {};
 
   const [selectedRating, setSelectedRating] = useState(5);
@@ -64,11 +68,22 @@ export const RatingScreen: React.FC = () => {
           orderRealtimeId,
           clientId,
         });
+      } else if (role === 'client' && jobId && workerId) {
+        await reviewJob({
+          rating: selectedRating,
+          comment: reviewComment || undefined,
+          jobId,
+          workerId,
+        });
       }
     } catch (_err) {
       // Review submission is best-effort, don't block the flow
     }
     clearPanel();
+    if (jobId) {
+      navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
+      return;
+    }
     navigation.navigate('ServiceSuccess');
   };
 
@@ -88,7 +103,6 @@ export const RatingScreen: React.FC = () => {
             <View style={styles.profileInfo}>
               <View style={styles.nameRow}>
                 <Text style={styles.profileName}>{targetUser.name}</Text>
-                {role === 'client' && <Badge label="Top Pro" tone="brand" size="sm" />}
               </View>
               <View style={styles.ratingRow}>
                 <Rating rating={targetUser.rating} size={11} showText />
@@ -180,7 +194,7 @@ export const RatingScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.surface100,
+    backgroundColor: TOKENS.colors.surface50,
   },
 
   scrollContent: {
@@ -188,7 +202,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   mainTitle: {
-    fontSize: 18,
+    fontSize: TOKENS.typography.sizes.lg,
     fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.brand600,
     textAlign: 'center',

@@ -7,6 +7,7 @@ import { LocationModal } from '../ui/LocationModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRole } from '../../context/RoleContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
+import { useSearchLocation } from '../../hooks/useSearchLocation';
 import { useRefresh } from '../../context/RefreshContext';
 import { getImageUrl } from '../../utils/imageUrl';
 import type { CategoryProduct } from '../../types/graphql';
@@ -116,7 +117,7 @@ export const MarketplaceTab: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<OrdersSubTab>('Mis Compras');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
-  const [location, setLocation] = useState('Providencia, RM');
+  const { setLocation } = useSearchLocation();
 
   const handleLocationChange = (newLocation: string) => {
     setLocation(newLocation);
@@ -128,7 +129,7 @@ export const MarketplaceTab: React.FC = () => {
     : filteredProducts;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container]}>
 
       <View style={styles.mainTabsRow}>
         <TouchableOpacity
@@ -139,7 +140,13 @@ export const MarketplaceTab: React.FC = () => {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.mainTab, activeMainTab === 'Mis Pedidos' && styles.mainTabActive]}
-          onPress={() => setActiveMainTab('Mis Pedidos')}
+          onPress={() => {
+            if (role === 'guest') {
+              navigation.navigate('Login');
+            } else {
+              setActiveMainTab('Mis Pedidos');
+            }
+          }}
         >
           <Text style={[styles.mainTabText, activeMainTab === 'Mis Pedidos' && styles.mainTabTextActive]}>Mis Pedidos</Text>
         </TouchableOpacity>
@@ -171,7 +178,13 @@ export const MarketplaceTab: React.FC = () => {
             <TouchableOpacity
               style={styles.plansBanner}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('Plans')}
+              onPress={() => {
+                if (role === 'guest') {
+                  navigation.navigate('Login');
+                } else {
+                  navigation.navigate('MarketplacePlans');
+                }
+              }}
             >
               <View style={styles.plansBannerIcon}>
                 <Icon name="TrendingUp" size={20} color={TOKENS.colors.white} />
@@ -269,36 +282,26 @@ export const MarketplaceTab: React.FC = () => {
             <Button
               title="Publicar Producto"
               icon="Plus"
-              onPress={() => navigation.navigate('PublishProduct')}
+              onPress={() => {
+                if (role === 'guest') {
+                  navigation.navigate('Login');
+                } else {
+                  navigation.navigate('PublishProduct');
+                }
+              }}
               style={styles.ctaBtn}
             />
           </View>
         </>
       ) : (
         <View style={{ flex: 1 }}>
-          {role === 'guest' ? (
-            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
-              <Icon name="Lock" size={48} color={TOKENS.colors.textSubtle} />
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: TOKENS.colors.textMain, marginTop: 16 }}>
-                Acceso Restringido
-              </Text>
-              <Text style={{ fontSize: 14, color: TOKENS.colors.textSubtle, textAlign: 'center', marginVertical: 12 }}>
-                Inicia sesión o regístrate para ver y gestionar tus compras y ventas.
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-                <Button title="Iniciar Sesión" onPress={() => navigation.navigate('Login')} />
-                <Button title="Registrarme" variant="secondary" onPress={() => navigation.navigate('Register')} />
-              </View>
-            </View>
-          ) : (
-            <>
-              <View style={styles.subTabsRow}>
-                <TouchableOpacity
-                  style={[styles.subTab, activeSubTab === 'Mis Compras' && styles.subTabActive]}
-                  onPress={() => setActiveSubTab('Mis Compras')}
-                >
-                  <Text style={[styles.subTabText, activeSubTab === 'Mis Compras' && styles.subTabTextActive]}>Mis Compras</Text>
-                </TouchableOpacity>
+          <View style={styles.subTabsRow}>
+            <TouchableOpacity
+              style={[styles.subTab, activeSubTab === 'Mis Compras' && styles.subTabActive]}
+              onPress={() => setActiveSubTab('Mis Compras')}
+            >
+              <Text style={[styles.subTabText, activeSubTab === 'Mis Compras' && styles.subTabTextActive]}>Mis Compras</Text>
+            </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.subTab, activeSubTab === 'Mis Ventas' && styles.subTabActive]}
                   onPress={() => setActiveSubTab('Mis Ventas')}
@@ -391,8 +394,6 @@ export const MarketplaceTab: React.FC = () => {
                   </View>
                 )}
               </ScrollView>
-            </>
-          )}
         </View>
       )}
 

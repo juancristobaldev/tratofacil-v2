@@ -4,11 +4,17 @@ export const DEEP_LINK_SCHEME = 'tratofacilv2';
 export const PAYMENT_CALLBACK_PATH = 'payment/callback';
 
 type PaymentCallbackHandler = (token: string, type?: string) => void;
+type OrderOpenHandler = (orderId: number) => void;
 
 let paymentHandler: PaymentCallbackHandler | null = null;
+let orderOpenHandler: OrderOpenHandler | null = null;
 
 export function setPaymentCallbackHandler(handler: PaymentCallbackHandler) {
   paymentHandler = handler;
+}
+
+export function setOrderOpenHandler(handler: OrderOpenHandler | null) {
+  orderOpenHandler = handler;
 }
 
 export function parsePaymentCallback(url: string): { token: string; type?: string } | null {
@@ -31,6 +37,16 @@ export function initializeDeepLinks() {
       const parsed = parsePaymentCallback(url);
       if (parsed && paymentHandler) {
         paymentHandler(parsed.token, parsed.type);
+      }
+      return;
+    }
+
+    // Deep link de orden: tratofacilv2://order/:id
+    const orderMatch = url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/order\/(\d+)/);
+    if (orderMatch) {
+      const orderId = Number(orderMatch[1]);
+      if (Number.isFinite(orderId) && orderOpenHandler) {
+        orderOpenHandler(orderId);
       }
     }
   };

@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, ScrollView, RefreshControl } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, EmptyState } from '../../components';
+import { Icon, Avatar, EmptyState, Rating } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
 
@@ -57,8 +57,6 @@ export const ReviewsListScreen: React.FC = () => {
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
     : 0;
 
-  const filledStars = Math.round(avgRating);
-
   return (
     <View style={styles.container}>
       <ScrollView
@@ -68,9 +66,7 @@ export const ReviewsListScreen: React.FC = () => {
         <View style={styles.headerBox}>
           <Text style={styles.ratingNumber}>{avgRating.toFixed(1)}</Text>
           <View style={styles.starsRow}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Icon key={i} name="Star" size={24} color={i <= filledStars ? TOKENS.colors.starActive : TOKENS.colors.surface200} />
-            ))}
+            <Rating rating={avgRating} size={24} />
           </View>
           <Text style={styles.reviewCount}>Basado en {reviews.length} reseñas</Text>
         </View>
@@ -110,7 +106,7 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface50,
   },
   scrollBody: {
-    padding: TOKENS.spacing.lg,
+    padding: TOKENS.spacing.md,
   },
   headerBox: {
     alignItems: 'center',

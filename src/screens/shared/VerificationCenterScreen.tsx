@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Input } from '../../components';
@@ -13,9 +13,11 @@ type SectionState = {
 };
 
 export const VerificationCenterScreen: React.FC = () => {
-  const { role, user } = useAuth();
-  const { updateProfile, updateProviderProfile, updateProviderBank, saving } = useProfile();
-  const isProvider = role === 'provider';
+  const { user } = useAuth();
+  const { updateProfile, updateProviderProfile, updateProviderBank, sendEmailVerificationCode, confirmEmail, saving } = useProfile();
+  // Mostramos las secciones de proveedor siempre que exista perfil de proveedor,
+  // NO según el rol activo (permite completarlo aunque estés en modo cliente).
+  const isProvider = !!user?.provider;
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [providerName, setProviderName] = useState(user?.provider?.name || '');
@@ -23,13 +25,18 @@ export const VerificationCenterScreen: React.FC = () => {
   const [bankName, setBankName] = useState(user?.provider?.bank?.bankName || '');
   const [accountType, setAccountType] = useState(user?.provider?.bank?.accountType || '');
   const [accountNumber, setAccountNumber] = useState(user?.provider?.bank?.accountNumber || '');
+  const [emailCode, setEmailCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
 
-  const [completed, setCompleted] = useState({
-    personal: !!user?.displayName,
-    email: !!user?.emailVerified,
-    identity: !!(user?.provider?.name && user?.provider?.rut),
-    bank: !!(user?.provider?.bank),
-  });
+  // Estado derivado en vivo desde `user` (se actualiza tras cada guardado vía refetchAuth).
+  const completed = useMemo(() => {
+    const personal = !!user?.displayName?.trim() && !!user?.birthday;
+    const email = !!user?.emailVerified;
+    const identity = !!(user?.provider?.name?.trim() && user?.provider?.rut?.trim());
+    const bank = !!user?.provider?.bank;
+    return { personal, email, identity, bank };
+  }, [user]);
 
   // Accordion state
   const [openSections, setOpenSections] = useState<SectionState>({
@@ -43,8 +50,8 @@ export const VerificationCenterScreen: React.FC = () => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const isFullyComplete = isProvider 
-    ? (completed.personal && completed.email && completed.identity && completed.bank)
+  const isFullyComplete = isProvider
+    ? user?.isProfileFullyComplete === true
     : (completed.personal && completed.email);
 
   const StatusBadge = ({ isCompleted }: { isCompleted: boolean }) => (
@@ -110,7 +117,6 @@ export const VerificationCenterScreen: React.FC = () => {
               <Button title={saving ? 'Guardando...' : 'Guardar datos'} disabled={saving} onPress={async () => {
                 try {
                   await updateProfile({ displayName: displayName || undefined });
-                  setCompleted(prev => ({ ...prev, personal: true }));
                   setOpenSections(prev => ({ ...prev, personal: false, email: true }));
                 } catch (_err) {
                   Alert.alert('Error', 'No se pudo guardar.');
@@ -141,10 +147,37 @@ export const VerificationCenterScreen: React.FC = () => {
           {openSections.email && !completed.email && (
             <View style={styles.accordionBody}>
               <View style={styles.inputGroup}>
-                <Input label="Código de Verificación (Enviado a tu correo)" placeholder="XXXXXX" maxLength={6} keyboardType="numeric" icon="Key" style={{ letterSpacing: 8, textAlign: 'center', fontSize: 20 }} />
+                <Input label="Código de Verificación (Enviado a tu correo)" placeholder="XXXXXX" maxLength={6} keyboardType="numeric" icon="Key" style={{ letterSpacing: 8, textAlign: 'center', fontSize: 20 }} value={emailCode} onChangeText={setEmailCode} />
               </View>
-              <Button title="Confirmar código" onPress={() => { setCompleted(prev => ({ ...prev, email: true })); setOpenSections(prev => ({ ...prev, email: false, identity: isProvider })); }} />
-              <Button title="Reenviar código" variant="secondary" onPress={() => {}} style={{ marginTop: 8 }} />
+              <Button title={verifying ? 'Verificando...' : 'Confirmar código'} disabled={verifying} onPress={async () => {
+                if (!user?.email) return;
+                if (!emailCode.trim()) {
+                  Alert.alert('Error', 'Ingresa el código recibido por correo.');
+                  return;
+                }
+                setVerifying(true);
+                try {
+                  await confirmEmail(emailCode.trim(), user.email);
+                  setEmailCode('');
+                  setOpenSections(prev => ({ ...prev, email: false, identity: isProvider }));
+                } catch (err: any) {
+                  Alert.alert('Error', err.message || 'Código inválido o expirado.');
+                } finally {
+                  setVerifying(false);
+                }
+              }} />
+              <Button title={sendingCode ? 'Enviando...' : 'Reenviar código'} variant="secondary" disabled={sendingCode} onPress={async () => {
+                if (!user?.email) return;
+                setSendingCode(true);
+                try {
+                  await sendEmailVerificationCode(user.email);
+                  Alert.alert('Enviado', 'Te enviamos un nuevo código a tu correo.');
+                } catch (err: any) {
+                  Alert.alert('Error', err.message || 'No se pudo enviar el código.');
+                } finally {
+                  setSendingCode(false);
+                }
+              }} style={{ marginTop: 8 }} />
             </View>
           )}
         </View>
@@ -182,7 +215,6 @@ export const VerificationCenterScreen: React.FC = () => {
                     try {
                       if (user?.provider?.id && providerName) {
                         await updateProviderProfile(user.provider.id, { name: providerName, rut: providerRut || undefined });
-                        setCompleted(prev => ({ ...prev, identity: true }));
                         setOpenSections(prev => ({ ...prev, identity: false, bank: isProvider }));
                       }
                     } catch (_err) {
@@ -229,8 +261,8 @@ export const VerificationCenterScreen: React.FC = () => {
                           bankName,
                           accountType: accountType || 'Cuenta Corriente',
                           accountNumber,
+                          rut: providerRut || undefined,
                         });
-                        setCompleted(prev => ({ ...prev, bank: true }));
                         setOpenSections(prev => ({ ...prev, bank: false }));
                       }
                     } catch (_err) {

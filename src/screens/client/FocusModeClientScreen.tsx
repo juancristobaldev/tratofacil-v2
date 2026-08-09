@@ -13,14 +13,14 @@ import {
   Easing,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Button, Badge, AnimatedUserMarker, ProviderTrackingPin } from '../../components/ui';
+import { Icon, Avatar, Rating, Button, Badge, AnimatedUserMarker, AnimatedProviderMarker } from '../../components/ui';
 import { usePanel } from '../../context/PanelContext';
 import { useLocation } from '../../context/LocationContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 import { useRoutePolyline } from '../../hooks/useRoute';
 import { getImageUrl } from '../../utils/imageUrl';
 import type { OrderRealTime } from '../../types/graphql';
@@ -35,7 +35,7 @@ export const FocusModeClientScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
   const { location } = useLocation();
-  const realtime = useTimeRealServices();
+  const realtime = useRealtime();
 
   const activeOrder: OrderRealTime | null = realtime.localActiveOrder || realtime.activeOrder;
 
@@ -74,7 +74,7 @@ export const FocusModeClientScreen: React.FC = () => {
   const providerLng = activeOrder?.providerLng ?? activeOrder?.provider?.lng;
   const providerCoords = providerLat && providerLng ? { latitude: providerLat, longitude: providerLng } : null;
 
-  const { routeCoords } = useRoutePolyline(
+  const { routeCoords, routeDuration, routeDistance } = useRoutePolyline(
     providerCoords,
     clientCoords,
     true,
@@ -82,7 +82,13 @@ export const FocusModeClientScreen: React.FC = () => {
 
   const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
 
+  // Distancia/ETA: prioriza datos de ruta real (OSRM). Fallback a haversine
+  // (línea recta) solo si la ruta no está disponible.
   const distanceLabel = useMemo(() => {
+    if (routeDistance != null && routeDistance > 0) {
+      if (routeDistance < 1000) return `${Math.round(routeDistance)}m`;
+      return `${(routeDistance / 1000).toFixed(1)} km`;
+    }
     if (!clientCoords || !providerCoords) return null;
     const R = 6371e3;
     const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
@@ -91,9 +97,15 @@ export const FocusModeClientScreen: React.FC = () => {
     const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     if (meters < 1000) return `${Math.round(meters)}m`;
     return `${(meters / 1000).toFixed(1)} km`;
-  }, [clientCoords, providerCoords]);
+  }, [clientCoords, providerCoords, routeDistance]);
 
   const etaLabel = useMemo(() => {
+    if (routeDuration != null && routeDuration > 0) {
+      const minutes = Math.ceil(routeDuration / 60);
+      if (minutes <= 0) return 'Llegó';
+      if (minutes === 1) return '1 min';
+      return `${minutes} min`;
+    }
     if (!clientCoords || !providerCoords) return null;
     const R = 6371e3;
     const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
@@ -104,7 +116,7 @@ export const FocusModeClientScreen: React.FC = () => {
     if (minutes <= 0) return 'Llegó';
     if (minutes === 1) return '1 min';
     return `${minutes} min`;
-  }, [clientCoords, providerCoords]);
+  }, [clientCoords, providerCoords, routeDuration]);
 
   const distanceToProviderKm = useMemo(() => {
     if (!clientCoords || !providerCoords) return null;
@@ -116,6 +128,41 @@ export const FocusModeClientScreen: React.FC = () => {
   }, [clientCoords, providerCoords]);
 
   const [showChat, setShowChat] = useState(false);
+
+  // Cámara: follow mode (auto-centra) vs manual (el usuario explora).
+  const mapRef = useRef<MapView>(null);
+  const [followMode, setFollowMode] = useState(true);
+  const lastAnimatedRef = useRef<string>('');
+
+  const followRegion: Region = useMemo(() => {
+    const lat = ((clientCoords?.latitude ?? -33.4489) + (providerCoords?.latitude ?? -33.4489)) / 2;
+    const lng = ((clientCoords?.longitude ?? -70.6693) + (providerCoords?.longitude ?? -70.6693)) / 2;
+    const latitudeDelta =
+      providerCoords && clientCoords
+        ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
+        : 0.05;
+    const longitudeDelta =
+      providerCoords && clientCoords
+        ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
+        : 0.05;
+    return { latitude: lat, longitude: lng, latitudeDelta, longitudeDelta };
+  }, [clientCoords, providerCoords]);
+
+  // Sigue al proveedor solo en follow mode; el usuario puede alejarse (manual).
+  useEffect(() => {
+    if (!followMode || !mapRef.current) return;
+    const key = `${followRegion.latitude.toFixed(5)},${followRegion.longitude.toFixed(5)},${followRegion.latitudeDelta.toFixed(5)},${followRegion.longitudeDelta.toFixed(5)}`;
+    if (key === lastAnimatedRef.current) return;
+    lastAnimatedRef.current = key;
+    mapRef.current.animateToRegion(followRegion, 800);
+  }, [followRegion, followMode]);
+
+  const handleFollow = () => {
+    setFollowMode(true);
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(followRegion, 800);
+    }
+  };
 
   // Sync panel data whenever order data changes
   useEffect(() => {
@@ -246,17 +293,10 @@ export const FocusModeClientScreen: React.FC = () => {
       {/* MAP COVER */}
       <View style={styles.mapContainer}>
         <MapView
+          ref={mapRef}
           style={styles.map}
-          region={{
-            latitude: ((clientCoords?.latitude || -33.4489) + (providerCoords?.latitude || -33.4489)) / 2,
-            longitude: ((clientCoords?.longitude || -70.6693) + (providerCoords?.longitude || -70.6693)) / 2,
-            latitudeDelta: providerCoords && clientCoords
-              ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
-              : 0.05,
-            longitudeDelta: providerCoords && clientCoords
-              ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
-              : 0.05,
-          }}
+          initialRegion={followRegion}
+          onPanDrag={() => setFollowMode(false)}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
@@ -265,7 +305,10 @@ export const FocusModeClientScreen: React.FC = () => {
           {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
 
           {status !== 'PENDING' && providerCoords && (
-            <ProviderTrackingPin coordinate={providerCoords} text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'} />
+            <AnimatedProviderMarker
+              coordinate={providerCoords}
+              text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'}
+            />
           )}
 
           {polylineCoords.length > 0 && (
@@ -277,6 +320,13 @@ export const FocusModeClientScreen: React.FC = () => {
             />
           )}
         </MapView>
+
+        {!followMode && status !== 'PENDING' && (
+          <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
+            <Icon name="Locate" size={18} color={TOKENS.colors.brand500} />
+            <Text style={styles.followBtnText}>Centrar</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* PENDING RADAR OVERLAY */}
@@ -367,6 +417,28 @@ const styles = StyleSheet.create({
   },
   map: {
     ...StyleSheet.absoluteFill,
+  },
+  followBtn: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  followBtnText: {
+    color: TOKENS.colors.brand500,
+    fontSize: 13,
+    fontWeight: '700',
   },
   radarOverlay: {
     ...StyleSheet.absoluteFill,

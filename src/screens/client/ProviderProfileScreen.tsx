@@ -6,7 +6,7 @@ import { Icon, Avatar, Rating, Badge, Button, Card, ErrorState } from '../../com
 import { usePanel } from '../../context/PanelContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 import { useProfile } from '../../hooks/useProfile';
 import { useNotification } from '../../context/NotificationContext';
 import { getImageUrl } from '../../utils/imageUrl';
@@ -17,7 +17,7 @@ export const ProviderProfileScreen: React.FC = () => {
   const { openPanel } = usePanel();
   const { isAuthenticated } = useAuth();
   const { location } = useLocation();
-  const { createContactRequest } = useTimeRealServices();
+  const { createContactRequest } = useRealtime();
   const { showNotification } = useNotification();
   const { providerId } = route.params;
 
