@@ -111,7 +111,11 @@ export const Button: React.FC<ButtonProps> = ({
                 style={styles.icon}
               />
             )}
-            <Text style={[styles.baseText, currentStyles.text, disabled && styles.disabledText, textStyle]}>
+            <Text 
+              style={[styles.baseText, currentStyles.text, disabled && styles.disabledText, textStyle]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {title}
             </Text>
           </>
@@ -123,7 +127,8 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   baseContainer: {
-    height: 52,
+    minHeight: 52,
+    paddingVertical: TOKENS.spacing.sm,
     borderRadius: TOKENS.geometry.radiusInput,
     flexDirection: 'row',
     alignItems: 'center',
@@ -137,7 +142,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    height: '100%',
   },
   primaryContainer: {
     backgroundColor: TOKENS.colors.brand500,

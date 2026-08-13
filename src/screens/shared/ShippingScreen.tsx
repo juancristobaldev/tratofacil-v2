@@ -113,6 +113,7 @@ export const ShippingScreen: React.FC = () => {
             value={phone} 
             onChangeText={setPhone} 
             keyboardType="phone-pad"
+            mask="phone"
             containerStyle={styles.inputGroup}
           />
 

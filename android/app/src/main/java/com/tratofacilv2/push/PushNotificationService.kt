@@ -12,12 +12,12 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.tratofacilv2.MainActivity
+import com.tratofacilv2.ReactContextHolder
 import org.json.JSONObject
 
 class PushNotificationService : FirebaseMessagingService() {
@@ -121,15 +121,6 @@ class PushNotificationService : FirebaseMessagingService() {
   }
 
   private fun getReactContext(): com.facebook.react.bridge.ReactContext? {
-    return try {
-      val app = applicationContext as? ReactApplication ?: return null
-      val host = app.reactHost ?: return null
-      val field = host.javaClass.declaredFields
-        .firstOrNull { it.type.simpleName == "ReactContext" }
-      field?.isAccessible = true
-      field?.get(host) as? com.facebook.react.bridge.ReactContext
-    } catch (_: Exception) {
-      null
-    }
+    return ReactContextHolder.reactContext
   }
 }

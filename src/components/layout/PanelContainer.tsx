@@ -54,6 +54,8 @@ export const PanelContainer: React.FC<PanelContainerProps> = ({ bottomNavHeight 
       showHandle={true}
       showCloseButton={shouldShowCloseButton()}
       bottomInset={bottomNavHeight}
+      useScrollView={activePanel !== 'categories'}
+      enablePanDownToClose={activePanel === 'categories' || activePanel === 'provider_preview'}
     >
       {renderContent()}
     </BottomSheet>

@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, Vibration } from 'react-native';
+import React, { createContext, useContext, useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { StyleSheet, View, Text, Vibration } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -34,6 +35,14 @@ export const useNotification = () => useContext(NotificationContext);
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notification, setNotification] = useState<NotificationOptions | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
   
   const translateY = useSharedValue(-150);
   const opacity = useSharedValue(0);

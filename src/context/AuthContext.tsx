@@ -202,6 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await clearToken();
     setUser(null);
     setToken(null);
+    setActiveRole(null);
     await client.clearStore();
   }, [client]);
 
@@ -230,12 +231,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const serverRole: AppRole = user ? mapRole(user.role) : 'guest';
   const hasProvider = !!user?.provider;
-  const role: AppRole = activeRole ?? serverRole;
+
+  const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+  const providerOrder = user?.provider?.activeRealtimeOrder ?? null;
+  const hasActiveProviderOrder = !!providerOrder && !TERMINAL_STATUSES.includes(providerOrder.status);
+
+  // La app abre SIEMPRE en modo cliente; solo pasa a modo proveedor si existe
+  // una orden realtime activa (no terminal) donde el usuario es el provider.
+  const defaultRole: AppRole = !user ? 'guest' : hasActiveProviderOrder ? 'provider' : serverRole === 'provider' ? 'client' : serverRole;
+  const role: AppRole = activeRole ?? defaultRole;
 
   const setRole = useCallback((newRole: AppRole) => {
     if (newRole === 'provider' && !hasProvider) return;
-    setActiveRole(newRole === serverRole ? null : newRole);
-  }, [serverRole, hasProvider]);
+    setActiveRole(newRole === defaultRole ? null : newRole);
+  }, [defaultRole, hasProvider]);
 
   const setSession = useCallback(async (newToken: string, newUser: User) => {
     await saveToken(newToken);
@@ -244,9 +253,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const becomeProvider = useCallback(async () => {
+    if (!user?.id) {
+      throw new Error('Debes iniciar sesión para activar tu cuenta profesional.');
+    }
     const { data } = await becomeProviderMut({
       variables: {
-        input: { id: user?.id ?? 0, location: 'Chile', bio: '' },
+        input: { id: user.id, location: 'Chile', bio: '' },
       },
     });
     const auth = data?.registerProvider;

@@ -6,9 +6,10 @@ import {
   DELETE_SERVICE,
 } from '../graphql/operations/services';
 import type { Service, ServiceProvider } from '../types/graphql';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
 
 interface CreateServiceInput {
-  categoryId?: number | null;
+  categoryId: number;
   city: string;
   description?: string;
   hasHomeVisit: boolean;
@@ -52,9 +53,13 @@ export function useServices(): UseServicesReturn {
 
   const [createMut, { loading: createLoading }] = useMutation<{
     createService: CreateServiceResult;
-  }>(CREATE_SERVICE);
+  }>(CREATE_SERVICE, {
+    refetchQueries: ['MyServices'],
+  });
 
-  const [updateMut] = useMutation(UPDATE_SERVICE);
+  const [updateMut] = useMutation(UPDATE_SERVICE, {
+    refetchQueries: ['MyServices'],
+  });
 
   const [deleteMut] = useMutation(DELETE_SERVICE, {
     refetchQueries: ['MyServices'],
@@ -62,22 +67,19 @@ export function useServices(): UseServicesReturn {
 
   const createService = async (input: CreateServiceInput): Promise<CreateServiceResult> => {
     const { data: result } = await createMut({ variables: { input } });
-    await refetch();
     return result!.createService;
   };
 
   const updateService = async (id: number, input: UpdateServiceInput): Promise<void> => {
     await updateMut({ variables: { id, input } });
-    await refetch();
   };
 
   const deleteService = async (id: number): Promise<void> => {
     await deleteMut({ variables: { id } });
-    await refetch();
   };
 
   return {
-    myServices: data?.myServices || [],
+    myServices: data?.myServices ?? EMPTY_ARRAY,
     myServicesLoading,
     myServicesError,
     createService,

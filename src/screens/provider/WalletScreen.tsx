@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, FlatList, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Modal, ErrorState, EmptyState } from '../../components';
+import { Icon, Button, Card, Modal, EmptyState } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
@@ -44,7 +44,7 @@ export const WalletScreen: React.FC = () => {
 
   const handleWithdraw = async () => {
     try {
-      const result = await requestWithdrawal();
+      await requestWithdrawal();
       setModalVisible(false);
       setSuccessModalVisible(true);
     } catch (err: any) {
@@ -52,81 +52,81 @@ export const WalletScreen: React.FC = () => {
     }
   };
 
-  const handleSuccessClose = () => {
-    setSuccessModalVisible(false);
+  const renderItem = ({ item }: { item: any }) => {
+    const isIncome = item.type === 'EARNING';
+    return (
+      <View style={styles.transactionRow}>
+        <View style={[styles.txIconCircle, isIncome ? styles.txIconIncome : styles.txIconWithdraw]}>
+          <Icon name={isIncome ? 'Plus' : 'Minus'} size={14} color={isIncome ? TOKENS.colors.statusSuccess : TOKENS.colors.statusError} />
+        </View>
+        <View style={styles.txInfo}>
+          <Text style={styles.txTitle}>{item.description || 'Transacción'}</Text>
+          <Text style={styles.txDate}>{new Date(item.createdAt).toLocaleDateString('es-CL')}</Text>
+        </View>
+        <Text style={[styles.txAmount, isIncome ? styles.txAmtIncome : styles.txAmtWithdraw]}>
+          {isIncome ? '+' : '-'}${Math.abs(item.amount).toLocaleString('es-CL')}
+        </Text>
+      </View>
+    );
   };
 
   return (
     <ProviderOnlyGate hasProvider={hasProvider} role={role}>
       <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.scrollBody}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
-      >
-        <Card style={styles.balanceCard} padded={true}>
-          <Text style={styles.balanceLabel}>Saldo disponible</Text>
-          <Text style={styles.balanceVal}>${balance.toLocaleString('es-CL')}</Text>
-          <Button
-            title="Retirar dinero"
-            onPress={() => setModalVisible(true)}
-            variant="secondary"
-            icon="ArrowDownCircle"
-            style={styles.withdrawBtn}
-            disabled={balance <= 0}
-          />
-        </Card>
-        <View style={styles.transactionsSection}>
-          <Text style={styles.sectionTitle}>Historial de transacciones</Text>
-          {transactions.length === 0 ? (
+        <FlatList
+          data={transactions}
+          renderItem={renderItem}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+          ListHeaderComponent={
+            <>
+              <Card style={styles.balanceCard} padded={true}>
+                <Text style={styles.balanceLabel}>Saldo disponible</Text>
+                <Text style={styles.balanceVal}>${balance.toLocaleString('es-CL')}</Text>
+                <Button
+                  title="Retirar dinero"
+                  onPress={() => setModalVisible(true)}
+                  variant="secondary"
+                  icon="ArrowDownCircle"
+                  style={styles.withdrawBtn}
+                  disabled={balance <= 0}
+                />
+              </Card>
+              <Text style={styles.sectionTitle}>Historial de transacciones</Text>
+            </>
+          }
+          ListEmptyComponent={
             <EmptyState icon="TrendingUp" title="Sin movimientos recientes" description="Tus ingresos y retiros se reflejarán aquí." />
-          ) : (
-            transactions.map((t) => {
-              const isIncome = t.type === 'EARNING';
-              return (
-                <View key={t.id} style={styles.transactionRow}>
-                  <View style={[styles.txIconCircle, isIncome ? styles.txIconIncome : styles.txIconWithdraw]}>
-                    <Icon name={isIncome ? 'Plus' : 'Minus'} size={14} color={isIncome ? TOKENS.colors.statusSuccess : TOKENS.colors.statusError} />
-                  </View>
-                  <View style={styles.txInfo}>
-                    <Text style={styles.txTitle}>{t.description || 'Transacción'}</Text>
-                    <Text style={styles.txDate}>{new Date(t.createdAt).toLocaleDateString('es-CL')}</Text>
-                  </View>
-                  <Text style={[styles.txAmount, isIncome ? styles.txAmtIncome : styles.txAmtWithdraw]}>
-                    {isIncome ? '+' : '-'}${Math.abs(t.amount).toLocaleString('es-CL')}
-                  </Text>
-                </View>
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
-
-      <Modal visible={modalVisible} onClose={() => setModalVisible(false)}>
-        <Text style={styles.modalTitle}>Retirar Fondos</Text>
-        <Text style={styles.modalSub}>Se transferirá el saldo total disponible a tu cuenta bancaria registrada.</Text>
-        <View style={styles.modalForm}>
-          <View style={styles.balanceBox}>
-            <Text style={styles.balanceBoxLabel}>Saldo a retirar</Text>
-            <Text style={styles.balanceBoxValue}>${balance.toLocaleString('es-CL')}</Text>
-          </View>
-        </View>
-        <Button
-          title={loading ? 'Procesando...' : 'Confirmar Retiro'}
-          onPress={handleWithdraw}
-          style={styles.modalConfirmBtn}
-          disabled={loading || balance <= 0}
+          }
         />
-      </Modal>
 
-      <Modal visible={successModalVisible} onClose={handleSuccessClose} showCloseButton={false}>
-        <View style={styles.successContainer}>
-          <View style={styles.successIconCircle}><Icon name="Check" size={28} color={TOKENS.colors.white} /></View>
-          <Text style={styles.successTitle}>¡Retiro solicitado!</Text>
-          <Text style={styles.successSub}>Tu retiro de ${balance.toLocaleString('es-CL')} CLP está siendo procesado. El dinero estará en tu cuenta en un máximo de 24 horas hábiles.</Text>
-          <Button title="Entendido" onPress={handleSuccessClose} style={styles.successBtn} />
-        </View>
-      </Modal>
+        <Modal visible={modalVisible} onClose={() => setModalVisible(false)}>
+          <Text style={styles.modalTitle}>Retirar Fondos</Text>
+          <Text style={styles.modalSub}>Se transferirá el saldo total disponible a tu cuenta bancaria registrada.</Text>
+          <View style={styles.modalForm}>
+            <View style={styles.balanceBox}>
+              <Text style={styles.balanceBoxLabel}>Saldo a retirar</Text>
+              <Text style={styles.balanceBoxValue}>${balance.toLocaleString('es-CL')}</Text>
+            </View>
+          </View>
+          <Button
+            title={loading ? 'Procesando...' : 'Confirmar Retiro'}
+            onPress={handleWithdraw}
+            style={styles.modalConfirmBtn}
+            disabled={loading || balance <= 0}
+          />
+        </Modal>
+
+        <Modal visible={successModalVisible} onClose={() => setSuccessModalVisible(false)} showCloseButton={false}>
+          <View style={styles.successContainer}>
+            <View style={styles.successIconCircle}><Icon name="Check" size={28} color={TOKENS.colors.white} /></View>
+            <Text style={styles.successTitle}>¡Retiro solicitado!</Text>
+            <Text style={styles.successSub}>Tu retiro de ${balance.toLocaleString('es-CL')} CLP está siendo procesado. El dinero estará en tu cuenta en un máximo de 24 horas hábiles.</Text>
+            <Button title="Entendido" onPress={() => setSuccessModalVisible(false)} style={styles.successBtn} />
+          </View>
+        </Modal>
       </View>
     </ProviderOnlyGate>
   );
@@ -136,12 +136,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white, gap: 12 },
   loadingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
-  scrollBody: { padding: TOKENS.spacing.md },
+  listContent: { padding: TOKENS.spacing.md },
   balanceCard: { backgroundColor: TOKENS.colors.brand50, borderColor: TOKENS.colors.brand100, alignItems: 'center', paddingVertical: 24, marginBottom: TOKENS.spacing.lg },
   balanceLabel: { fontSize: 10, color: TOKENS.colors.brand600, fontWeight: 'bold', textTransform: 'uppercase' },
   balanceVal: { fontSize: 36, fontWeight: TOKENS.typography.weights.black, color: TOKENS.colors.textMain, marginTop: 6 },
   withdrawBtn: { width: 180, height: 44, marginTop: 16 },
-  transactionsSection: { marginTop: TOKENS.spacing.sm },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
   transactionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
   txIconCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
@@ -165,5 +164,4 @@ const styles = StyleSheet.create({
   successTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 4 },
   successSub: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, textAlign: 'center', lineHeight: 18, marginBottom: TOKENS.spacing.lg },
   successBtn: { width: '100%' },
-  emptyText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', paddingVertical: 24 },
 });

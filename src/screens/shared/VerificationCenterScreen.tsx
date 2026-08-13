@@ -1,52 +1,85 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Input } from '../../components';
+import { Icon, Button, Input, Modal } from '../../components';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../hooks/useProfile';
+import { CHILEAN_BANKS, validateRut } from '../../utils/chile';
+import { KYC_STATUS } from '../../graphql/operations/wallet';
+import { useQuery } from '@apollo/client/react';
 
-type SectionState = {
-  personal: boolean;
-  email: boolean;
-  identity: boolean;
-  bank: boolean;
-};
+type SectionKey = 'personal' | 'email' | 'identity' | 'bank' | 'kyc';
+
+type SectionState = Record<SectionKey, boolean>;
 
 export const VerificationCenterScreen: React.FC = () => {
-  const { user } = useAuth();
-  const { updateProfile, updateProviderProfile, updateProviderBank, sendEmailVerificationCode, confirmEmail, saving } = useProfile();
-  // Mostramos las secciones de proveedor siempre que exista perfil de proveedor,
-  // NO según el rol activo (permite completarlo aunque estés en modo cliente).
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const { user, refetch: refetchAuth } = useAuth();
+  const {
+    updateProfile,
+    updateProviderProfile,
+    updateProviderBank,
+    sendEmailVerificationCode,
+    confirmEmail,
+    createKycSession,
+    saving,
+  } = useProfile();
+
   const isProvider = !!user?.provider;
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [birthday, setBirthday] = useState(user?.birthday ? String(user.birthday).slice(0, 10).split('-').reverse().join('/') : '');
   const [providerName, setProviderName] = useState(user?.provider?.name || '');
   const [providerRut, setProviderRut] = useState(user?.provider?.rut || '');
   const [bankName, setBankName] = useState(user?.provider?.bank?.bankName || '');
   const [accountType, setAccountType] = useState(user?.provider?.bank?.accountType || '');
   const [accountNumber, setAccountNumber] = useState(user?.provider?.bank?.accountNumber || '');
+  const [bankRut, setBankRut] = useState(user?.provider?.bank?.rut || '');
   const [emailCode, setEmailCode] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
 
-  // Estado derivado en vivo desde `user` (se actualiza tras cada guardado vía refetchAuth).
+  const [kycSessionId, setKycSessionId] = useState<string | null>(null);
+  const [kycCreating, setKycCreating] = useState(false);
+
+  const { data: kycData, stopPolling } = useQuery<{ kycStatus: boolean }>(KYC_STATUS, {
+    variables: { session: kycSessionId },
+    skip: !kycSessionId,
+    pollInterval: 4000,
+    fetchPolicy: 'network-only',
+  });
+
+  const kycVerified = user?.kycStatus === true;
+
+  useEffect(() => {
+    if (kycData?.kycStatus === true && !kycVerified) {
+      stopPolling?.();
+      setKycSessionId(null);
+      refetchAuth();
+    }
+  }, [kycData?.kycStatus, kycVerified, stopPolling, refetchAuth]);
+
   const completed = useMemo(() => {
     const personal = !!user?.displayName?.trim() && !!user?.birthday;
     const email = !!user?.emailVerified;
     const identity = !!(user?.provider?.name?.trim() && user?.provider?.rut?.trim());
     const bank = !!user?.provider?.bank;
-    return { personal, email, identity, bank };
+    const kyc = !!user?.kycStatus;
+    return { personal, email, identity, bank, kyc };
   }, [user]);
 
-  // Accordion state
   const [openSections, setOpenSections] = useState<SectionState>({
     personal: true,
     email: false,
     identity: false,
     bank: false,
+    kyc: false,
   });
 
-  const toggleSection = (key: keyof SectionState) => {
+  const toggleSection = (key: SectionKey) => {
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -63,10 +96,41 @@ export const VerificationCenterScreen: React.FC = () => {
     </View>
   );
 
+  const [activePicker, setActivePicker] = useState<'bank' | 'account' | null>(null);
+
+  const pickerOptions = activePicker === 'bank'
+    ? Object.keys(CHILEAN_BANKS).map(b => ({ value: b, label: b }))
+    : activePicker === 'account'
+      ? (CHILEAN_BANKS[bankName] || []).map(t => ({ value: t, label: t }))
+      : [];
+
+  const pickerTitle = activePicker === 'bank' ? 'Banco' : 'Tipo de Cuenta';
+
+  const validAccountTypes = CHILEAN_BANKS[bankName] || [];
+
+  const handleStartKyc = async () => {
+    if (!user?.id) return;
+    setKycCreating(true);
+    try {
+      const url = await createKycSession(user.id);
+      if (url) {
+        const sessionId = url.includes('session=')
+          ? url.split('session=')[1]?.split('&')[0] || url
+          : url;
+        setKycSessionId(sessionId);
+        Linking.openURL(url);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo iniciar verificación.');
+    } finally {
+      setKycCreating(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       
-      <ScrollView contentContainerStyle={styles.scrollBody}>
+      <ScrollView contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}>
         
         <Text style={styles.pageSubtitle}>
           {isProvider 
@@ -109,16 +173,22 @@ export const VerificationCenterScreen: React.FC = () => {
           {openSections.personal && !completed.personal && (
             <View style={styles.accordionBody}>
               <View style={styles.inputGroup}>
-                <Input label="Nombres y Apellidos" placeholder="Ej: Juan Pérez" value={displayName} onChangeText={setDisplayName} icon="User" />
+                <Input label="Nombre o Apodo" placeholder="Ej: Juan Pérez" value={displayName} onChangeText={setDisplayName} icon="User" />
               </View>
               <View style={styles.inputGroup}>
-                <Input label="Fecha de Nacimiento" placeholder="DD/MM/AAAA" keyboardType="numeric" icon="Calendar" />
+                <Input label="Fecha de Nacimiento" placeholder="DD/MM/AAAA" value={birthday} onChangeText={setBirthday} icon="Calendar" mask="date" />
               </View>
-              <Button title={saving ? 'Guardando...' : 'Guardar datos'} disabled={saving} onPress={async () => {
+              <Button title={saving ? 'Guardando...' : 'Confirmar datos'} disabled={saving || !user?.id} onPress={async () => {
                 try {
-                  await updateProfile({ displayName: displayName || undefined });
+                  let isoBirthday: string | undefined;
+                  if (birthday && birthday.length === 10) {
+                    const [dd, mm, yyyy] = birthday.split('/');
+                    const d = new Date(`${yyyy}-${mm}-${dd}T12:00:00Z`);
+                    isoBirthday = d.toISOString();
+                  }
+                  await updateProfile({ displayName: displayName || undefined, birthday: isoBirthday });
                   setOpenSections(prev => ({ ...prev, personal: false, email: true }));
-                } catch (_err) {
+                } catch {
                   Alert.alert('Error', 'No se pudo guardar.');
                 }
               }} />
@@ -131,7 +201,7 @@ export const VerificationCenterScreen: React.FC = () => {
           <TouchableOpacity 
             style={styles.accordionHeader} 
             activeOpacity={0.7}
-            disabled={completed.email}
+            disabled={completed.email || !completed.personal}
             onPress={() => toggleSection('email')}
           >
             <View style={{ flex: 1 }}>
@@ -190,7 +260,7 @@ export const VerificationCenterScreen: React.FC = () => {
               <TouchableOpacity 
                 style={styles.accordionHeader} 
                 activeOpacity={0.7}
-                disabled={completed.identity}
+                disabled={completed.identity || !completed.email}
                 onPress={() => toggleSection('identity')}
               >
                 <View style={{ flex: 1 }}>
@@ -206,18 +276,22 @@ export const VerificationCenterScreen: React.FC = () => {
               {openSections.identity && !completed.identity && (
                 <View style={styles.accordionBody}>
                   <View style={styles.inputGroup}>
-                    <Input label="Nombre Comercial o Público" placeholder="Ej: Reparaciones Rápidas JP" value={providerName} onChangeText={setProviderName} icon="Store" />
+                    <Input label="Nombre de Empresa (opcional)" placeholder="Ej: Transportes SPA" value={providerName} onChangeText={setProviderName} icon="Briefcase" />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Input label="RUT del Proveedor" placeholder="12345678-9" value={providerRut} onChangeText={setProviderRut} icon="FileText" />
+                    <Input label="RUT del Proveedor" placeholder="12345678-9" value={providerRut} onChangeText={setProviderRut} icon="FileText" mask="rut" />
                   </View>
                   <Button title={saving ? 'Guardando...' : 'Confirmar identidad'} disabled={saving || !user?.provider?.id} onPress={async () => {
+                    if (providerRut && !validateRut(providerRut)) {
+                      Alert.alert('Error', 'El RUT ingresado no es válido. Formato esperado: 12345678-9');
+                      return;
+                    }
                     try {
                       if (user?.provider?.id && providerName) {
                         await updateProviderProfile(user.provider.id, { name: providerName, rut: providerRut || undefined });
-                        setOpenSections(prev => ({ ...prev, identity: false, bank: isProvider }));
+                        setOpenSections(prev => ({ ...prev, identity: false, bank: true }));
                       }
-                    } catch (_err) {
+                    } catch {
                       Alert.alert('Error', 'No se pudo guardar la identidad.');
                     }
                   }} />
@@ -230,7 +304,7 @@ export const VerificationCenterScreen: React.FC = () => {
               <TouchableOpacity 
                 style={styles.accordionHeader} 
                 activeOpacity={0.7}
-                disabled={completed.bank}
+                disabled={completed.bank || !completed.identity}
                 onPress={() => toggleSection('bank')}
               >
                 <View style={{ flex: 1 }}>
@@ -246,43 +320,171 @@ export const VerificationCenterScreen: React.FC = () => {
               {openSections.bank && !completed.bank && (
                 <View style={styles.accordionBody}>
                   <View style={styles.inputGroup}>
-                    <Input label="Banco" placeholder="Ej: Banco Estado" value={bankName} onChangeText={setBankName} icon="Landmark" />
+                    <SelectField
+                      label="Banco"
+                      value={bankName}
+                      placeholder="Selecciona tu banco"
+                      onPress={() => setActivePicker('bank')}
+                    />
                   </View>
                   <View style={styles.inputGroup}>
-                    <Input label="Tipo de Cuenta" placeholder="Ej: Cuenta RUT" value={accountType} onChangeText={setAccountType} icon="CreditCard" />
+                    <SelectField
+                      label="Tipo de Cuenta"
+                      value={accountType}
+                      placeholder={bankName ? 'Selecciona el tipo' : 'Primero elige banco'}
+                      disabled={!bankName}
+                      onPress={() => setActivePicker('account')}
+                    />
                   </View>
                   <View style={styles.inputGroup}>
                     <Input label="Número de Cuenta" placeholder="Ej: 123456789" value={accountNumber} onChangeText={setAccountNumber} keyboardType="numeric" icon="Hash" />
                   </View>
+                  <View style={styles.inputGroup}>
+                    <Input label="RUT del Titular" placeholder="12345678-9" value={bankRut} onChangeText={setBankRut} icon="FileText" mask="rut" />
+                  </View>
                   <Button title={saving ? 'Guardando...' : 'Guardar cuenta bancaria'} disabled={saving || !user?.provider?.id} onPress={async () => {
+                    if (!user?.provider?.id || !bankName || !accountNumber) return;
+                    if (!accountType) {
+                      Alert.alert('Error', 'Debes seleccionar el tipo de cuenta.');
+                      return;
+                    }
+                    if (validAccountTypes.length > 0 && !validAccountTypes.includes(accountType)) {
+                      Alert.alert('Error', 'Tipo de cuenta no coincide con el banco.');
+                      return;
+                    }
+                    if (bankRut && !validateRut(bankRut)) {
+                      Alert.alert('Error', 'El RUT bancario ingresado no es válido. Formato esperado: 12345678-9');
+                      return;
+                    }
                     try {
-                      if (user?.provider?.id && bankName && accountNumber) {
-                        await updateProviderBank(user.provider.id, {
-                          bankName,
-                          accountType: accountType || 'Cuenta Corriente',
-                          accountNumber,
-                          rut: providerRut || undefined,
-                        });
-                        setOpenSections(prev => ({ ...prev, bank: false }));
-                      }
-                    } catch (_err) {
+                      await updateProviderBank(user.provider.id, {
+                        bankName,
+                        accountType,
+                        accountNumber,
+                        rut: bankRut || undefined,
+                      });
+                      setOpenSections(prev => ({ ...prev, bank: false, kyc: true }));
+                    } catch {
                       Alert.alert('Error', 'No se pudo guardar la cuenta bancaria.');
                     }
                   }} />
                 </View>
               )}
             </View>
+
+            {/* 5. Verificación de Identidad (KYC) */}
+            <View style={styles.accordionCard}>
+              <TouchableOpacity 
+                style={styles.accordionHeader} 
+                activeOpacity={0.7}
+                disabled={completed.kyc || !completed.bank}
+                onPress={() => toggleSection('kyc')}
+              >
+                <View style={{ flex: 1 }}>
+                  <View style={styles.accordionTitleRow}>
+                    <Text style={styles.accordionTitle}>5. Verificación de Identidad (Opcional)</Text>
+                    <StatusBadge isCompleted={completed.kyc} />
+                  </View>
+                  <Text style={styles.accordionDesc}>Valida tu identidad con reconocimiento facial y escaneo de cédula.</Text>
+                </View>
+                <Icon name={openSections.kyc ? "ChevronUp" : "ChevronDown"} size={20} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
+
+              {openSections.kyc && !completed.kyc && (
+                <View style={styles.accordionBody}>
+                  <Text style={styles.kycInstructions}>
+                    Necesitamos verificar tu identidad mediante tu cédula de identidad y una selfie.{'\n\n'}
+                    Al presionar el botón se abrirá el navegador con el formulario de verificación.
+                  </Text>
+                  {kycSessionId && (
+                    <View style={styles.kycPollingBox}>
+                      <Icon name="Loader" size={16} color={TOKENS.colors.brand600} />
+                      <Text style={styles.kycPollingText}>Esperando verificación...</Text>
+                    </View>
+                  )}
+                  <Button
+                    title={kycCreating ? 'Creando sesión...' : 'Iniciar verificación de identidad'}
+                    onPress={handleStartKyc}
+                    loading={kycCreating}
+                    disabled={kycCreating}
+                    icon="Shield"
+                  />
+                </View>
+              )}
+            </View>
+
+            {(completed.personal && completed.email && completed.identity && completed.bank) && (
+              <View style={{ marginTop: 32, marginBottom: 16 }}>
+                <Button 
+                  title="Crea tu primer servicio" 
+                  onPress={() => navigation.navigate('PublishService')} 
+                  icon="Plus" 
+                  style={{ width: '100%' }}
+                />
+              </View>
+            )}
           </>
         )}
-
       </ScrollView>
+
+      {/* PICKER MODAL */}
+      <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
+        <Text style={styles.pickerTitle}>{pickerTitle}</Text>
+        <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
+          {pickerOptions.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={styles.pickerOption}
+              onPress={() => {
+                if (activePicker === 'bank') {
+                  setBankName(opt.value);
+                  setAccountType('');
+                } else if (activePicker === 'account') {
+                  setAccountType(opt.value);
+                }
+                setActivePicker(null);
+              }}
+            >
+              <Text style={styles.pickerOptionText}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Modal>
+    </View>
+  );
+};
+
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  placeholder?: string;
+  disabled?: boolean;
+  onPress: () => void;
+}
+
+const SelectField: React.FC<SelectFieldProps> = ({ label, value, placeholder, disabled, onPress }) => {
+  const isDisabled = !!disabled;
+  return (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TouchableOpacity
+        style={[styles.selectField, isDisabled && styles.selectFieldDisabled]}
+        onPress={onPress}
+        disabled={isDisabled}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]}>
+          {value || placeholder || 'Seleccionar'}
+        </Text>
+        <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
+      </TouchableOpacity>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.lg, paddingBottom: 40 },
+  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.lg },
   pageSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, lineHeight: 22 },
   summaryBanner: { flexDirection: 'row', alignItems: 'flex-start', padding: TOKENS.spacing.md, borderRadius: 16, borderWidth: 1, gap: 12 },
   summaryBannerPending: { backgroundColor: TOKENS.colors.brand50, borderColor: TOKENS.colors.brand200 },
@@ -306,6 +508,26 @@ const styles = StyleSheet.create({
 
   accordionBody: { padding: TOKENS.spacing.lg, paddingTop: 0, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface100, marginTop: TOKENS.spacing.sm },
   inputGroup: { marginBottom: TOKENS.spacing.md, gap: 6 },
-  label: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain },
-  input: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
+
+  fieldLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
+  selectField: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput,
+    borderWidth: 1, borderColor: TOKENS.colors.surface200,
+    paddingHorizontal: TOKENS.spacing.md, height: 52,
+    ...TOKENS.shadows.soft,
+  },
+  selectFieldDisabled: { backgroundColor: TOKENS.colors.surface50, borderColor: TOKENS.colors.surface100 },
+  selectFieldText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.medium, flex: 1, paddingRight: TOKENS.spacing.sm },
+  selectFieldPlaceholder: { color: TOKENS.colors.textMuted },
+
+  kycInstructions: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, lineHeight: 20, marginBottom: TOKENS.spacing.md },
+  kycPollingBox: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: TOKENS.spacing.md, backgroundColor: TOKENS.colors.brand50, borderRadius: 12, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.brand100 },
+  kycPollingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.brand700, fontWeight: TOKENS.typography.weights.semibold },
+
+  pickerModal: { maxWidth: 340, maxHeight: 480 },
+  pickerTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
+  pickerList: { maxHeight: 360 },
+  pickerOption: { paddingVertical: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
+  pickerOptionText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
 });

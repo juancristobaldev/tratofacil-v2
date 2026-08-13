@@ -2,11 +2,12 @@ import { useState, useCallback } from 'react';
 import { useMutation } from '@apollo/client/react';
 import { Linking } from 'react-native';
 import { INIT_FLOW_PRODUCT, CONFIRM_FLOW_PRODUCT } from '../graphql/operations/products';
-import { INIT_FLOW_JOB } from '../graphql/operations/jobs';
+import { INIT_FLOW_JOB, CONFIRM_FLOW_JOB } from '../graphql/operations/jobs';
 import { INIT_REALTIME_FLOW_PAYMENT, CONFIRM_REALTIME_FLOW_PAYMENT } from '../graphql/operations/realtime';
+import { CONFIRM_FLOW_AD } from '../graphql/operations/wallet';
 import type { RealtimePaymentInitResponse } from '../types/graphql';
 
-type FlowPaymentType = 'product' | 'job' | 'realtime';
+type FlowPaymentType = 'product' | 'job' | 'realtime' | 'ad';
 
 interface FlowInitParams {
   type: FlowPaymentType;
@@ -48,6 +49,10 @@ export function useFlow(): UseFlowReturn {
   const [confirmRealtime] = useMutation<{
     confirmRealtimeFlowPayment: { id: number; status: string };
   }>(CONFIRM_REALTIME_FLOW_PAYMENT);
+
+  const [confirmJob] = useMutation<{ confirmFlowJob: { id: number; status: string } }>(CONFIRM_FLOW_JOB);
+
+  const [confirmAd] = useMutation<{ confirmFlowAdTransaction: { id: number; status: string } }>(CONFIRM_FLOW_AD);
 
   const pay = useCallback(
     async (params: FlowInitParams): Promise<FlowInitResult> => {
@@ -109,6 +114,12 @@ export function useFlow(): UseFlowReturn {
           case 'realtime':
             await confirmRealtime({ variables: { token } });
             break;
+          case 'job':
+            await confirmJob({ variables: { token } });
+            break;
+          case 'ad':
+            await confirmAd({ variables: { token } });
+            break;
           default:
             throw new Error('Confirmación no soportada para este tipo');
         }
@@ -120,7 +131,7 @@ export function useFlow(): UseFlowReturn {
         setIsProcessing(false);
       }
     },
-    [confirmProduct, confirmRealtime],
+    [confirmProduct, confirmRealtime, confirmJob, confirmAd],
   );
 
   return { pay, confirm, isProcessing, lastError };

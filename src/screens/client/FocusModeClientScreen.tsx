@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   Image,
   TextInput,
@@ -14,7 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge, AnimatedUserMarker, AnimatedProviderMarker } from '../../components/ui';
@@ -47,13 +46,15 @@ export const FocusModeClientScreen: React.FC = () => {
     const p = activeOrder?.provider;
     const sp = activeOrder?.serviceProvider;
     if (p) {
+      // Sumar reviews de órdenes normales y de órdenes realtime (ver HomePage.tsx).
+      const allReviews = [...(p.reviews || []), ...(p.realtimeReviews || [])];
       return {
         id: String(p.id),
         name: p.name,
         providerName: p.name,
         avatar: getImageUrl(p.logoImage?.cdnUrl || null),
-        rating: p.reviews?.length ? p.reviews.reduce((s: number, r: any) => s + r.rating, 0) / p.reviews.length : 0,
-        reviewsCount: p.reviews?.length || 0,
+        rating: allReviews.length ? allReviews.reduce((s: number, r: any) => s + r.rating, 0) / allReviews.length : 0,
+        reviewsCount: allReviews.length,
         verified: p.certificates?.some((c: any) => c.verified) || false,
         description: p.bio || '',
         pricePerHour: sp?.price || 0,
@@ -301,25 +302,26 @@ export const FocusModeClientScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
+          mapPadding={{ top: insets.top + 20, right: 16, bottom: 220, left: 16 }}
         >
-          {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
+            {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
 
-          {status !== 'PENDING' && providerCoords && (
-            <AnimatedProviderMarker
-              coordinate={providerCoords}
-              text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'}
-            />
-          )}
+            {status !== 'PENDING' && providerCoords && (
+              <AnimatedProviderMarker
+                coordinate={providerCoords}
+                text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'}
+              />
+            )}
 
-          {polylineCoords.length > 0 && (
-            <Polyline
-              coordinates={polylineCoords}
-              strokeColor={TOKENS.colors.brand500}
-              strokeWidth={4}
-              lineDashPattern={[6, 3]}
-            />
-          )}
-        </MapView>
+            {polylineCoords.length > 0 && (
+              <Polyline
+                coordinates={polylineCoords}
+                strokeColor={TOKENS.colors.brand500}
+                strokeWidth={4}
+                lineDashPattern={[6, 3]}
+              />
+            )}
+          </MapView>
 
         {!followMode && status !== 'PENDING' && (
           <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
@@ -365,7 +367,7 @@ export const FocusModeClientScreen: React.FC = () => {
             <Animated.View style={[styles.floatingAvatar1, { transform: [{ translateY: floatAnim }] }]}>
               <Image source={{ uri: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
             </Animated.View>
-            <Animated.View style={[styles.floatingAvatar2, { transform: [{ translateY: Animated.multiply(floatAnim, -1) }] }]}>
+            <Animated.View style={[styles.floatingAvatar2, { transform: [{ translateY: floatAnim.interpolate({ inputRange: [-20, 20], outputRange: [20, -20] }) }] }]}>
               <Image source={{ uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
             </Animated.View>
           </View>
@@ -390,6 +392,15 @@ export const FocusModeClientScreen: React.FC = () => {
           <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
           <Text style={styles.radarText}>Esperando confirmación de pago</Text>
           <Text style={styles.radarSubText}>Estamos verificando tu pago con la pasarela...</Text>
+
+          <TouchableOpacity onPress={async () => {
+            if (activeOrder?.id) {
+              try { await realtime.cancelOrder(activeOrder.id); } catch {}
+            }
+            clearPanel();
+          }} style={styles.cancelBtn}>
+            <Text style={styles.cancelBtnText}>Cancelar orden</Text>
+          </TouchableOpacity>
         </View>
       )}
 

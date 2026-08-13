@@ -1,35 +1,17 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  ScrollView,
-  Dimensions,
 } from 'react-native';
+import { BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { TOKENS } from '../../theme';
 import { Icon, RotatingHorizontalAd, EmptyState } from '../ui';
-import { useCategories } from '../../hooks/useCategories';
+import { useCategories } from '../../context/CategoriesContext';
 import { useAds } from '../../hooks/useAds';
 import { usePanel } from '../../context/PanelContext';
 import type { TreeNode } from '../../utils/categoryTree';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const MAX_PANEL_HEIGHT = SCREEN_HEIGHT * 0.75;
-
-function matchText(target: string, query: string): boolean {
-  const t = target.toLowerCase();
-  const q = query.toLowerCase();
-  if (t.includes(q) || q.includes(t)) return true;
-  const tWords = t.split(/\s+/);
-  const qWords = q.split(/\s+/);
-  return qWords.some((qw) =>
-    tWords.some(
-      (tw) => tw.startsWith(qw) || qw.startsWith(tw) || tw.includes(qw),
-    ),
-  );
-}
 
 export const CategoriesPanelContent: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,7 +41,25 @@ export const CategoriesPanelContent: React.FC = () => {
   const visibleNodes = useMemo(() => {
     if (!searchQuery.trim()) return categoryTree;
     const q = searchQuery.trim().toLowerCase();
-    return categoryTree.filter((node) => matchText(node.name, q));
+    const results: TreeNode[] = [];
+    for (const node of categoryTree) {
+      for (const service of node.services) {
+        if (service.name.toLowerCase().includes(q)) {
+          const sps = service.serviceProviders || [];
+          results.push({
+            id: service.id,
+            name: service.name,
+            slug: `service-${service.id}`,
+            type: 'service' as const,
+            parentName: node.name,
+            services: [service],
+            providerCount: sps.length,
+            onlineProviderCount: sps.filter((sp: any) => sp.provider?.isRealtimeActive).length,
+          });
+        }
+      }
+    }
+    return results;
   }, [categoryTree, searchQuery]);
 
   const showSearch = searchQuery.trim().length > 0;
@@ -84,49 +84,51 @@ export const CategoriesPanelContent: React.FC = () => {
     clearPanel();
   }, [onClearCategory, clearPanel]);
 
-  const renderNodeCard = (node: TreeNode) => (
-    <TouchableOpacity
-      key={`node-${node.type}-${node.id}`}
-      onPress={() => handleNodePress(node)}
-      style={[
-        styles.nodeCard,
-        node.type === 'category' && styles.nodeCardCategory,
-        node.type === 'subcategory' && styles.nodeCardSubcategory,
-      ]}
-      activeOpacity={0.7}
-    >
-      <Icon
-        name="ChevronRight"
-        size={18}
-        color={TOKENS.colors.textSubtle}
-      />
-      <View style={styles.nodeCardBody}>
-        <Text style={styles.nodeCardTitle} numberOfLines={1}>
-          {node.name}
-        </Text>
-        {node.type === 'subcategory' && node.parentName ? (
-          <Text style={styles.nodeCardParent} numberOfLines={1}>
-            {node.parentName}
+  const renderNodeCard = useCallback(
+    ({ item }: { item: TreeNode }) => (
+      <TouchableOpacity
+        onPress={() => handleNodePress(item)}
+        style={[
+          styles.nodeCard,
+          item.type === 'category' && styles.nodeCardCategory,
+          (item.type === 'subcategory' || item.type === 'service') && styles.nodeCardSubcategory,
+        ]}
+        activeOpacity={0.7}
+      >
+        <Icon
+          name="ChevronRight"
+          size={18}
+          color={TOKENS.colors.textSubtle}
+        />
+        <View style={styles.nodeCardBody}>
+          <Text style={styles.nodeCardTitle} numberOfLines={1}>
+            {item.name}
           </Text>
-        ) : null}
-      </View>
-      <View style={styles.nodeCardRight}>
-        <Text style={styles.nodeCardCount}>
-          {node.services.length}
-        </Text>
-        {node.onlineProviderCount > 0 && (
-          <View style={styles.onlineBadge}>
-            <Text style={styles.onlineBadgeText}>
-              {node.onlineProviderCount}
+          {item.parentName ? (
+            <Text style={styles.nodeCardParent} numberOfLines={1}>
+              {item.parentName}
             </Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
+          ) : null}
+        </View>
+        <View style={styles.nodeCardRight}>
+          <Text style={styles.nodeCardCount}>
+            {item.services.length}
+          </Text>
+          {item.onlineProviderCount > 0 && (
+            <View style={styles.onlineBadge}>
+              <Text style={styles.onlineBadgeText}>
+                {item.onlineProviderCount}
+              </Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    ),
+    [handleNodePress],
   );
 
   return (
-    <View style={[styles.container, { maxHeight: MAX_PANEL_HEIGHT }]}>
+    <View style={[styles.container]}>
       <View style={showSearch ? styles.contentFlex : styles.content}>
         <View style={styles.searchBar}>
           <Icon
@@ -135,7 +137,7 @@ export const CategoriesPanelContent: React.FC = () => {
             color={TOKENS.colors.brand500}
             style={styles.searchIcon}
           />
-          <TextInput
+          <BottomSheetTextInput
             placeholder="Buscar categorías o servicios..."
             placeholderTextColor={TOKENS.colors.textMuted}
             value={searchQuery}
@@ -178,21 +180,6 @@ export const CategoriesPanelContent: React.FC = () => {
               images={horizontal}
               transitionDuration={getTransitionDuration('marketing', 'HORIZONTAL', 6000)}
             />
-            {isLoading && visibleNodes.length === 0 ? (
-              <EmptyState
-                icon="Inbox"
-                title="Cargando categorías..."
-                description=""
-              />
-            ) : (
-              <ScrollView
-                style={styles.list}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
-              >
-                {visibleNodes.map(renderNodeCard)}
-              </ScrollView>
-            )}
           </>
         ) : (
           <>
@@ -200,7 +187,7 @@ export const CategoriesPanelContent: React.FC = () => {
               <Text style={styles.resultsTitle}>
                 {isLoading
                   ? 'Buscando...'
-                  : `${visibleNodes.length} categoría${visibleNodes.length !== 1 ? 's' : ''}`}
+                  : `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`}
               </Text>
               <TouchableOpacity
                 style={[
@@ -226,16 +213,18 @@ export const CategoriesPanelContent: React.FC = () => {
               <EmptyState
                 icon="Search"
                 title="Sin resultados"
-                description="No se encontraron categorías con ese nombre."
+                description="No se encontraron categorías ni servicios con ese nombre."
               />
             ) : (
-              <ScrollView
+              <BottomSheetFlatList
                 style={styles.list}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.listContent}
-              >
-                {visibleNodes.map(renderNodeCard)}
-              </ScrollView>
+                data={visibleNodes}
+                renderItem={renderNodeCard}
+                keyExtractor={(node) => `node-${node.type}-${node.id}`}
+                extraData={visibleNodes}
+              />
             )}
           </>
         )}

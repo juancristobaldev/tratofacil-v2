@@ -5,10 +5,9 @@ import {
   Text,
   TouchableOpacity,
   Linking,
-  ScrollView,
 } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Button, Badge, Rating } from '../ui';
+import { Icon, Avatar, Button, Badge, Rating, WorkTimer } from '../ui';
 import { usePanel } from '../../context/PanelContext';
 import { useNotification } from '../../context/NotificationContext';
 import type { OrderRealTime } from '../../types/graphql';
@@ -90,6 +89,17 @@ export const FocusProviderPanelContent: React.FC = () => {
     }
   };
 
+  const handleCancelOrder = async () => {
+    if (order?.id && realtime?.cancelOrder) {
+      try {
+        await realtime.cancelOrder(order.id);
+        closePanel();
+      } catch {
+        showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
+      }
+    }
+  };
+
   const handleStartWork = async () => {
     if (order?.id && realtime?.startOrder) {
       try {
@@ -114,7 +124,7 @@ export const FocusProviderPanelContent: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.sheetBody}>
+      <View style={styles.sheetBody}>
         {orderState === 'VIEW_REQUEST' && (
           <View style={styles.viewRequestContainer}>
             <View style={styles.clientCard}>
@@ -168,6 +178,8 @@ export const FocusProviderPanelContent: React.FC = () => {
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
                           style={styles.adjusterBtnSmall}
+                          accessibilityLabel="Disminuir horas de cotización"
+                          accessibilityRole="button"
                         >
                           <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
                         </TouchableOpacity>
@@ -175,6 +187,8 @@ export const FocusProviderPanelContent: React.FC = () => {
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
                           style={styles.adjusterBtnSmall}
+                          accessibilityLabel="Aumentar horas de cotización"
+                          accessibilityRole="button"
                         >
                           <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
                         </TouchableOpacity>
@@ -186,6 +200,8 @@ export const FocusProviderPanelContent: React.FC = () => {
                         <TouchableOpacity
                           onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
                           style={styles.adjusterBtnSmall}
+                          accessibilityLabel="Disminuir transporte en kilómetros"
+                          accessibilityRole="button"
                         >
                           <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
                         </TouchableOpacity>
@@ -193,6 +209,8 @@ export const FocusProviderPanelContent: React.FC = () => {
                         <TouchableOpacity
                           onPress={() => setQuoteTransport((t) => t + 1)}
                           style={styles.adjusterBtnSmall}
+                          accessibilityLabel="Aumentar transporte en kilómetros"
+                          accessibilityRole="button"
                         >
                           <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
                         </TouchableOpacity>
@@ -249,6 +267,12 @@ export const FocusProviderPanelContent: React.FC = () => {
               onPress={handleSendQuote}
               style={styles.actionBtn}
             />
+            <Button
+              title="Cancelar orden"
+              variant="outline"
+              onPress={handleCancelOrder}
+              style={styles.actionBtn}
+            />
           </View>
         )}
 
@@ -271,6 +295,13 @@ export const FocusProviderPanelContent: React.FC = () => {
             </View>
 
             <Text style={styles.guideText}>Conduce hacia la ubicación del cliente para iniciar el servicio.</Text>
+
+            <Button
+              title="Cancelar orden"
+              variant="outline"
+              onPress={handleCancelOrder}
+              style={styles.actionBtn}
+            />
           </>
         )}
 
@@ -297,15 +328,18 @@ export const FocusProviderPanelContent: React.FC = () => {
               onPress={handleStartWork}
               style={styles.actionBtn}
             />
+            <Button
+              title="Cancelar orden"
+              variant="outline"
+              onPress={handleCancelOrder}
+              style={styles.actionBtn}
+            />
           </>
         )}
 
         {orderState === 'IN_PROGRESS' && (
           <>
-            <View style={styles.timerContainer}>
-              <Text style={styles.timerLabel}>Tiempo transcurrido</Text>
-              <Text style={styles.timerVal}>{formatTimer ? formatTimer(workSeconds) : '00:00'}</Text>
-            </View>
+            <WorkTimer startedAt={order?.startedAt} />
 
             <Text style={styles.workingDesc}>{clientDescription || 'Servicio en curso'}</Text>
 
@@ -360,7 +394,7 @@ export const FocusProviderPanelContent: React.FC = () => {
             />
           </>
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 };
@@ -513,9 +547,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   adjusterBtnSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: TOKENS.colors.surface100,
     alignItems: 'center',
     justifyContent: 'center',

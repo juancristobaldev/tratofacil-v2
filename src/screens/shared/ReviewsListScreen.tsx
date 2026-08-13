@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, FlatList, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
@@ -57,45 +57,46 @@ export const ReviewsListScreen: React.FC = () => {
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
     : 0;
 
+  const renderItem = ({ item }: { item: ReviewItem }) => (
+    <View style={styles.reviewCard}>
+      <View style={styles.revHeader}>
+        <View style={styles.revUserRow}>
+          <Avatar uri={null} name={item.userName} size={40} />
+          <View>
+            <Text style={styles.revName}>{item.userName}</Text>
+            <Text style={styles.revDate}>{item.date}</Text>
+          </View>
+        </View>
+        <View style={styles.revRatingBadge}>
+          <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
+          <Text style={styles.revRatingText}>{item.rating}</Text>
+        </View>
+      </View>
+      {item.comment ? <Text style={styles.revText}>{item.comment}</Text> : null}
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 20 }]}
+      <FlatList
+        data={reviews}
+        renderItem={renderItem}
+        keyExtractor={(item) => String(item.id)}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
-      >
-        <View style={styles.headerBox}>
-          <Text style={styles.ratingNumber}>{avgRating.toFixed(1)}</Text>
-          <View style={styles.starsRow}>
-            <Rating rating={avgRating} size={24} />
+        ListHeaderComponent={
+          <View style={styles.headerBox}>
+            <Text style={styles.ratingNumber}>{avgRating.toFixed(1)}</Text>
+            <View style={styles.starsRow}>
+              <Rating rating={avgRating} size={24} />
+            </View>
+            <Text style={styles.reviewCount}>Basado en {reviews.length} reseñas</Text>
           </View>
-          <Text style={styles.reviewCount}>Basado en {reviews.length} reseñas</Text>
-        </View>
-
-        {reviews.length === 0 ? (
+        }
+        ListEmptyComponent={
           <EmptyState icon="MessageSquare" title="Sin reseñas aún" description="Las reseñas de tus clientes aparecerán aquí." />
-        ) : (
-          <View style={styles.list}>
-            {reviews.map((rev) => (
-              <View key={rev.id} style={styles.reviewCard}>
-                <View style={styles.revHeader}>
-                  <View style={styles.revUserRow}>
-                    <Avatar uri={null} name={rev.userName} size={40} />
-                    <View>
-                      <Text style={styles.revName}>{rev.userName}</Text>
-                      <Text style={styles.revDate}>{rev.date}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.revRatingBadge}>
-                    <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
-                    <Text style={styles.revRatingText}>{rev.rating}</Text>
-                  </View>
-                </View>
-                {rev.comment ? <Text style={styles.revText}>{rev.comment}</Text> : null}
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        }
+      />
     </View>
   );
 };
@@ -105,8 +106,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
   },
-  scrollBody: {
+  listContent: {
     padding: TOKENS.spacing.md,
+    gap: TOKENS.spacing.md,
   },
   headerBox: {
     alignItems: 'center',
@@ -127,9 +129,6 @@ const styles = StyleSheet.create({
   reviewCount: {
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
-  },
-  list: {
-    gap: TOKENS.spacing.md,
   },
   reviewCard: {
     backgroundColor: TOKENS.colors.white,

@@ -4,7 +4,7 @@ export type TreeNode = {
   id: number;
   name: string;
   slug: string;
-  type: 'category' | 'subcategory';
+  type: 'category' | 'subcategory' | 'service';
   parentName?: string;
   services: Service[];
   providerCount: number;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import Geolocation from 'react-native-geolocation-service';
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useRole } from '../context/RoleContext';
 import { useNotification } from '../context/NotificationContext';
 import { logSocketIn, logSocketOut, setSocketLogIdentifiers } from '../utils/socketLogger';
+import { startLocationTracking, stopLocationTracking } from '../native/locationTracker';
 import {
   GET_MY_REALTIME_STATE,
   GET_MY_REALTIME_ORDERS_AS_CLIENT,
@@ -94,6 +95,8 @@ interface ClientReviewInput {
 
 export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
+const TERMINAL_ORDER_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+
 export interface UseTimeRealServicesReturn {  loading: boolean;
   activeOrder: OrderRealTime | null;
   localActiveOrder: OrderRealTime | null;
@@ -136,7 +139,7 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
 
 export function useTimeRealServices(): UseTimeRealServicesReturn {
   const { token } = useAuth();
-  const { role } = useRole();
+  const { role, setRole } = useRole();
   const { showNotification } = useNotification();
   const apolloClient = useApolloClient();
   const socketRef = useRef<Socket | null>(null);
@@ -144,11 +147,25 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationTsRef = useRef<Record<number, number>>({});
 
+  // El efecto de conexión del socket (más abajo) no depende de `role`/`showNotification`
+  // para no forzar una reconexión cada vez que el usuario cambia de modo cliente/proveedor.
+  // Los handlers leen estos refs (siempre al día) en vez de cerrar sobre los valores
+  // vigentes al momento de crear el socket.
+  const roleRef = useRef(role);
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
+  const notifyRef = useRef(showNotification);
+  useEffect(() => {
+    notifyRef.current = showNotification;
+  }, [showNotification]);
+
   const { data, loading, refetch } = useQuery<RealtimeStateData>(
     GET_MY_REALTIME_STATE,
     {
-      pollInterval: 15000,
-      fetchPolicy: 'network-only',
+      pollInterval: socketStatus === 'connected' ? 0 : 15000,
+      fetchPolicy: socketStatus === 'connected' ? 'cache-first' : 'cache-and-network',
       skip: !token,
     },
   );
@@ -157,8 +174,8 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     data: clientOrdersData,
     refetch: refetchClientOrders,
   } = useQuery<any>(GET_MY_REALTIME_ORDERS_AS_CLIENT, {
-    pollInterval: 30000,
-    fetchPolicy: 'network-only',
+    pollInterval: socketStatus === 'connected' ? 0 : 30000,
+    fetchPolicy: socketStatus === 'connected' ? 'cache-first' : 'cache-and-network',
     skip: !token,
   });
 
@@ -171,7 +188,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const [rejectQuoteMut] = useMutation(REJECT_REALTIME_ORDER_QUOTE);
   const [respondMut] = useMutation(RESPOND_REALTIME_CONTACT_REQUEST);
   const [startMut] = useMutation(START_REALTIME_ORDER);
-  const [finishMut] = useMutation(FINISH_REALTIME_ORDER);
+  const [finishMut] = useMutation(FINISH_REALTIME_ORDER, {
+    refetchQueries: ['MyWallet'],
+  });
   const [cancelMut] = useMutation(CANCEL_REALTIME_ORDER);
   const [updateLocMut] = useMutation(UPDATE_REALTIME_ORDER_LOCATION);
   const [initPayMut] = useMutation<{ initRealtimeFlowPayment: RealtimePaymentInitResponse }>(INIT_REALTIME_FLOW_PAYMENT);
@@ -196,6 +215,33 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const providerActiveOrder = (providerState?.activeRealtimeOrder as OrderRealTime) ?? null;
   const clientId = data?.me?.id ?? null;
 
+  // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
+  // en modo cliente, pasamos a modo proveedor. Al terminar esa misma orden (y solo si
+  // fue esta lógica la que lo activó), volvemos a modo cliente. Nunca sobrescribe un
+  // toggle manual del usuario.
+  const autoProviderOrderRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!providerActiveOrder) {
+      if (autoProviderOrderRef.current !== null && role === 'provider') {
+        autoProviderOrderRef.current = null;
+        setRole('client');
+      }
+      return;
+    }
+    if (TERMINAL_ORDER_STATUSES.includes(providerActiveOrder.status)) {
+      if (autoProviderOrderRef.current === providerActiveOrder.id && role === 'provider') {
+        autoProviderOrderRef.current = null;
+        setRole('client');
+      }
+      return;
+    }
+    if (autoProviderOrderRef.current === providerActiveOrder.id) return;
+    if (role === 'provider') return;
+    autoProviderOrderRef.current = providerActiveOrder.id;
+    setRole('provider');
+  }, [providerActiveOrder, role, setRole]);
+
   useEffect(() => {
     if (!__DEV__) return;
     const p = activeOrder?.provider;
@@ -208,7 +254,10 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     }
   }, [data]);
 
-  const clientOrders: OrderRealTime[] = clientOrdersData?.myRealtimeOrdersAsClient ?? [];
+  const clientOrders: OrderRealTime[] = useMemo(
+    () => clientOrdersData?.myRealtimeOrdersAsClient ?? [],
+    [clientOrdersData],
+  );
 
   const [localActiveOrder, _setLocalActiveOrder] = useState<OrderRealTime | null>(null);
 
@@ -221,8 +270,24 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     if (localActiveOrder) {
       const pollOrder = activeOrder;
       if (pollOrder && pollOrder.id === localActiveOrder.id) {
-        if (TERMINAL.includes(pollOrder.status) && !TERMINAL.includes(localActiveOrder.status)) {
-          _setLocalActiveOrder(pollOrder);
+        const needsUpdate = 
+          pollOrder.status !== localActiveOrder.status || 
+          (!localActiveOrder.provider && pollOrder.provider) ||
+          (localActiveOrder.quotedPrice !== pollOrder.quotedPrice) ||
+          (localActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice);
+
+        if (needsUpdate) {
+          _setLocalActiveOrder((prev: any) => {
+            if (!prev) return pollOrder;
+            if (TERMINAL.includes(prev.status)) return prev;
+            return {
+              ...pollOrder,
+              clientLat: prev.clientLat ?? pollOrder.clientLat,
+              clientLng: prev.clientLng ?? pollOrder.clientLng,
+              providerLat: prev.providerLat ?? pollOrder.providerLat,
+              providerLng: prev.providerLng ?? pollOrder.providerLng,
+            };
+          });
         }
       } else {
         // El poll dejó de reportar esta orden: si clientOrders la marca terminal, la
@@ -241,9 +306,12 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     }
   }, [activeOrder, clientOrders, localActiveOrder]);
 
-  const setLocalActiveOrder: React.Dispatch<React.SetStateAction<OrderRealTime | null>> = (value) => {
-    _setLocalActiveOrder(value);
-  };
+  const setLocalActiveOrder = useCallback<React.Dispatch<React.SetStateAction<OrderRealTime | null>>>(
+    (value) => {
+      _setLocalActiveOrder(value);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -292,28 +360,29 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       logSocketIn('order-realtime:created', payload);
       refetch();
       refetchClientOrders();
-      if (role === 'provider') {
-        showNotification({ title: 'Nueva Solicitud', message: 'Tienes una nueva solicitud de servicio', type: 'info' });
+      if (roleRef.current === 'provider') {
+        notifyRef.current({ title: 'Nueva Solicitud', message: 'Tienes una nueva solicitud de servicio', type: 'info' });
       }
     });
 
     socket.on('order-realtime:updated', (payload: { orderRealtimeId: number; status: string }) => {
       logSocketIn('order-realtime:updated', payload);
       
-      if (payload.status === 'PROVIDER_ON_THE_WAY' && role === 'client') {
-        showNotification({ title: 'Proveedor en camino', message: 'El profesional va hacia tu ubicación.', type: 'info' });
-      } else if (payload.status === 'ARRIVED' && role === 'client') {
-        showNotification({ title: 'Proveedor ha llegado', message: 'El profesional se encuentra en tu ubicación.', type: 'success' });
+      const currentRole = roleRef.current;
+      if (payload.status === 'PROVIDER_ON_THE_WAY' && currentRole === 'client') {
+        notifyRef.current({ title: 'Proveedor en camino', message: 'El profesional va hacia tu ubicación.', type: 'info' });
+      } else if (payload.status === 'ARRIVED' && currentRole === 'client') {
+        notifyRef.current({ title: 'Proveedor ha llegado', message: 'El profesional se encuentra en tu ubicación.', type: 'success' });
       } else if (payload.status === 'COMPLETED') {
-        showNotification({ title: 'Servicio Finalizado', message: 'El servicio ha sido completado exitosamente.', type: 'success' });
+        notifyRef.current({ title: 'Servicio Finalizado', message: 'El servicio ha sido completado exitosamente.', type: 'success' });
       } else if (payload.status === 'CANCELLED') {
-        showNotification({ title: 'Servicio Cancelado', message: 'El servicio ha sido cancelado.', type: 'error' });
-      } else if (payload.status === 'REJECTED' && role === 'client') {
-        showNotification({ title: 'Oferta Rechazada', message: 'El profesional ha rechazado tu solicitud.', type: 'error' });
-      } else if (payload.status === 'ACCEPTED' && role === 'provider') {
-        showNotification({ title: 'Servicio Aceptado', message: 'El cliente ha aceptado el trato.', type: 'success' });
-      } else if (payload.status === 'NEGOTIATING' && role === 'client') {
-        showNotification({ title: 'Cotización Recibida', message: 'El profesional ha enviado una cotización.', type: 'info' });
+        notifyRef.current({ title: 'Servicio Cancelado', message: 'El servicio ha sido cancelado.', type: 'error' });
+      } else if (payload.status === 'REJECTED' && currentRole === 'client') {
+        notifyRef.current({ title: 'Oferta Rechazada', message: 'El profesional ha rechazado tu solicitud.', type: 'error' });
+      } else if (payload.status === 'ACCEPTED' && currentRole === 'provider') {
+        notifyRef.current({ title: 'Servicio Aceptado', message: 'El cliente ha aceptado el trato.', type: 'success' });
+      } else if (payload.status === 'NEGOTIATING' && currentRole === 'client') {
+        notifyRef.current({ title: 'Cotización Recibida', message: 'El profesional ha enviado una cotización.', type: 'info' });
       }
 
       const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
@@ -326,6 +395,15 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         });
       }
       
+      try {
+        apolloClient.cache.modify({
+          id: `OrderRealTime:${payload.orderRealtimeId}`,
+          fields: {
+            status: () => payload.status,
+          },
+        });
+      } catch {}
+
       if (refetchTimerRef.current) {
         clearTimeout(refetchTimerRef.current);
       }
@@ -395,8 +473,8 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     socket.on('provider:disconnected', (payload: { orderRealtimeId: number }) => {
       logSocketIn('provider:disconnected', payload);
-      if (role === 'client') {
-        showNotification({ title: 'Proveedor desconectado', message: 'El proveedor ha perdido la conexión.', type: 'error' });
+      if (roleRef.current === 'client') {
+        notifyRef.current({ title: 'Proveedor desconectado', message: 'El proveedor ha perdido la conexión.', type: 'error' });
       }
       refetch();
       refetchClientOrders();
@@ -581,6 +659,17 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     let watchId: number | null = null;
     const lastSentRef = { current: 0 };
 
+    // Foreground service (Android) que mantiene vivo el proceso para que este
+    // watchPosition siga reportando la ubicación con la app en segundo plano.
+    startLocationTracking();
+
+    // iOS: recién acá pedimos "Always" (justificado en contexto: el proveedor empezó a
+    // trackear una orden en curso), nunca al arrancar la app. Sin este permiso, iOS pausa
+    // el watchPosition apenas la app pasa a background. Nunca se dispara para un cliente.
+    if (Platform.OS === 'ios' && roleRef.current === 'provider') {
+      Geolocation.requestAuthorization('always').catch(() => {});
+    }
+
     try {
       watchId = Geolocation.watchPosition(
         (position) => {
@@ -608,6 +697,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       if (watchId != null) {
         Geolocation.clearWatch(watchId);
       }
+      stopLocationTracking();
     };
   }, [localActiveOrder?.status, activeOrder?.status, updateLocation, localActiveOrder?.id, activeOrder?.id]);
 
@@ -696,40 +786,76 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [respondCounterOffMut],
   );
 
-  return {
-    loading,
-    activeOrder,
-    localActiveOrder,
-    setLocalActiveOrder,
-    cancellingRef,
-    clientOrders,
-    providerState,
-    isRealtimeActive,
-    socketStatus,
-    providerActiveOrder,
-    clientId,
-    refetch,
-    toggleAvailability,
-    createContactRequest,
-    quoteOrder,
-    updateQuote,
-    acceptQuote,
-    rejectQuote,
-    respondRequest,
-    startOrder,
-    finishOrder,
-    cancelOrder,
-    updateLocation,
-    updateProviderLocation,
-    initPayment,
-    confirmPayment,
-    sendMessage,
-    createProviderReview,
-    createClientReview,
-    requestProviderToConnect,
-    guestCreateContactRequest,
-    clientCounterOffer,
-    respondToCounterOffer,
-    socketRef,
-  };
+  return useMemo(
+    () => ({
+      loading,
+      activeOrder,
+      localActiveOrder,
+      setLocalActiveOrder,
+      cancellingRef,
+      clientOrders,
+      providerState,
+      isRealtimeActive,
+      socketStatus,
+      providerActiveOrder,
+      clientId,
+      refetch,
+      toggleAvailability,
+      createContactRequest,
+      quoteOrder,
+      updateQuote,
+      acceptQuote,
+      rejectQuote,
+      respondRequest,
+      startOrder,
+      finishOrder,
+      cancelOrder,
+      updateLocation,
+      updateProviderLocation,
+      initPayment,
+      confirmPayment,
+      sendMessage,
+      createProviderReview,
+      createClientReview,
+      requestProviderToConnect,
+      guestCreateContactRequest,
+      clientCounterOffer,
+      respondToCounterOffer,
+      socketRef,
+    }),
+    [
+      loading,
+      activeOrder,
+      localActiveOrder,
+      clientOrders,
+      providerState,
+      isRealtimeActive,
+      socketStatus,
+      providerActiveOrder,
+      clientId,
+      refetch,
+      toggleAvailability,
+      createContactRequest,
+      quoteOrder,
+      updateQuote,
+      acceptQuote,
+      rejectQuote,
+      respondRequest,
+      startOrder,
+      finishOrder,
+      cancelOrder,
+      updateLocation,
+      updateProviderLocation,
+      initPayment,
+      confirmPayment,
+      sendMessage,
+      createProviderReview,
+      createClientReview,
+      requestProviderToConnect,
+      guestCreateContactRequest,
+      clientCounterOffer,
+      respondToCounterOffer,
+      setLocalActiveOrder,
+    ],
+  );
 }

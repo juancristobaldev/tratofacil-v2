@@ -11,6 +11,7 @@ import { NotificationProvider } from './src/context/NotificationContext';
 import { RefreshProvider } from './src/context/RefreshContext';
 import { PushProvider } from './src/push/PushProvider';
 import { RealtimeProvider } from './src/realtime/RealtimeContext';
+import { CategoriesProvider } from './src/context/CategoriesContext';
 import { client } from './src/graphql/apollo';
 import { initializeDeepLinks } from './src/utils/deepLinks';
 
@@ -26,7 +27,7 @@ function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent={true} />
         <ErrorBoundary>
           <ApolloProvider client={client}>
             <AuthProvider>
@@ -35,9 +36,11 @@ function App() {
                   <NotificationProvider>
                   <DeepLinkSetup />
                   <RealtimeProvider>
+                  <CategoriesProvider>
                   <RefreshProvider>
                     <AppNavigator />
                   </RefreshProvider>
+                  </CategoriesProvider>
                   </RealtimeProvider>
                   </NotificationProvider>
                 </LocationProvider>

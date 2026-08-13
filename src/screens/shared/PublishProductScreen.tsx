@@ -1,60 +1,104 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch, Image, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
-import { Button, Input, Icon } from '../../components/ui';
+import { Button, Input, Icon, Modal } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { uploadImage } from '../../utils/uploadImage';
 import { getImageUrl } from '../../utils/imageUrl';
+import { UBICACIONES_CHILE, containsPhoneNumber } from '../../utils/chile';
+import { MARKETPLACE_LIMITS, getProductPriceBreakdown } from '../../utils/comission';
+import { FIND_ALL_CATEGORIES, PRODUCTS_COUNT_BY_USER } from '../../graphql/operations/products';
+import { useQuery } from '@apollo/client/react';
 
-const PRODUCT_COMMISSION_RATE = 0.05;
+const DELIVERY_TYPE = 'Despacho a domicilio';
+const CONFIRMATION_DAYS_AHEAD = 3;
 
 export const PublishProductScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { role } = useRole();
-  
-  // Photos
+  const { user } = useAuth();
+
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  // Info
-  const [category, setCategory] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-
-  // Price & Stock
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('1');
 
-  // Location & Logistics
-  const [region, setRegion] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
   const [city, setCity] = useState('');
   const [shippingPayer, setShippingPayer] = useState<'Comprador' | 'Vendedor'>('Comprador');
   const [maxDispatchDays, setMaxDispatchDays] = useState('3');
   const [shippingDisabled, setShippingDisabled] = useState(false);
 
-  // Breakdown
-  const [commissionAmount, setCommissionAmount] = useState(0);
-  const [totalPrice, setTotalPrice] = useState(0);
+  const [parentCatId, setParentCatId] = useState<number | ''>('');
+  const [categoryProductId, setCategoryProductId] = useState<number | ''>('');
+
+  const [activePicker, setActivePicker] = useState<'parent' | 'child' | 'region' | 'city' | null>(null);
+
+  const { createProduct, createLoading: loading } = useMarketplace();
+
+  const { data: catData } = useQuery<{ findAllCategory: any[] }>(FIND_ALL_CATEGORIES);
+  const categories = useMemo(() => catData?.findAllCategory || [], [catData]);
+
+  const marketplacePlan = useMemo(() => {
+    const orders = user?.marketplacePlanOrders;
+    if (orders && orders.length && orders[0].planActive) return orders[0].plan;
+    return 'FREE';
+  }, [user]);
+
+  const limits = MARKETPLACE_LIMITS[marketplacePlan as keyof typeof MARKETPLACE_LIMITS] ?? MARKETPLACE_LIMITS.FREE;
+  const maxPhotos = limits.maxPhotos;
+
+  const { data: countData } = useQuery<{ productsByUser: any[] }>(PRODUCTS_COUNT_BY_USER, {
+    variables: { userId: user?.id },
+    skip: !user?.id,
+    fetchPolicy: 'network-only',
+  });
+  const productCount = countData?.productsByUser?.length || 0;
+  const isAtPublicationLimit = productCount >= limits.maxPublications && limits.maxPublications !== Infinity;
+
+  const rootCategories = useMemo(() => categories.filter((c: any) => !c.parentId), [categories]);
+  const availableChildren = useMemo(() => {
+    if (parentCatId === '') return [];
+    return categories.filter((c: any) => c.parentId === parentCatId);
+  }, [categories, parentCatId]);
+
+  const selectedCategoryObj = categories.find((c: any) => c.id === categoryProductId);
+  const categoryShippingDisabled = selectedCategoryObj?.shippingDisabled ?? false;
+
+  const ciudadesDisponibles = useMemo(() => {
+    const regionObj = UBICACIONES_CHILE.find((r) => r.region === selectedRegion);
+    return regionObj ? regionObj.ciudades : [];
+  }, [selectedRegion]);
+
+  const breakdown = getProductPriceBreakdown(Number(price) || 0);
+
+  const availableChildCount = availableChildren.length;
 
   useEffect(() => {
-    const basePrice = Number(price) || 0;
-    const comm = basePrice * PRODUCT_COMMISSION_RATE;
-    setCommissionAmount(comm);
-    setTotalPrice(basePrice + comm);
-  }, [price]);
-
-  const { createProduct, createLoading: loading, parentCategories } = useMarketplace();
+    if (parentCatId !== '' && availableChildren.length === 0) {
+      setCategoryProductId(parentCatId);
+    }
+  }, [parentCatId, availableChildren]);
 
   const handlePickPhotos = async () => {
     if (uploading) return;
+    const remaining = maxPhotos - photos.length;
+    if (remaining <= 0) {
+      Alert.alert('Límite alcanzado', `Puedes subir máximo ${maxPhotos} fotos según tu plan.`);
+      return;
+    }
     const result = await launchImageLibrary({
       mediaType: 'photo',
-      selectionLimit: 4 - photos.length,
+      selectionLimit: remaining,
     });
     if (result.didCancel) return;
     const assets = result.assets || [];
@@ -75,29 +119,72 @@ export const PublishProductScreen: React.FC = () => {
   };
 
   const handlePublish = async () => {
-    if (!title || !price || !category) {
-      Alert.alert('Error', 'Por favor, completa los campos obligatorios.');
+    if (!title || !price || categoryProductId === '') {
+      Alert.alert('Error', 'Por favor, completa los campos obligatorios marcados con asterisco (*).');
       return;
     }
-    if (!shippingDisabled && (!region || !city)) {
-      Alert.alert('Error', 'Por favor, selecciona región y ciudad.');
+    const stockNum = parseInt(stock, 10);
+    if (isNaN(stockNum) || stockNum <= 0) {
+      Alert.alert('Error', 'Por favor, ingresa un stock válido mayor a cero.');
       return;
     }
+    if (photos.length === 0) {
+      Alert.alert('Error', 'Debes subir al menos 1 imagen del producto.');
+      return;
+    }
+    if (!shippingDisabled && !city) {
+      Alert.alert('Error', 'Por favor selecciona una ubicación para tu producto.');
+      return;
+    }
+    if (containsPhoneNumber(desc)) {
+      Alert.alert('Error', 'No puedes incluir números telefónicos en la descripción');
+      return;
+    }
+
+    const slug = `${title.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const basePrice = Number(price) || 0;
+
+    const input: any = {
+      name: title,
+      slug,
+      description: desc,
+      location: shippingDisabled ? '' : city,
+      price: basePrice,
+      basePrice,
+      stock: stockNum,
+      categoryProductId: Number(categoryProductId),
+      imageUrls: photos,
+      shippingDisabled: shippingDisabled || categoryShippingDisabled,
+    };
+
+    if (!shippingDisabled && !categoryShippingDisabled) {
+      const confirmationDate = new Date();
+      confirmationDate.setDate(confirmationDate.getDate() + CONFIRMATION_DAYS_AHEAD);
+      input.conditions = {
+        deliveryType: DELIVERY_TYPE,
+        shippingPayer,
+        maxDispatchDays: parseInt(maxDispatchDays, 10) || 3,
+        confirmationDeadline: confirmationDate.toISOString(),
+      };
+    }
+
     try {
-      await createProduct({
-        name: title,
-        description: desc,
-        price: Number(price),
-        stock: Number(stock),
-        location: shippingDisabled ? undefined : `${city}, ${region}`,
-        slug: title.toLowerCase().replace(/\s+/g, '-').slice(0, 60),
-        categoryProductId: category,
-        shippingDisabled,
-        imageUrls: photos,
-      });
+      await createProduct(input);
+      Alert.alert('Éxito', '¡Tu producto ha sido publicado correctamente!');
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      const message = err?.graphQLErrors?.[0]?.message || err.message || '';
+      if (message.includes('LIMIT_PRODUCTS_ALERT')) {
+        Alert.alert('Límite alcanzado', 'Has alcanzado el límite de publicaciones de tu plan. Actualiza tu plan para seguir publicando productos.');
+        navigation.navigate('MarketplacePlans');
+      } else if (message.includes('verificación') || message.includes('verificacion') || message.includes('cuenta bancaria')) {
+        Alert.alert('Error', message);
+        navigation.navigate('VerificationCenter');
+      } else if (message.includes('Ya existe un producto') || message.includes('slug')) {
+        Alert.alert('Error', 'Ya tienes un producto con un nombre similar. Intenta con otro título.');
+      } else {
+        Alert.alert('Error', message || 'Ha ocurrido un error inesperado.');
+      }
     }
   };
 
@@ -111,13 +198,41 @@ export const PublishProductScreen: React.FC = () => {
     return null;
   }
 
+  const pickerOptions: { value: string; label: string }[] = (() => {
+    switch (activePicker) {
+      case 'parent':
+        return rootCategories.map((c: any) => ({ value: String(c.id), label: c.name }));
+      case 'child':
+        return availableChildren.map((c: any) => ({ value: String(c.id), label: c.name }));
+      case 'region':
+        return UBICACIONES_CHILE.map((r) => ({ value: r.region, label: r.region }));
+      case 'city':
+        return ciudadesDisponibles.map((c) => ({ value: c, label: c }));
+      default:
+        return [];
+    }
+  })();
+
+  const pickerTitle = { parent: 'Categoría', child: 'Subcategoría', region: 'Región', city: 'Ciudad / Comuna' }[activePicker ?? 'parent'];
+
+  const parentLabel = rootCategories.find((c: any) => c.id === parentCatId)?.name || '';
+  const childLabel = availableChildren.find((c: any) => c.id === categoryProductId)?.name || '';
+
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
+
+          {isAtPublicationLimit && (
+            <View style={styles.limitBanner}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.limitBannerText}>Has alcanzado el límite de {limits.maxPublications} publicaciones de tu plan actual.</Text>
+              </View>
+              <TouchableOpacity style={styles.limitBannerBtn} onPress={() => navigation.navigate('MarketplacePlans')}>
+                <Text style={styles.limitBannerBtnText}>Mejorar Plan</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* SECTION 1: PHOTOS */}
           <View style={styles.section}>
@@ -125,22 +240,18 @@ export const PublishProductScreen: React.FC = () => {
               <Icon name="Camera" size={24} color={TOKENS.colors.brand500} />
               <Text style={styles.sectionTitle}>Fotografías</Text>
             </View>
-            <Text style={styles.helperText}>Sube imágenes claras de tu producto. La primera será la portada.</Text>
-            
+            <Text style={styles.helperText}>Sube hasta {maxPhotos} fotos. La primera será la portada de tu anuncio.</Text>
             <View style={styles.photoGrid}>
               {photos.map((key, i) => (
                 <View key={key} style={styles.photoBox}>
                   <Image source={{ uri: getImageUrl(key) }} style={styles.photoPreview} resizeMode="cover" />
                   {i === 0 && <View style={styles.coverBadge}><Text style={styles.coverBadgeText}>PORTADA</Text></View>}
-                  <TouchableOpacity
-                    style={styles.removePhotoBtn}
-                    onPress={() => setPhotos((prev) => prev.filter((p) => p !== key))}
-                  >
+                  <TouchableOpacity style={styles.removePhotoBtn} onPress={() => setPhotos((prev) => prev.filter((p) => p !== key))}>
                     <Icon name="X" size={14} color={TOKENS.colors.statusDanger} />
                   </TouchableOpacity>
                 </View>
               ))}
-              {photos.length < 4 && (
+              {photos.length < maxPhotos && (
                 <TouchableOpacity style={styles.addPhotoBtn} onPress={handlePickPhotos} disabled={uploading}>
                   {uploading ? (
                     <ActivityIndicator color={TOKENS.colors.brand500} />
@@ -163,44 +274,20 @@ export const PublishProductScreen: React.FC = () => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Categoría *</Text>
-              <View style={styles.categoryChips}>
-                {parentCategories.map((c) => {
-                  const active = category === c.id;
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.categoryChip, active && styles.categoryChipActive]}
-                      onPress={() => setCategory(c.id)}
-                    >
-                      <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
-                        {c.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <SelectField label="Categoría *" value={parentLabel} placeholder="Seleccionar categoría principal..." onPress={() => setActivePicker('parent')} />
             </View>
 
-            <Input 
-              label="Título del anuncio *"
-              placeholder="Ej: Taladro Percutor 850W"
-              value={title}
-              onChangeText={setTitle}
-              containerStyle={styles.inputGroup}
-            />
+            {availableChildCount > 0 && (
+              <View style={styles.inputGroup}>
+                <SelectField label="Subcategoría" value={childLabel} placeholder="Seleccionar subcategoría..." onPress={() => setActivePicker('child')} />
+              </View>
+            )}
+
+            <Input label="Título del anuncio *" placeholder="Ej: Cámara Sony A7III con lente..." value={title} onChangeText={setTitle} containerStyle={styles.inputGroup} />
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Descripción detallada</Text>
-              <TextInput 
-                style={[styles.input, styles.textArea]} 
-                placeholder="Escribe todo lo que el comprador necesita saber: estado, accesorios, etc."
-                placeholderTextColor={TOKENS.colors.textMuted}
-                multiline
-                numberOfLines={4}
-                value={desc}
-                onChangeText={setDesc}
-              />
+              <Text style={styles.fieldLabel}>Descripción detallada</Text>
+              <TextInput style={[styles.textAreaInput]} placeholder="Escribe todo lo que el comprador necesita saber: estado, accesorios, etc." placeholderTextColor={TOKENS.colors.textMuted} multiline numberOfLines={4} maxLength={200} value={desc} onChangeText={setDesc} />
             </View>
           </View>
 
@@ -211,40 +298,23 @@ export const PublishProductScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Precio y Disponibilidad</Text>
             </View>
 
-            <Input 
-              label="¿Cuánto quieres recibir? ($) *"
-              placeholder="0"
-              keyboardType="numeric"
-              value={price}
-              onChangeText={setPrice}
-              leftIcon="DollarSign"
-              helperText="Monto libre que recibirás por cada venta."
-              containerStyle={styles.inputGroup}
-            />
+            <Input label="¿Cuánto quieres recibir? ($) *" placeholder="0" keyboardType="numeric" value={price} onChangeText={setPrice} leftIcon="DollarSign" helperText="Este es el monto libre que recibirás por cada venta." containerStyle={styles.inputGroup} />
 
-            <Input 
-              label="Stock disponible *"
-              placeholder="Cantidad"
-              keyboardType="numeric"
-              value={stock}
-              onChangeText={setStock}
-              containerStyle={styles.inputGroup}
-            />
+            <Input label="Stock disponible *" placeholder="Cantidad" keyboardType="numeric" value={stock} onChangeText={setStock} containerStyle={styles.inputGroup} />
 
-            {/* Financial Breakdown (Product) */}
             <View style={styles.breakdownBox}>
               <Text style={styles.breakdownTitle}>RESUMEN DE PUBLICACIÓN</Text>
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Tú recibes:</Text>
-                <Text style={styles.breakdownValue}>${(Number(price) || 0).toLocaleString("es-CL")}</Text>
+                <Text style={styles.breakdownValue}>${(Number(price) || 0).toLocaleString('es-CL')}</Text>
               </View>
               <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>Comisión por venta ({PRODUCT_COMMISSION_RATE * 100}%):</Text>
-                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>+ ${commissionAmount.toLocaleString("es-CL")}</Text>
+                <Text style={styles.breakdownLabel}>Comisión por venta ({breakdown.rate * 100}%):</Text>
+                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>+ ${breakdown.commission.toLocaleString('es-CL')}</Text>
               </View>
               <View style={[styles.breakdownRow, styles.breakdownTotal]}>
                 <Text style={styles.breakdownTotalLabel}>Precio final cliente:</Text>
-                <Text style={[styles.breakdownTotalValue, { color: TOKENS.colors.brand700 }]}>${totalPrice.toLocaleString("es-CL")}</Text>
+                <Text style={[styles.breakdownTotalValue, { color: TOKENS.colors.brand700 }]}>${breakdown.total.toLocaleString('es-CL')}</Text>
               </View>
             </View>
           </View>
@@ -256,85 +326,97 @@ export const PublishProductScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Ubicación y Entrega</Text>
             </View>
 
-            <Input 
-              label={`Región del producto ${shippingDisabled ? '' : '*'}`}
-              placeholder="Selecciona una región"
-              value={region}
-              onChangeText={setRegion}
-              leftIcon="MapPin"
-              containerStyle={styles.inputGroup}
-              editable={!shippingDisabled}
-            />
-
-            <Input 
-              label={`Ciudad / Comuna ${shippingDisabled ? '' : '*'}`}
-              placeholder="Selecciona tu ciudad"
-              value={city}
-              onChangeText={setCity}
-              leftIcon="MapPin"
-              containerStyle={styles.inputGroup}
-              editable={!shippingDisabled}
-            />
-
-            <View style={styles.inputGroup}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Sin Despacho (Solo Retiro)</Text>
-                  <Text style={styles.helperText}>Activa esto si el comprador debe retirar el producto en tu ubicación.</Text>
-                </View>
-                <Switch 
-                  value={shippingDisabled} 
-                  onValueChange={setShippingDisabled} 
-                  trackColor={{ false: TOKENS.colors.surface200, true: TOKENS.colors.brand500 }}
-                />
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Producto sin envío (solo retiro)</Text>
+                <Text style={styles.toggleDesc}>El comprador deberá retirar el producto en tu ubicación</Text>
               </View>
+              <Switch value={shippingDisabled} onValueChange={setShippingDisabled} trackColor={{ false: TOKENS.colors.surface200, true: TOKENS.colors.brand500 }} />
             </View>
 
             {!shippingDisabled && (
               <>
+                <SelectField label="Región del producto *" value={selectedRegion} placeholder="Selecciona una región" onPress={() => setActivePicker('region')} containerStyle={styles.inputGroup} />
+                <SelectField label="Ciudad / Comuna *" value={city} placeholder={!selectedRegion ? 'Primero elige región' : 'Selecciona tu ciudad'} disabled={!selectedRegion} onPress={() => setActivePicker('city')} containerStyle={styles.inputGroup} />
+
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>¿Quién paga el envío?</Text>
-                  <View style={styles.shippingPayerRow}>
+                  <Text style={styles.fieldLabel}>¿Quién paga el envío?</Text>
+                  <View style={styles.payerRow}>
                     {['Comprador', 'Vendedor'].map((option) => (
-                      <TouchableOpacity
-                        key={option}
-                        style={[styles.shippingPayerBtn, shippingPayer === option && styles.shippingPayerBtnActive]}
-                        onPress={() => setShippingPayer(option as any)}
-                      >
-                        <Text style={[styles.shippingPayerText, shippingPayer === option && styles.shippingPayerTextActive]}>{option}</Text>
+                      <TouchableOpacity key={option} style={[styles.payerBtn, shippingPayer === option && styles.payerBtnActive]} onPress={() => setShippingPayer(option as any)}>
+                        <Text style={[styles.payerText, shippingPayer === option && styles.payerTextActive]}>{option}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                <Input 
-                  label="Días para despachar"
-                  keyboardType="numeric"
-                  value={maxDispatchDays}
-                  onChangeText={setMaxDispatchDays}
-                  helperText="Días hábiles máximos para entregar al courier."
-                  containerStyle={styles.inputGroup}
-                />
+                <Input label="Días para despachar" keyboardType="numeric" value={maxDispatchDays} onChangeText={setMaxDispatchDays} helperText="Días hábiles máximos para entregar al courier." containerStyle={styles.inputGroup} />
               </>
             )}
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* FIXED FOOTER */}
-      <View style={styles.fixedFooter}>
+      <View style={[styles.fixedFooter, { paddingBottom: insets.bottom + TOKENS.spacing.md }]}>
         <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
         <View style={styles.footerButtons}>
           <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
-          <Button
-            title={loading ? 'Publicando...' : 'Publicar Ahora'}
-            onPress={handlePublish}
-            disabled={loading || !title || !price || !category || (!shippingDisabled && (!region || !city))}
-            style={{ flex: 2 }}
-          />
+          <Button title={loading ? 'Publicando...' : 'Publicar Ahora'} onPress={handlePublish} loading={loading} disabled={loading || !title || !price || categoryProductId === '' || (isAtPublicationLimit) || (!shippingDisabled && !city)} style={{ flex: 2 }} />
         </View>
       </View>
+
+      {/* PICKER MODAL */}
+      <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
+        <Text style={styles.pickerTitle}>{pickerTitle}</Text>
+        <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
+          {pickerOptions.map((opt) => (
+            <TouchableOpacity key={opt.value} style={styles.pickerOption} onPress={() => {
+              switch (activePicker) {
+                case 'parent':
+                  setParentCatId(Number(opt.value));
+                  setCategoryProductId('');
+                  break;
+                case 'child':
+                  setCategoryProductId(Number(opt.value));
+                  break;
+                case 'region':
+                  setSelectedRegion(opt.value);
+                  setCity('');
+                  break;
+                case 'city':
+                  setCity(opt.value);
+                  break;
+              }
+              setActivePicker(null);
+            }}>
+              <Text style={styles.pickerOptionText}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Modal>
+    </View>
+  );
+};
+
+interface SelectFieldProps {
+  label: string;
+  value: string;
+  placeholder?: string;
+  disabled?: boolean;
+  onPress: () => void;
+  containerStyle?: any;
+}
+
+const SelectField: React.FC<SelectFieldProps> = ({ label, value, placeholder, disabled, onPress, containerStyle }) => {
+  const isDisabled = !!disabled;
+  return (
+    <View style={containerStyle}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TouchableOpacity style={[styles.selectField, isDisabled && styles.selectFieldDisabled]} onPress={onPress} disabled={isDisabled} activeOpacity={0.7}>
+        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]}>{value || placeholder || 'Seleccionar'}</Text>
+        <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
+      </TouchableOpacity>
     </View>
   );
 };
@@ -345,7 +427,13 @@ const styles = StyleSheet.create({
   section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  
+  helperText: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 4 },
+
+  limitBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fcd34d', borderRadius: 12, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, gap: 12 },
+  limitBannerText: { fontSize: TOKENS.typography.sizes.sm, color: '#92400e', fontWeight: TOKENS.typography.weights.semibold, flex: 1 },
+  limitBannerBtn: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#d97706', borderRadius: 8 },
+  limitBannerBtnText: { fontSize: TOKENS.typography.sizes.xs, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.white },
+
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
   photoBox: { width: 100, height: 100, borderRadius: 12, backgroundColor: TOKENS.colors.surface100, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   photoPreview: { width: '100%', height: '100%' },
@@ -356,11 +444,9 @@ const styles = StyleSheet.create({
   addPhotoText: { fontSize: 12, color: TOKENS.colors.textSubtle, fontWeight: TOKENS.typography.weights.semibold },
 
   inputGroup: { marginBottom: TOKENS.spacing.md },
-  label: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
-  input: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
-  textArea: { height: 120, textAlignVertical: 'top' },
-  helperText: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 4 },
-  
+  fieldLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
+  textAreaInput: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain, height: 120, textAlignVertical: 'top' },
+
   breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.brand200, marginTop: TOKENS.spacing.sm },
   breakdownTitle: { fontSize: 12, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand700, textAlign: 'center', marginBottom: TOKENS.spacing.md, letterSpacing: 0.5 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -370,18 +456,28 @@ const styles = StyleSheet.create({
   breakdownTotalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   breakdownTotalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold },
 
-  shippingPayerRow: { flexDirection: 'row', gap: 12 },
-  categoryChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryChip: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 999, borderWidth: 1.5, borderColor: TOKENS.colors.surface300, backgroundColor: TOKENS.colors.white },
-  categoryChipActive: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
-  categoryChipText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textSubtle },
-  categoryChipTextActive: { color: TOKENS.colors.brand600 },
-  shippingPayerBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 2, borderColor: TOKENS.colors.surface200, backgroundColor: TOKENS.colors.white },
-  shippingPayerBtnActive: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
-  shippingPayerText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
-  shippingPayerTextActive: { color: TOKENS.colors.brand600 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.surface50, padding: TOKENS.spacing.md, borderRadius: 12, borderWidth: 1, borderColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
+  toggleLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
+  toggleDesc: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 4 },
+
+  payerRow: { flexDirection: 'row', gap: 12 },
+  payerBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 12, borderWidth: 2, borderColor: TOKENS.colors.surface200, backgroundColor: TOKENS.colors.white },
+  payerBtnActive: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
+  payerText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
+  payerTextActive: { color: TOKENS.colors.brand600 },
 
   fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
   footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
+
+  selectField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput, borderWidth: 1, borderColor: TOKENS.colors.surface200, paddingHorizontal: TOKENS.spacing.md, height: 52, ...TOKENS.shadows.soft },
+  selectFieldDisabled: { backgroundColor: TOKENS.colors.surface50, borderColor: TOKENS.colors.surface100 },
+  selectFieldText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.medium, flex: 1, paddingRight: TOKENS.spacing.sm },
+  selectFieldPlaceholder: { color: TOKENS.colors.textMuted },
+
+  pickerModal: { maxWidth: 340, maxHeight: 480 },
+  pickerTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
+  pickerList: { maxHeight: 360 },
+  pickerOption: { paddingVertical: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
+  pickerOptionText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
 });

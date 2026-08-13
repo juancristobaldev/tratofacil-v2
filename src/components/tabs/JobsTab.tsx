@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, Linking } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
 import { useSearchLocation } from '../../hooks/useSearchLocation';
-import { WEB_CALLBACK_URL } from '../../config/endpoints';
+import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
 import type { Job, JobApplication } from '../../types/graphql';
@@ -88,15 +88,12 @@ export const JobsTab: React.FC = () => {
       const result = await pay({
         type: 'job',
         orderId: order.id,
-        returnUrl: `${WEB_CALLBACK_URL}?type=job&source=mobile`,
+          returnUrl: `${DEEP_LINK_CALLBACK}?type=job`,
       });
       setShowCandidatesModal(false);
-      navigation.navigate('PaymentSuccess', {
-        title: 'Has contratado a un trabajador!',
-        subtitle: 'El pago ha sido procesado. El profesional será notificado.',
-        type: 'job',
-        flowUrl: result.url,
-      });
+      if (result.url) {
+        await Linking.openURL(result.url);
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
     } finally {

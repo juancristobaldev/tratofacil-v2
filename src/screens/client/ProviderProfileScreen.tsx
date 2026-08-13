@@ -1,6 +1,7 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, ActivityIndicator, TextInput, TouchableOpacity } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Badge, Button, Card, ErrorState } from '../../components';
 import { usePanel } from '../../context/PanelContext';
@@ -12,6 +13,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { getImageUrl } from '../../utils/imageUrl';
 
 export const ProviderProfileScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { openPanel } = usePanel();
@@ -82,7 +84,7 @@ export const ProviderProfileScreen: React.FC = () => {
     if (!provider) return;
 
     if (!isAuthenticated) {
-      navigation.navigate('GuestCheckout', { provider });
+      navigation.navigate('GuestCheckout', { provider, description: description.trim() });
       return;
     }
 
@@ -136,7 +138,7 @@ export const ProviderProfileScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]} showsVerticalScrollIndicator={false}>
         <View style={styles.profileSection}>
           <Avatar uri={provider.avatar} name={provider.name} size={80} />
           <Text style={styles.name}>{provider.name}</Text>
@@ -218,7 +220,7 @@ export const ProviderProfileScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md, paddingBottom: 40 },
+  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
   profileSection: { alignItems: 'center', backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusCard, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.surface200, marginBottom: 4 },
   name: { fontSize: TOKENS.typography.sizes.xl, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginTop: 12 },
   serviceName: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginTop: 2 },

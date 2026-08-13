@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
+import { useAuth } from '../context/AuthContext';
 import {
   GET_PRODUCT,
   GET_PRODUCT_BY_SLUG,
@@ -24,17 +25,33 @@ import type {
   Order,
   OrderJob,
 } from '../types/graphql';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
+
+// Referencia estable a nivel de módulo: evita que el fallback de `myOrders` sea un
+// objeto nuevo en cada render mientras `ordersData` está undefined (loading).
+const EMPTY_MY_ORDERS: { products: OrderProduct[]; services: Order[]; jobs: OrderJob[] } = {
+  products: [],
+  services: [],
+  jobs: [],
+};
 
 interface CreateProductInput {
   name: string;
   description?: string;
   price: number;
+  basePrice?: number;
   stock: number;
   location?: string;
   slug: string;
   categoryProductId: number;
   shippingDisabled?: boolean;
   imageUrls?: string[];
+  conditions?: {
+    deliveryType: string;
+    shippingPayer: string;
+    maxDispatchDays: number;
+    confirmationDeadline: string;
+  };
 }
 
 interface UpdateProductInput {
@@ -105,6 +122,7 @@ export function useMarketplace(): UseMarketplaceReturn {
   const [productSlug, setProductSlug] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState<string | null>(null);
+  const { token } = useAuth();
 
   const {
     data: mpData,
@@ -115,7 +133,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     fetchPolicy: 'network-only',
   });
 
-  const categories: CategoryProduct[] = mpData?.categoriesProducts || [];
+  const categories: CategoryProduct[] = mpData?.categoriesProducts ?? EMPTY_ARRAY;
 
   const subCategoryIds = useMemo(
     () =>
@@ -140,7 +158,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     [categories, selectedCategory],
   );
 
-  const currentSubCategories: CategoryProduct[] = activeCategory?.subCategories || [];
+  const currentSubCategories: CategoryProduct[] = activeCategory?.subCategories ?? EMPTY_ARRAY;
 
   const filteredProducts = useMemo(() => {
     let filtered = allProducts;
@@ -172,7 +190,10 @@ export function useMarketplace(): UseMarketplaceReturn {
     loading: mySalesLoading,
     error: mySalesError,
     refetch: refetchSales,
-  } = useQuery<{ getMySales: OrderProduct[] }>(GET_MY_SALES, { fetchPolicy: 'network-only' });
+  } = useQuery<{ getMySales: OrderProduct[] }>(GET_MY_SALES, {
+    fetchPolicy: 'network-only',
+    skip: !token,
+  });
 
   const {
     data: ordersData,
@@ -181,7 +202,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     refetch: refetchOrders,
   } = useQuery<{ myOrders: { products: OrderProduct[]; services: Order[]; jobs: OrderJob[] } }>(
     MY_ORDERS,
-    { fetchPolicy: 'network-only' },
+    { fetchPolicy: 'network-only', skip: !token },
   );
 
   const [createProdMut, { loading: createLoading }] = useMutation<{
@@ -273,10 +294,10 @@ export function useMarketplace(): UseMarketplaceReturn {
     productError,
     fetchProduct: setProductId,
     fetchProductBySlug: setProductSlug,
-    mySales: salesData?.getMySales || [],
+    mySales: salesData?.getMySales ?? EMPTY_ARRAY,
     mySalesLoading,
     mySalesError,
-    myOrders: ordersData?.myOrders || { products: [], services: [], jobs: [] },
+    myOrders: ordersData?.myOrders ?? EMPTY_MY_ORDERS,
     myOrdersLoading,
     myOrdersError,
     createProduct,

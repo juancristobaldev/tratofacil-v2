@@ -3,10 +3,15 @@ package com.tratofacilv2.push
 import android.content.Context
 import com.facebook.react.bridge.*
 import com.google.firebase.messaging.FirebaseMessaging
+import com.tratofacilv2.ReactContextHolder
 import org.json.JSONObject
 
 class PushTokenModule(reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
+
+  init {
+    ReactContextHolder.reactContext = reactContext
+  }
 
   override fun getName() = "PushTokenModule"
 
@@ -39,5 +44,15 @@ class PushTokenModule(reactContext: ReactApplicationContext) :
     } else {
       promise.resolve(null)
     }
+  }
+
+  @ReactMethod
+  fun addListener(eventName: String) {
+    // Keep: Required for RN built in Event Emitter Calls.
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Int) {
+    // Keep: Required for RN built in Event Emitter Calls.
   }
 }

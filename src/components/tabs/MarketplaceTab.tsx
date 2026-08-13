@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Modal, FlatList, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Badge, ErrorState } from '../ui';
@@ -125,7 +126,7 @@ export const MarketplaceTab: React.FC = () => {
   };
 
   const searchedProducts = searchQuery
-    ? filteredProducts.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? filteredProducts.filter((p) => p.name?.toLowerCase().includes(searchQuery.toLowerCase()))
     : filteredProducts;
 
   return (
@@ -165,6 +166,11 @@ export const MarketplaceTab: React.FC = () => {
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
+                {searchQuery ? (
+                  <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                    <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
+                  </TouchableOpacity>
+                ) : null}
               </View>
               <TouchableOpacity
                 style={styles.locationBtn}
@@ -197,86 +203,102 @@ export const MarketplaceTab: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView
+          <FlashList
+            data={productsLoading || productsError ? [] : searchedProducts}
+            extraData={searchQuery}
+            numColumns={2}
+            keyExtractor={(item) => String(item.id)}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
-          >
+            ListHeaderComponent={
+              <>
+                <View style={styles.section}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Filtrar por Categoría</Text>
+                    {(selectedCategory || selectedSubCategory) ? (
+                      <TouchableOpacity onPress={() => { setSelectedCategory(null); setSelectedSubCategory(null); }}>
+                        <Text style={{ color: TOKENS.colors.brand500, fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold }}>Limpiar</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Filtrar por Categoría</Text>
-
-              <SelectorDropdown
-                label="Categoría Principal"
-                placeholder="Todas las categorías"
-                value={selectedCategory}
-                options={parentCategories}
-                onSelect={(slug) => setSelectedCategory(slug)}
-              />
-
-              {selectedCategory && currentSubCategories.length > 0 && (
-                <View style={{ marginTop: 12 }}>
                   <SelectorDropdown
-                    label="Subcategoría"
-                    placeholder={`Todo en ${parentCategories.find((c) => c.slug === selectedCategory)?.name || ''}`}
-                    value={selectedSubCategory}
-                    options={currentSubCategories}
-                    onSelect={(slug) => setSelectedSubCategory(slug === selectedSubCategory ? null : slug)}
+                    label="Categoría Principal"
+                    placeholder="Todas las categorías"
+                    value={selectedCategory}
+                    options={parentCategories}
+                    onSelect={(slug) => setSelectedCategory(slug)}
+                  />
+
+                  {selectedCategory && currentSubCategories.length > 0 && (
+                    <View style={{ marginTop: 12 }}>
+                      <SelectorDropdown
+                        label="Subcategoría"
+                        placeholder={`Todo en ${parentCategories.find((c) => c.slug === selectedCategory)?.name || ''}`}
+                        value={selectedSubCategory}
+                        options={currentSubCategories}
+                        onSelect={(slug) => setSelectedSubCategory(slug === selectedSubCategory ? null : slug)}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                {!productsLoading && !productsError && (
+                  <Text style={styles.sectionTitle}>
+                    {searchedProducts.length === 0
+                      ? 'No hay productos'
+                      : `Productos${selectedCategory ? ` en ${parentCategories.find((c) => c.slug === selectedCategory)?.name || ''}` : ''} (${searchedProducts.length})`}
+                  </Text>
+                )}
+              </>
+            }
+            ListEmptyComponent={
+              productsLoading ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Cargando...</Text>
+                  <ActivityIndicator size="large" color={TOKENS.colors.brand500} style={{ paddingVertical: 32 }} />
+                </View>
+              ) : productsError ? (
+                <View style={styles.section}>
+                  <ErrorState
+                    message="No se pudieron cargar los productos. Revisa tu conexión e intenta nuevamente."
+                    onRetry={() => refetchMarketplace()}
                   />
                 </View>
-              )}
-            </View>
-
-            {productsLoading ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Cargando...</Text>
-                <ActivityIndicator size="large" color={TOKENS.colors.brand500} style={{ paddingVertical: 32 }} />
-              </View>
-            ) : productsError ? (
-              <View style={styles.section}>
-                <ErrorState
-                  message="No se pudieron cargar los productos. Revisa tu conexión e intenta nuevamente."
-                  onRetry={() => refetchMarketplace()}
-                />
-              </View>
-            ) : (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  {searchedProducts.length === 0
-                    ? 'No hay productos'
-                    : `Productos${selectedCategory ? ` en ${parentCategories.find((c) => c.slug === selectedCategory)?.name || ''}` : ''} (${searchedProducts.length})`}
-                </Text>
-                {searchedProducts.length > 0 && (
-                  <View style={styles.productsGrid}>
-                    {searchedProducts.map((product) => (
-                      <TouchableOpacity
-                        key={product.id}
-                        style={styles.productCard}
-                        activeOpacity={0.9}
-                        onPress={() => navigation.navigate('ProductDetail', { id: product.id })}
-                      >
-                        <View style={styles.productImagePlaceholder}>
-                          {product.images?.[0]?.image?.cdnUrl ? (
-                            <Image source={{ uri: getImageUrl(product.images[0].image.cdnUrl) }} style={styles.productImage} />
-                          ) : (
-                            <Icon name="Image" size={32} color={TOKENS.colors.surface200} />
-                          )}
-                        </View>
-                        <View style={styles.productInfo}>
-                          <Text style={styles.productTitle} numberOfLines={2}>{product.name}</Text>
-                          <Text style={styles.productPrice}>${product.price.toLocaleString('es-CL')}</Text>
-                          <View style={styles.productLocation}>
-                            <Icon name="MapPin" size={12} color={TOKENS.colors.textSubtle} />
-                            <Text style={styles.productLocationText}>{product.location || 'Sin ubicación'}</Text>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const product = item as any;
+              return (
+                <TouchableOpacity
+                  style={styles.productCard}
+                  activeOpacity={0.9}
+                  onPress={() => navigation.navigate('ProductDetail', { id: product.id })}
+                >
+                  <View style={styles.productImagePlaceholder}>
+                    {(() => {
+                      const rawImg = product.images?.[0]?.url ?? product.images?.[0]?.image?.cdnUrl ?? null;
+                      const imgUri = rawImg ? getImageUrl(rawImg) : '';
+                      return imgUri ? (
+                        <Image source={{ uri: imgUri }} style={styles.productImage} />
+                      ) : (
+                        <Icon name="Image" size={32} color={TOKENS.colors.surface200} />
+                      );
+                    })()}
                   </View>
-                )}
-              </View>
-            )}
-          </ScrollView>
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productTitle} numberOfLines={2}>{product.name}</Text>
+                    <Text style={styles.productPrice}>${product.price.toLocaleString('es-CL')}</Text>
+                    <View style={styles.productLocation}>
+                      <Icon name="MapPin" size={12} color={TOKENS.colors.textSubtle} />
+                      <Text style={styles.productLocationText}>{product.location || 'Sin ubicación'}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
 
           <View style={styles.ctaFloat}>
             <Button
@@ -420,8 +442,7 @@ const styles = StyleSheet.create({
   scrollContent: { padding: TOKENS.spacing.md, paddingBottom: 160 },
   section: { marginBottom: TOKENS.spacing.xl },
   sectionTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
-  productsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: TOKENS.spacing.md, justifyContent: 'space-between' },
-  productCard: { width: '47%', backgroundColor: TOKENS.colors.white, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: TOKENS.colors.surface200 },
+  productCard: { flex: 1, marginHorizontal: 6, marginBottom: TOKENS.spacing.md, backgroundColor: TOKENS.colors.white, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   productImagePlaceholder: { height: 120, backgroundColor: TOKENS.colors.surface100, alignItems: 'center', justifyContent: 'center' },
   productImage: { width: '100%', height: '100%', resizeMode: 'cover' as const },
   productInfo: { padding: TOKENS.spacing.md },

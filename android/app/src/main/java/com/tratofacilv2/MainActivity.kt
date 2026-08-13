@@ -29,7 +29,8 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onCreate(savedInstanceState: android.os.Bundle?) {
-    super.onCreate(savedInstanceState)
+    androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+    super.onCreate(null)
 
     val action = intent?.getStringExtra("push_action")
     val data = intent?.getStringExtra("push_data")

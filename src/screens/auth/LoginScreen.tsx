@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  SafeAreaView,
   TouchableOpacity,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useLazyQuery, useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
 import { Button, Icon, Input } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
+import { useNotification } from '../../context/NotificationContext';
 import {
   CHECK_LOGIN_EMAIL_EXISTS,
   REQUEST_PASSWORD_RESET,
@@ -23,7 +24,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const { login, loginLoading } = useAuth();
+  const route = useRoute<any>();
+  const { login, loginLoading, logout } = useAuth();
+  const { showNotification } = useNotification();
+  const { initialEmail, guestConflict } = route.params || {};
 
   const [step, setStep] = useState<'email' | 'password' | 'noPassword'>('email');
   const [email, setEmail] = useState('');
@@ -31,6 +35,17 @@ export const LoginScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [resetSent, setResetSent] = useState(false);
+
+  useEffect(() => {
+    if (guestConflict && initialEmail) {
+      setEmail(initialEmail);
+      showNotification({
+        title: 'Cuenta existente',
+        message: 'Ya existe una cuenta asociada a este correo. Inicia sesión para continuar.',
+        type: 'info',
+      });
+    }
+  }, [guestConflict, initialEmail, showNotification]);
 
   const [checkEmailExists, { loading: checkingEmail }] = useLazyQuery<{
     checkLoginEmailExists: { exists: boolean; hasPassword: boolean };
@@ -122,7 +137,8 @@ export const LoginScreen: React.FC = () => {
     }
   };
 
-  const handleGuestLogin = () => {
+  const handleGuestLogin = async () => {
+    await logout();
     navigation.replace('MainApp');
   };
 

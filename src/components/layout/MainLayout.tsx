@@ -1,7 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
+import { RequireLocation } from '../ui';
 import { BottomNav, AppTab } from './BottomNav';
 import { PanelContainer } from './PanelContainer';
 import { useRole } from '../../context/RoleContext';
@@ -35,12 +37,19 @@ const STATUS_TO_PROVIDER_STATE: Record<string, string> = {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<any>();
   const { role } = useRole();
   const { activePanel, closePanel, openPanel, panelData } = usePanel();
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const hasAutoOpened = useRef(false);
 
   const isChatActive = panelData?.orderState === 'CHAT';
+
+  const renderCountRef = useRef(0);
+  if (__DEV__) {
+    renderCountRef.current++;
+    console.log('[TRACE:RENDER_COUNT] MainLayout #' + renderCountRef.current + ' | activeTab:', activeTab, '| role:', role);
+  }
 
   useEffect(() => {
     if (role === 'provider') {
@@ -57,9 +66,32 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const flow = useFlow();
 
   useEffect(() => {
+    if (!nav) return;
     setPaymentCallbackHandler((token: string, type?: string) => {
       if (type === 'product') {
-        flow.confirm('product', token).catch(() => {});
+        flow.confirm('product', token).then(() => {
+          nav.navigate('PaymentSuccess', {
+            title: '¡Compra Exitosa!',
+            subtitle: 'Tu producto será enviado pronto.',
+            type: 'product',
+          });
+        }).catch(() => {});
+      } else if (type === 'job') {
+        flow.confirm('job', token).then(() => {
+          nav.navigate('PaymentSuccess', {
+            title: '¡Trabajador Contratado!',
+            subtitle: 'El profesional será notificado.',
+            type: 'job',
+          });
+        }).catch(() => {});
+      } else if (type === 'ad') {
+        flow.confirm('ad', token).then(() => {
+          nav.navigate('PaymentSuccess', {
+            title: '¡Anuncio Publicado!',
+            subtitle: 'Tu anuncio ya está activo.',
+            type: 'ad',
+          });
+        }).catch(() => {});
       } else if (type === 'realtime' && realtime?.confirmPayment) {
         realtime.confirmPayment(token).catch(() => {});
       }
@@ -159,39 +191,41 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   };
 
   return (
-    <View style={styles.root}>
+    <RequireLocation>
+      <View style={styles.root}>
 
 
-      {/* Content area */}
-      <View style={styles.content}>
-        {renderTabContent()}
+        {/* Content area */}
+        <View style={styles.content}>
+          {renderTabContent()}
+        </View>
+
+        {/* Overlays de Focus Mode (se detienen sobre el bottom nav) */}
+        {role !== 'provider' && activePanel === 'focus_client' && (
+          <View style={[styles.focusOverlay, { bottom: BOTTOM_NAV_HEIGHT }, isChatActive && { bottom: 0, zIndex: 600 }]}>
+            <FocusModeClientScreen />
+          </View>
+        )}
+
+        {role === 'provider' && activePanel === 'focus_provider' && (
+          <View style={[styles.focusOverlay, { bottom: BOTTOM_NAV_HEIGHT }, isChatActive && { bottom: 0, zIndex: 600 }]}>
+            <FocusModeProviderScreen />
+          </View>
+        )}
+
+        {/* Panel container (above content, below bottom nav) */}
+        {activeTab === 'home' && !(activePanel === 'focus_client' && realtime.activeOrder?.status === 'PENDING') && (
+          <PanelContainer bottomNavHeight={BOTTOM_NAV_HEIGHT} />
+        )}
+
+        {/* Bottom nav */}
+        <BottomNav
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          role={role}
+        />
       </View>
-
-      {/* Overlays de Focus Mode (se detienen sobre el bottom nav) */}
-      {role !== 'provider' && activePanel === 'focus_client' && (
-        <View style={[styles.focusOverlay, isChatActive && { bottom: 0, zIndex: 600 }]}>
-          <FocusModeClientScreen />
-        </View>
-      )}
-
-      {role === 'provider' && activePanel === 'focus_provider' && (
-        <View style={[styles.focusOverlay, isChatActive && { bottom: 0, zIndex: 600 }]}>
-          <FocusModeProviderScreen />
-        </View>
-      )}
-
-      {/* Panel container (above content, below bottom nav) */}
-      {activeTab === 'home' && !(activePanel === 'focus_client' && realtime.activeOrder?.status === 'PENDING') && (
-        <PanelContainer bottomNavHeight={BOTTOM_NAV_HEIGHT} />
-      )}
-
-      {/* Bottom nav */}
-      <BottomNav
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        role={role}
-      />
-    </View>
+    </RequireLocation>
   );
 };
 
@@ -214,7 +248,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    bottom: 75,
     zIndex: 250,
   },
 });

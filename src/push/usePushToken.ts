@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { NativeModules, NativeEventEmitter, Platform, PermissionsAndroid, AppState } from 'react-native';
 import { useEffect, useRef } from 'react';
 import { gql } from '@apollo/client';
 import { useMutation } from '@apollo/client/react';
@@ -41,8 +41,17 @@ export function usePushToken() {
       sendTokenToBackend(token);
     });
 
+    // Si el usuario negó el permiso al inicio y luego lo habilita a mano desde
+    // Ajustes, reintentamos al volver a foreground (mismo patrón que LocationContext).
+    const appStateSub = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && !registeredRef.current) {
+        initToken();
+      }
+    });
+
     return () => {
       sub.remove();
+      appStateSub.remove();
     };
   }, []);
 }
@@ -54,7 +63,24 @@ async function requestPermission(): Promise<boolean> {
       return granted;
     }
     if (Platform.OS === 'android') {
-      return true;
+      // No-op en Android <13 (el permiso no existe ahí; RN resuelve `granted` directo).
+      // En Android 13+ es obligatorio pedirlo en runtime o las notificaciones no se muestran.
+      const hasPermission = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+      );
+      if (hasPermission) return true;
+
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        {
+          title: 'Permiso de Notificaciones',
+          message: 'TratoFacil necesita enviarte notificaciones sobre tus solicitudes y órdenes.',
+          buttonNeutral: 'Preguntar luego',
+          buttonNegative: 'Cancelar',
+          buttonPositive: 'OK',
+        },
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
     }
     return false;
   } catch (_) {

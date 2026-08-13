@@ -57,6 +57,7 @@ export const ME_QUERY = gql`
         rut
         logoImage { id cdnUrl }
         isRealtimeActive
+        activeRealtimeOrder { id status }
         hasSchedule
         completedOrdersCount
         priority

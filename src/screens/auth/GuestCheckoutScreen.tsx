@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useLazyQuery } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
 import { Button, Input, Icon } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { usePanel } from '../../context/PanelContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
+import { CHECK_LOGIN_EMAIL_EXISTS } from '../../graphql/operations/auth';
 
 export const GuestCheckoutScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -16,7 +19,12 @@ export const GuestCheckoutScreen: React.FC = () => {
   const { openPanel } = usePanel();
   const { guestCreateContactRequest } = useRealtime();
 
+  const [checkEmailExists] = useLazyQuery<{
+    checkLoginEmailExists: { exists: boolean; hasPassword: boolean };
+  }>(CHECK_LOGIN_EMAIL_EXISTS, { fetchPolicy: 'network-only' });
+
   const provider = route.params?.provider;
+  const description = route.params?.description;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -48,18 +56,29 @@ export const GuestCheckoutScreen: React.FC = () => {
         return;
       }
 
+      const normalizedEmail = email.trim().toLowerCase();
+      const { data: emailData } = await checkEmailExists({
+        variables: { email: normalizedEmail },
+      });
+
+      if (emailData?.checkLoginEmailExists?.exists) {
+        navigation.replace('Login', { initialEmail: normalizedEmail, guestConflict: true });
+        return;
+      }
+
       const result = await guestCreateContactRequest({
-        guestEmail: email.trim().toLowerCase(),
+        guestEmail: normalizedEmail,
         guestPhone: phone.trim(),
         guestName: name.trim(),
         serviceProviderId: provider.serviceProviderId,
         clientLat: lat,
         clientLng: lng,
+        clientDescription: description,
       });
 
       await setSession(result.accessToken, result.user as any);
 
-      navigation.goBack();
+      navigation.navigate('MainApp');
       openPanel('focus_client', {
         providerId: provider.id,
         serviceProviderId: provider.serviceProviderId,
@@ -69,6 +88,13 @@ export const GuestCheckoutScreen: React.FC = () => {
         pendingOrderId: result.order.id,
       });
     } catch (err: any) {
+      const conflict =
+        err?.graphQLErrors?.[0]?.extensions?.status === 409 ||
+        /ya existe una cuenta/i.test(err?.graphQLErrors?.[0]?.message || '');
+      if (conflict) {
+        navigation.replace('Login', { initialEmail: email.trim().toLowerCase(), guestConflict: true });
+        return;
+      }
       const msg = err?.graphQLErrors?.[0]?.message || err?.message || 'Error al enviar la solicitud. Intenta nuevamente.';
       Alert.alert('Error', msg);
     } finally {
@@ -116,7 +142,7 @@ export const GuestCheckoutScreen: React.FC = () => {
             placeholder="Ej: 912345678"
             value={phone}
             onChangeText={setPhone}
-            keyboardType="phone-pad"
+            mask="phone"
             error={errors.phone}
           />
 

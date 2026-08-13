@@ -371,6 +371,7 @@ export interface WalletTransaction {
   amount: number;
   description: string | null;
   createdAt: string;
+  orderRealtimeId: number | null;
 }
 
 export interface Payment {

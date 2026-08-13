@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -9,7 +10,7 @@ import { useRole } from '../../context/RoleContext';
 interface ModalApplyJobProps {
   visible: boolean;
   onClose: () => void;
-  job: any; // Using any for mock job data for now
+  job: any;
   onSuccessfulApply: (jobId: string) => void;
 }
 
@@ -19,29 +20,25 @@ export const ModalApplyJob: React.FC<ModalApplyJobProps> = ({
   job,
   onSuccessfulApply,
 }) => {
-  const { role, setRole } = useRole();
+  const { role } = useRole();
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [showGuestCheckout, setShowGuestCheckout] = useState(false);
-  const [guestForm, setGuestForm] = useState({ name: '', lastName: '', email: '', phone: '' });
 
   if (!job) return null;
 
   const processApplication = () => {
     setLoading(true);
     setErrorMsg('');
-    
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      onSuccessfulApply(job.id);
-      onClose();
-    }, 1500);
+    onSuccessfulApply(job.id);
+    onClose();
   };
 
   const handleSubmit = () => {
     if (role === 'guest') {
-      setShowGuestCheckout(true);
+      // Postular a un trabajo (C2C) requiere ser trabajador con cuenta.
+      onClose();
+      navigation.navigate('Register');
       return;
     }
     processApplication();
@@ -49,64 +46,7 @@ export const ModalApplyJob: React.FC<ModalApplyJobProps> = ({
 
   return (
     <Modal visible={visible} onClose={onClose} showCloseButton={true}>
-      {showGuestCheckout ? (
-        <View>
-          <Text style={styles.modalTitle}>Datos de Postulante</Text>
-          <Text style={styles.warningDesc}>Completa tus datos para crear tu perfil profesional y postular.</Text>
-          
-          <TextInput
-            placeholder="Nombre"
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={guestForm.name}
-            onChangeText={(text) => setGuestForm({ ...guestForm, name: text })}
-            style={styles.guestInput}
-          />
-          <TextInput
-            placeholder="Apellido"
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={guestForm.lastName}
-            onChangeText={(text) => setGuestForm({ ...guestForm, lastName: text })}
-            style={styles.guestInput}
-          />
-          <TextInput
-            placeholder="Correo Electrónico"
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={guestForm.email}
-            onChangeText={(text) => setGuestForm({ ...guestForm, email: text })}
-            keyboardType="email-address"
-            style={styles.guestInput}
-          />
-          <TextInput
-            placeholder="Teléfono"
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={guestForm.phone}
-            onChangeText={(text) => setGuestForm({ ...guestForm, phone: text })}
-            keyboardType="phone-pad"
-            style={styles.guestInput}
-          />
-
-          <View style={[styles.footerActions, { marginTop: 24 }]}>
-            <Button 
-              title="Cancelar" 
-              variant="secondary" 
-              onPress={() => setShowGuestCheckout(false)} 
-              disabled={loading} 
-              style={{ flex: 1 }} 
-            />
-            <Button 
-              title={loading ? "Procesando..." : "Confirmar"} 
-              onPress={() => {
-                setRole('provider');
-                setShowGuestCheckout(false);
-                processApplication();
-              }} 
-              disabled={loading} 
-              style={{ flex: 1 }} 
-            />
-          </View>
-        </View>
-      ) : (
-        <>
+      <>
           <Text style={styles.modalTitle}>Confirmar Postulación</Text>
           
           {errorMsg ? (
@@ -162,7 +102,6 @@ export const ModalApplyJob: React.FC<ModalApplyJobProps> = ({
             />
           </View>
         </>
-      )}
     </Modal>
   );
 };
@@ -253,15 +192,5 @@ const styles = StyleSheet.create({
   footerActions: {
     flexDirection: 'row',
     gap: TOKENS.spacing.sm,
-  },
-  guestInput: {
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.surface50,
-    padding: 12,
-    fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.textMain,
-    marginTop: 12,
   },
 });

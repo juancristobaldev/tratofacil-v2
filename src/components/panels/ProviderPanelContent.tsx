@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Switch } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Switch } from 'react-native';
 import Geolocation, { GeoPosition } from 'react-native-geolocation-service';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
@@ -103,7 +103,7 @@ export const ProviderPanelContent: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
+      <View style={styles.scrollBody}>
         <View style={styles.onlineRow}>
           <View style={styles.onlineInfo}>
             <View style={[styles.statusDot, online && styles.statusDotActive]} />
@@ -207,7 +207,7 @@ export const ProviderPanelContent: React.FC = () => {
             </View>
           )}
         </View>
-      </ScrollView>
+      </View>
     </View>
   );
 };

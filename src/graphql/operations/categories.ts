@@ -18,12 +18,18 @@ export const GET_CATEGORIES = gql`
       slug
       description
       position
+      parentId
       imageUrl
       image {
         id
         cdnUrl
       }
       subCategories {
+        id
+        name
+        slug
+      }
+      services {
         id
         name
         slug
@@ -96,6 +102,10 @@ export const GET_SERVICES_BY_CATEGORY = gql`
             rating
             comment
             createdAt
+          }
+          realtimeReviews {
+            id
+            rating
           }
           certificates {
             id

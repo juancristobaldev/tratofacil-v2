@@ -10,17 +10,22 @@ import {
   RefreshControl,
   Modal as RNModal,
   Linking,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Input } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
-import { useCategories } from '../../hooks/useCategories';
-import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
+import { useCategories } from '../../context/CategoriesContext';
+import { DEEP_LINK_CALLBACK } from '../../config/endpoints';
+import { RequireAuth } from '../../components/ui/RequireAuth';
+import { uploadImage } from '../../utils/uploadImage';
+import { getImageUrl } from '../../utils/imageUrl';
 
 export const TratoDirectoScreen: React.FC = () => {
   const { user, role } = useAuth();
-  const hasProvider = !!user?.provider;
   const [refreshing, setRefreshing] = useState(false);
   const [days, setDays] = useState<number>(30);
 
@@ -33,9 +38,27 @@ export const TratoDirectoScreen: React.FC = () => {
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [city, setCity] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageKey, setImageKey] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [info, setInfo] = useState<string>('');
   const [link, setLink] = useState<string>('');
+
+  const handlePickImage = useCallback(async () => {
+    if (uploadingImage) return;
+    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: 1 });
+    if (result.didCancel) return;
+    const asset = result.assets?.[0];
+    if (!asset) return;
+    setUploadingImage(true);
+    try {
+      const key = await uploadImage(asset, 'ADS');
+      setImageKey(key);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo subir la imagen.');
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [uploadingImage]);
 
   const { createAd, createFlowAd } = usePlans();
   const { categories, categoriesLoading } = useCategories();
@@ -63,7 +86,7 @@ export const TratoDirectoScreen: React.FC = () => {
   };
 
   return (
-    <ProviderOnlyGate hasProvider={hasProvider} role={role}>
+    <RequireAuth role={role}>
     <View style={styles.safeArea}>
       <ScrollView
         contentContainerStyle={styles.container}
@@ -152,17 +175,27 @@ export const TratoDirectoScreen: React.FC = () => {
 
           {/* Image Uploader */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>URL de la Imagen de tu Campaña</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="https://tu-dominio.cl/imagen.jpg"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={imageUrl}
-              onChangeText={setImageUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.helperText}>Ingresa una URL pública de la imagen de tu campaña.</Text>
+            <Text style={styles.label}>Imagen de tu Campaña</Text>
+            {imageKey ? (
+              <View style={styles.imagePreviewBox}>
+                <Image source={{ uri: getImageUrl(imageKey) }} style={styles.previewImage} />
+                <TouchableOpacity style={styles.removeImageBtn} onPress={() => setImageKey('')}>
+                  <Icon name="X" size={14} color={TOKENS.colors.statusDanger} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.uploadBox} onPress={handlePickImage} disabled={uploadingImage}>
+                {uploadingImage ? (
+                  <ActivityIndicator color={TOKENS.colors.brand500} />
+                ) : (
+                  <>
+                    <Icon name="UploadCloud" size={24} color={TOKENS.colors.textSubtle} />
+                    <Text style={styles.uploadText}>Subir foto</Text>
+                    <Text style={styles.uploadSubtext}>Elige una imagen desde tu galería</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Days Selector */}
@@ -219,13 +252,13 @@ export const TratoDirectoScreen: React.FC = () => {
                   categoryId: selectedCategory,
                   city,
                   days,
-                  image: imageUrl || '',
+                  image: imageKey || '',
                   info,
                   link,
                   total: finalPrice,
                 });
                 if (!orderResult?.id) throw new Error('No se pudo crear el anuncio.');
-                const flowResult = await createFlowAd(orderResult.id);
+                const flowResult = await createFlowAd(orderResult.id, `${DEEP_LINK_CALLBACK}?type=ad`);
                 if (flowResult?.url) {
                   await Linking.openURL(flowResult.url);
                   Alert.alert('Éxito', 'Tu anuncio ha sido creado. Completa el pago en la ventana abierta.');
@@ -279,7 +312,7 @@ export const TratoDirectoScreen: React.FC = () => {
 
       </ScrollView>
     </View>
-    </ProviderOnlyGate>
+    </RequireAuth>
   );
 };
 

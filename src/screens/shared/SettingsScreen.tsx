@@ -8,7 +8,7 @@ import { Card, Button } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
-import { useTimeRealServices } from '../../hooks/useTimeRealServices';
+import { useRealtime } from '../../realtime/RealtimeContext';
 
 const PUSH_KEY = 'push_notifications_enabled';
 
@@ -19,7 +19,7 @@ export const SettingsScreen: React.FC = () => {
   const { logout, refetch: refetchAuth } = useAuth();
   const { role } = useRole();
   const isProvider = role === 'provider';
-  const { isRealtimeActive, toggleAvailability } = useTimeRealServices();
+  const { isRealtimeActive, toggleAvailability } = useRealtime();
 
   const [notifications, setNotifications] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);

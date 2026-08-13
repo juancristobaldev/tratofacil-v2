@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Badge } from '../../components';
 import { useAuth } from '../../context/AuthContext';
@@ -56,6 +57,7 @@ const PLANS: Plan[] = [
 const fmt = (n: number) => n.toLocaleString('es-CL');
 
 export const PlansScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { user, role } = useAuth();
   const hasProvider = !!user?.provider;
@@ -143,7 +145,7 @@ export const PlansScreen: React.FC = () => {
     <ProviderOnlyGate hasProvider={hasProvider} role={role}>
       <View style={styles.container}>
         <ScrollView
-          contentContainerStyle={styles.scrollBody}
+          contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
         >
@@ -231,7 +233,7 @@ export const PlansScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md, paddingBottom: 40 },
+  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
   intro: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, lineHeight: 18, marginBottom: 4 },
   intervalRow: { flexDirection: 'row', backgroundColor: TOKENS.colors.surface50, borderRadius: 12, padding: 4, marginBottom: TOKENS.spacing.sm, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   intervalBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },

@@ -43,7 +43,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const tabs = (role === 'provider') ? PROVIDER_TABS : CLIENT_TABS;
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + 4 }]}>
+    <View style={[styles.container, { height: 75 + insets.bottom, paddingBottom: insets.bottom + 4 }]}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
         return (
@@ -91,7 +91,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 75,
     backgroundColor: TOKENS.colors.white,
     borderTopWidth: 1,
     borderTopColor: TOKENS.colors.surface200,

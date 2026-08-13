@@ -1,12 +1,14 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Avatar, Rating, Badge, ErrorState } from '../../components/ui';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { useRefresh } from '../../context/RefreshContext';
 
 export const ManageSaleScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { id } = route.params || { id: 3 };
@@ -94,7 +96,7 @@ export const ManageSaleScreen: React.FC = () => {
     <View style={styles.container}>
       
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + TOKENS.spacing.md }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
       >

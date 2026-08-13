@@ -11,6 +11,7 @@ import type {
   Service,
 } from '../types/graphql';
 import { buildCategoryTree, type TreeNode } from '../utils/categoryTree';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
 
 export interface ServicesFilters {
   slug: string;
@@ -20,7 +21,7 @@ export interface ServicesFilters {
   take?: number;
 }
 
-interface UseCategoriesReturn {
+export interface UseCategoriesReturn {
   mainCategories: Array<{ id: number; name: string; slug: string }>;
   mainLoading: boolean;
   mainError: any;
@@ -110,20 +111,25 @@ export function useCategories(): UseCategoriesReturn {
 
   const categoryTree = useMemo(() => {
     return buildCategoryTree(
-      mainData?.mainCategories || [],
-      categoriesData?.categories || [],
-      (servicesData?.servicesByCategory || []) as Service[],
+      mainData?.mainCategories ?? EMPTY_ARRAY,
+      categoriesData?.categories ?? EMPTY_ARRAY,
+      (servicesData?.servicesByCategory ?? EMPTY_ARRAY) as Service[],
     );
   }, [mainData, categoriesData, servicesData]);
 
-  return {
-    mainCategories: mainData?.mainCategories || [],
+  // Memoizado: este hook está centralizado en CategoriesContext.tsx y envuelve toda
+  // la app. Sin este useMemo, el objeto de retorno sería nuevo en cada render (p.ej.
+  // cada vez que el poll de 30s de GET_SERVICES_BY_CATEGORY alterna loading true/false),
+  // forzando un re-render de todos los consumidores (HomePage, CategoriesPanelContent,
+  // TratoDirectoScreen) aunque nada haya cambiado realmente.
+  return useMemo<UseCategoriesReturn>(() => ({
+    mainCategories: mainData?.mainCategories ?? EMPTY_ARRAY,
     mainLoading,
     mainError,
-    categories: categoriesData?.categories || [],
+    categories: categoriesData?.categories ?? EMPTY_ARRAY,
     categoriesLoading,
     categoriesError,
-    servicesByCategory: (servicesData?.servicesByCategory || []) as Service[],
+    servicesByCategory: (servicesData?.servicesByCategory ?? EMPTY_ARRAY) as Service[],
     servicesLoading,
     servicesError,
     fetchServicesByCategory: setServiceFilters,
@@ -132,5 +138,19 @@ export function useCategories(): UseCategoriesReturn {
     slugLoading,
     fetchCategoryBySlug: setCategorySlug,
     categoryTree,
-  };
+  }), [
+    mainData,
+    mainLoading,
+    mainError,
+    categoriesData,
+    categoriesLoading,
+    categoriesError,
+    servicesData,
+    servicesLoading,
+    servicesError,
+    refetchServices,
+    slugData,
+    slugLoading,
+    categoryTree,
+  ]);
 }

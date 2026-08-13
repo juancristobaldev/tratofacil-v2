@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Avatar, Rating, ErrorState, ServiceTimeline, TimelineStep } from '../../components/ui';
 import { useMarketplace } from '../../hooks/useMarketplace';
@@ -9,6 +10,7 @@ import { useRefresh } from '../../context/RefreshContext';
 export const OrderDetailScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { id } = route.params || { id: 1 };
   const { setIsRefreshing } = useRefresh();
 
@@ -215,7 +217,7 @@ export const OrderDetailScreen: React.FC = () => {
 
       {/* FOOTER ACTION */}
       {order.shipping.status !== 'COMPLETED' && order.shipping.status !== 'SUCCESS' && (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: insets.bottom || TOKENS.spacing.md }]}>
           <Button title={isReceiving ? 'Confirmando...' : 'Recibí mi Producto'} icon="CheckCircle" disabled={isReceiving} onPress={async () => {
             setIsReceiving(true);
             try {

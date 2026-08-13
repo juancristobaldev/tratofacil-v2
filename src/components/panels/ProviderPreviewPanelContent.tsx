@@ -22,6 +22,7 @@ export const ProviderPreviewPanelContent: React.FC = () => {
   const { panelData } = usePanel();
   const onIndexChange = panelData?.onIndexChange;
   const onViewProfile = panelData?.onViewProfile;
+  const onDeselect = panelData?.onDeselect;
   const selectedIndex = panelData?.selectedIndex ?? 0;
 
   const listRef = useRef<FlatList<PreviewProvider>>(null);
@@ -95,6 +96,12 @@ export const ProviderPreviewPanelContent: React.FC = () => {
         onPress={() => typeof onViewProfile === 'function' && onViewProfile(item)}
         style={styles.button}
       />
+      <Button
+        title="Cancelar"
+        variant="outline"
+        onPress={() => typeof onDeselect === 'function' && onDeselect()}
+        style={[styles.button, styles.cancelButton]}
+      />
     </View>
   );
 
@@ -158,6 +165,9 @@ const styles = StyleSheet.create({
   },
   button: {
     width: SCREEN_WIDTH - CARD_H_PADDING * 2,
+  },
+  cancelButton: {
+    marginTop: TOKENS.spacing.sm,
   },
   dotsRow: {
     flexDirection: 'row',

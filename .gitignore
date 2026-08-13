@@ -33,6 +33,8 @@ local.properties
 .cxx/
 *.keystore
 !debug.keystore
+keystore.properties
+!keystore.properties.example
 .kotlin/
 
 # node.js

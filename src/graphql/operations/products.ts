@@ -132,6 +132,25 @@ export const CREATE_PRODUCT = gql`
     }
   }`;
 
+export const FIND_ALL_CATEGORIES = gql`
+  query FindAllCategory {
+    findAllCategory {
+      id
+      name
+      parentId
+      shippingDisabled
+    }
+  }
+`;
+
+export const PRODUCTS_COUNT_BY_USER = gql`
+  query ProductsByUser($userId: Int!) {
+    productsByUser(userId: $userId) {
+      id
+    }
+  }
+`;
+
 export const UPDATE_PRODUCT = gql`
   mutation UpdateProduct($input: UpdateProductInput!) {
     updateProduct(input: $input) {

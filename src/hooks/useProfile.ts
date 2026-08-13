@@ -28,6 +28,7 @@ interface UpdateProviderInput {
   bio?: string;
   location?: string;
   rut?: string;
+  logoUrl?: string;
 }
 
 interface UpdateBankInput {
@@ -39,12 +40,19 @@ interface UpdateBankInput {
 }
 
 interface IdentityInput {
-  displayName: string;
+  userId: number;
+  firstName: string;
+  lastName: string;
+  birthday: string;
+  rut: string;
+  phone: string;
+  company?: string;
 }
 
 interface CreateIdentityInput {
-  dniUrl?: string;
-  selfieUrl?: string;
+  dniFront: string;
+  qrSession: string;
+  selfie: string;
 }
 
 interface RegistrationStatus {
@@ -76,7 +84,7 @@ interface UseProfileReturn {
 }
 
 export function useProfile(): UseProfileReturn {
-  const { token, role, refetch: refetchAuth } = useAuth();
+  const { token, role, refetch: refetchAuth, user } = useAuth();
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -128,7 +136,7 @@ export function useProfile(): UseProfileReturn {
   const updateProfile = async (input: UpdateUserInput) => {
     setSaving(true);
     try {
-      await updateUserMut({ variables: { input } });
+      await updateUserMut({ variables: { input: { ...input, id: user?.id } } });
       await refetchAuth();
     } finally {
       setSaving(false);
@@ -138,7 +146,7 @@ export function useProfile(): UseProfileReturn {
   const updateProviderProfile = async (providerId: number, input: UpdateProviderInput) => {
     setSaving(true);
     try {
-      await updateProviderMut({ variables: { id: providerId, input } });
+      await updateProviderMut({ variables: { id: providerId, input: { ...input, id: providerId } } });
       await refetchAuth();
     } finally {
       setSaving(false);

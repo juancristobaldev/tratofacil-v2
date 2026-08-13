@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { usePushNavigation } from '../push/usePushNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DrawerActions } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -42,24 +41,24 @@ const ROUTE_TITLES: Record<string, string> = {
   ManageSale: 'Gestionar Venta',
 };
 
-const HEADER_CONFIG: Record<string, { showBell?: boolean; subtitle?: string }> = {
-  Settings: { showBell: false },
-  Wallet: { showBell: false },
-  Billing: { showBell: false },
-  Plans: { showBell: false, subtitle: 'Elige tu plan ideal' },
-  Support: { showBell: false, subtitle: 'Centro de ayuda' },
+const HEADER_CONFIG: Record<string, { showHelp?: boolean; subtitle?: string }> = {
+  Settings: { showHelp: false },
+  Wallet: { showHelp: false },
+  Billing: { showHelp: false },
+  Plans: { showHelp: false, subtitle: 'Elige tu plan ideal' },
+  Support: { showHelp: false, subtitle: 'Centro de ayuda' },
   VerificationCenter: { subtitle: 'Completa tu perfil para operar sin restricciones' },
   MyProfile: { subtitle: 'Tu información personal' },
-  ReviewsList: { showBell: false },
-  PublishService: { showBell: false, subtitle: 'Agrega un nuevo servicio a tu catálogo' },
-  BecomeProvider: { showBell: false, subtitle: 'Activa tu cuenta profesional' },
-  MarketplacePlans: { showBell: false, subtitle: 'Elige tu plan de vendedor' },
-  PublishJob: { showBell: false, subtitle: 'Ofrece trabajo a profesionales' },
-  PublishProduct: { showBell: false, subtitle: 'Publica tu producto en el marketplace' },
-  Shipping: { showBell: false, subtitle: 'Ingresa los datos de envío' },
-  Purchase: { showBell: false },
-  OrderDetail: { showBell: false },
-  ManageSale: { showBell: false },
+  ReviewsList: { showHelp: false },
+  PublishService: { showHelp: false, subtitle: 'Agrega un nuevo servicio a tu catálogo' },
+  BecomeProvider: { showHelp: false, subtitle: 'Activa tu cuenta profesional' },
+  MarketplacePlans: { showHelp: false, subtitle: 'Elige tu plan de vendedor' },
+  PublishJob: { showHelp: false, subtitle: 'Ofrece trabajo a profesionales' },
+  PublishProduct: { showHelp: false, subtitle: 'Publica tu producto en el marketplace' },
+  Shipping: { showHelp: false, subtitle: 'Ingresa los datos de envío' },
+  Purchase: { showHelp: false },
+  OrderDetail: { showHelp: false },
+  ManageSale: { showHelp: false },
   MyServices: { subtitle: 'Administra los servicios que ofreces' },
   ProviderProfile: { subtitle: 'Información del profesional' },
 };
@@ -97,7 +96,7 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
       showLogo={false}
       title={title}
       subtitle={pageConfig.subtitle}
-      showBell={pageConfig.showBell !== false}
+      showHelp={pageConfig.showHelp !== false}
       isRefreshing={isRefreshing}
       onBackPress={() => {
         navigationRef.goBack();
@@ -396,14 +395,14 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   );
 };
 
-// DRAWER IMPLEMENTATION
 const MainDrawerNavigator: React.FC = () => {
+  const { width } = useWindowDimensions();
   return (
     <Drawer.Navigator
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
-        drawerStyle: { width: SCREEN_WIDTH * 0.78, borderTopRightRadius: 24, borderBottomRightRadius: 24 },
+        drawerStyle: { width: Math.min(width * 0.78, 400), borderTopRightRadius: 24, borderBottomRightRadius: 24 },
       }}
     >
       <Drawer.Screen name="MainLayout" component={MainLayout} />

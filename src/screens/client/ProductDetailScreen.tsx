@@ -22,7 +22,7 @@ export const ProductDetailScreen: React.FC = () => {
   const product = useMemo(() => {
     const p = apiProduct;
     if (p) {
-      const imgUrl = p.images?.[0]?.url || getImageUrl(p.images?.[0]?.image?.cdnUrl || '') || 'https://picsum.photos/400/400?random=10';
+      const imgUrl = p.images?.[0]?.url || p.images?.[0]?.image?.cdnUrl || '';
       return {
         id: p.id,
         name: p.name,
@@ -84,7 +84,7 @@ export const ProductDetailScreen: React.FC = () => {
         </TouchableOpacity>
 
         {/* IMAGE */}
-        <Image source={{ uri: getImageUrl(product.images[0]) }} style={styles.image} />
+        <Image source={{ uri: getImageUrl(product.images[0]) || 'https://picsum.photos/400/400?random=10' }} style={styles.image} />
 
         {/* DETAILS */}
         <View style={styles.detailsContainer}>

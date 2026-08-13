@@ -167,6 +167,15 @@ export const INIT_FLOW_JOB = gql`
   }
 `;
 
+export const CONFIRM_FLOW_JOB = gql`
+  mutation ConfirmFlowJob($token: String!) {
+    confirmFlowJob(token: $token) {
+      id
+      status
+    }
+  }
+`;
+
 export const CREATE_REVIEW_JOB = gql`
   mutation CreateReviewJob($input: CreateReviewsJobInput!) {
     createReviewJob(input: $input) {

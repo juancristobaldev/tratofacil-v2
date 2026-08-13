@@ -5,13 +5,14 @@ export const MY_WALLET = gql`
     myWallet {
       id
       balance
-      transactions {
-        id
-        type
-        amount
-        description
-        createdAt
-      }
+    transactions {
+      id
+      type
+      amount
+      description
+      createdAt
+      orderRealtimeId
+    }
     }
   }
 `;
@@ -80,6 +81,7 @@ export const UPDATE_PROVIDER = gql`
       name
       bio
       location
+      logoImage { id cdnUrl }
     }
   }
 `;
@@ -195,6 +197,12 @@ export const GET_PROVIDER_REGISTRATION_STATUS = gql`
   }
 `;
 
+export const KYC_STATUS = gql`
+  query KycStatus($session: String!) {
+    kycStatus(session: $session)
+  }
+`;
+
 export const CREATE_ORDER_AD_WITH_PAYMENT = gql`
   mutation CreateOrderAdWithPayment(
     $adId: Int
@@ -230,10 +238,19 @@ export const CREATE_ORDER_AD_WITH_PAYMENT = gql`
 `;
 
 export const CREATE_FLOW_AD_TRANSACTION = gql`
-  mutation CreateFlowAdTransaction($orderId: Int!) {
-    createFlowAdTransaction(orderId: $orderId) {
+  mutation CreateFlowAdTransaction($orderId: Int!, $returnUrl: String) {
+    createFlowAdTransaction(orderId: $orderId, returnUrl: $returnUrl) {
       url
       token
+    }
+  }
+`;
+
+export const CONFIRM_FLOW_AD = gql`
+  mutation ConfirmFlowAd($token: String!) {
+    confirmFlowAdTransaction(token: $token) {
+      id
+      status
     }
   }
 `;

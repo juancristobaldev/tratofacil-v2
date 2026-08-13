@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 
 interface RefreshContextValue {
   isRefreshing: boolean;
@@ -17,8 +17,13 @@ export const RefreshProvider: React.FC<{ children: ReactNode }> = ({ children })
     setIsRefreshing(v);
   }, []);
 
+  const value = useMemo(
+    () => ({ isRefreshing, setIsRefreshing: setRefreshing }),
+    [isRefreshing, setRefreshing],
+  );
+
   return (
-    <RefreshContext.Provider value={{ isRefreshing, setIsRefreshing: setRefreshing }}>
+    <RefreshContext.Provider value={value}>
       {children}
     </RefreshContext.Provider>
   );

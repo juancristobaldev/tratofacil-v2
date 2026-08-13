@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert, Linking } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -7,7 +7,7 @@ import { TOKENS } from '../../theme';
 import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState } from '../../components';
 import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
-import { WEB_CALLBACK_URL } from '../../config/endpoints';
+import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 
 type TabMode = 'Activos' | 'Finalizados';
 
@@ -46,15 +46,12 @@ export const MyJobsScreen: React.FC = () => {
       const flowResult = await payFlow({
         type: 'job',
         orderId: orderResult.id,
-        returnUrl: `${WEB_CALLBACK_URL}?type=job&source=mobile`,
+        returnUrl: `${DEEP_LINK_CALLBACK}?type=job`,
       });
       setShowCandidatesModal(false);
-      navigation.navigate('PaymentSuccess', {
-        title: '¡Has contratado a un trabajador!',
-        subtitle: 'Redirigiendo al pago seguro...',
-        type: 'job',
-        flowUrl: flowResult?.url,
-      });
+      if (flowResult?.url) {
+        await Linking.openURL(flowResult.url);
+      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
     } finally {
@@ -96,6 +93,7 @@ export const MyJobsScreen: React.FC = () => {
         {activeTab === 'Activos' && (
           <FlashList
             data={activeJobs}
+            keyExtractor={(job) => String(job.id)}
             contentContainerStyle={styles.scrollContent}
             ItemSeparatorComponent={() => <View style={{ height: TOKENS.spacing.md }} />}
             ListEmptyComponent={<EmptyState icon="Briefcase" title="Sin trabajos activos" description="Publica un trabajo para recibir postulaciones." />}
@@ -139,6 +137,7 @@ export const MyJobsScreen: React.FC = () => {
         {activeTab === 'Finalizados' && (
           <FlashList
             data={finishedJobs}
+            keyExtractor={(job) => String(job.id)}
             contentContainerStyle={styles.scrollContent}
             ItemSeparatorComponent={() => <View style={{ height: TOKENS.spacing.md }} />}
             ListEmptyComponent={<EmptyState icon="CheckCircle" title="Sin trabajos finalizados" description="Los trabajos completados aparecerán aquí." />}

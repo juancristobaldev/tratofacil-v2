@@ -1,40 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Input, Icon } from '../../components/ui';
+import { Button, Input, Icon, Modal } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useJobs } from '../../hooks/useJobs';
-
-const JOB_COMMISSION_RATE = 0.10;
+import { UBICACIONES_CHILE, containsPhoneNumber } from '../../utils/chile';
+import { JOB_COMMISSION_RATE } from '../../utils/comission';
 
 export const PublishJobScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { role } = useRole();
-  
+
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [region, setRegion] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
   const [city, setCity] = useState('');
   const [price, setPrice] = useState('');
-  
-  const [commissionAmount, setCommissionAmount] = useState(0);
-  const [receiveAmount, setReceiveAmount] = useState(0);
 
-  useEffect(() => {
-    const priceValue = Number(price) || 0;
-    const comm = priceValue * JOB_COMMISSION_RATE;
-    setCommissionAmount(comm);
-    setReceiveAmount(priceValue - comm);
-  }, [price]);
+  const [activePicker, setActivePicker] = useState<'region' | 'city' | null>(null);
 
   const { createJob, createLoading: loading } = useJobs();
 
+  const priceValue = Number(price) || 0;
+  const commissionAmount = priceValue * JOB_COMMISSION_RATE;
+  const receiveAmount = priceValue - commissionAmount;
+
+  const ciudadesDisponibles = useMemo(() => {
+    const regionObj = UBICACIONES_CHILE.find((r) => r.region === selectedRegion);
+    return regionObj ? regionObj.ciudades : [];
+  }, [selectedRegion]);
+
+  const pickerOptions = activePicker === 'region'
+    ? UBICACIONES_CHILE.map((r) => ({ value: r.region, label: r.region }))
+    : activePicker === 'city'
+      ? ciudadesDisponibles.map((c) => ({ value: c, label: c }))
+      : [];
+
+  const pickerTitle = activePicker === 'region' ? 'Región' : 'Ciudad / Comuna';
+
   const handlePublish = async () => {
-    if (!title || !desc || !region || !city || !price) {
+    if (!title || !desc || !selectedRegion || !city || !price) {
       Alert.alert('Error', 'Por favor, completa todos los campos obligatorios.');
+      return;
+    }
+    if (containsPhoneNumber(desc)) {
+      Alert.alert('Error', 'No puedes incluir números telefónicos en la descripción');
       return;
     }
     try {
@@ -42,7 +55,7 @@ export const PublishJobScreen: React.FC = () => {
         title,
         description: desc,
         price: Number(price),
-        location: `${city}, ${region}`,
+        location: city,
       });
       navigation.goBack();
     } catch (err: any) {
@@ -62,13 +75,8 @@ export const PublishJobScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
-          
           <Text style={styles.introText}>
             Describe lo que necesitas con claridad para encontrar al candidato ideal en tu zona. Los trabajadores podrán postular a tu anuncio.
           </Text>
@@ -80,25 +88,11 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>¿Qué necesitas?</Text>
             </View>
 
-            <Input 
-              label="Título del anuncio *"
-              placeholder="Ej: Gasfitería urgente, Instalación eléctrica..."
-              value={title}
-              onChangeText={setTitle}
-              containerStyle={styles.inputGroup}
-            />
+            <Input label="Título del anuncio *" placeholder="Ej: Gasfitería urgente, Instalación eléctrica..." value={title} onChangeText={setTitle} containerStyle={styles.inputGroup} />
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Descripción detallada *</Text>
-              <TextInput 
-                style={[styles.input, styles.textArea]} 
-                placeholder="Explica qué necesitas exactamente, materiales incluidos, horarios de preferencia..."
-                placeholderTextColor={TOKENS.colors.textMuted}
-                multiline
-                numberOfLines={5}
-                value={desc}
-                onChangeText={setDesc}
-              />
+              <TextInput style={[styles.input, styles.textArea]} placeholder="Explica qué necesitas exactamente, materiales incluidos, horarios de preferencia..." placeholderTextColor={TOKENS.colors.textMuted} multiline numberOfLines={5} maxLength={200} value={desc} onChangeText={setDesc} />
             </View>
           </View>
 
@@ -109,23 +103,25 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Ubicación del trabajo</Text>
             </View>
 
-            <Input 
-              label="Región *"
-              placeholder="Ej: Región Metropolitana"
-              value={region}
-              onChangeText={setRegion}
-              leftIcon="MapPin"
-              containerStyle={styles.inputGroup}
-            />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Región *</Text>
+              <TouchableOpacity style={styles.selectField} onPress={() => setActivePicker('region')} activeOpacity={0.7}>
+                <Text style={[styles.selectFieldText, !selectedRegion && styles.selectFieldPlaceholder]}>
+                  {selectedRegion || 'Selecciona una región'}
+                </Text>
+                <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
+            </View>
 
-            <Input 
-              label="Ciudad / Comuna *"
-              placeholder="Ej: Santiago Centro"
-              value={city}
-              onChangeText={setCity}
-              leftIcon="MapPin"
-              containerStyle={styles.inputGroup}
-            />
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Ciudad / Comuna *</Text>
+              <TouchableOpacity style={[styles.selectField, !selectedRegion && styles.selectFieldDisabled]} onPress={() => setActivePicker('city')} disabled={!selectedRegion} activeOpacity={0.7}>
+                <Text style={[styles.selectFieldText, !city && styles.selectFieldPlaceholder]}>
+                  {city || (!selectedRegion ? 'Primero elige región' : 'Selecciona tu ciudad')}
+                </Text>
+                <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* SECTION 3: BUDGET */}
@@ -135,61 +131,55 @@ export const PublishJobScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Presupuesto</Text>
             </View>
 
-            <Input 
-              label="Monto que pagarás ($) *"
-              placeholder="0"
-              keyboardType="numeric"
-              value={price}
-              onChangeText={setPrice}
-              leftIcon="DollarSign"
-              helperText="Este es el presupuesto total que estás dispuesto a pagar por el trabajo completo."
-              containerStyle={styles.inputGroup}
-            />
+            <Input label="Monto que pagarás ($) *" placeholder="0" keyboardType="numeric" value={price} onChangeText={setPrice} leftIcon="DollarSign" helperText="Este es el presupuesto total que estás dispuesto a pagar por el trabajo completo." containerStyle={styles.inputGroup} />
 
-            {/* Financial Breakdown */}
             <View style={styles.breakdownBox}>
               <Text style={styles.breakdownTitle}>DESGLOSE FINANCIERO</Text>
-              
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Presupuesto total:</Text>
-                <Text style={styles.breakdownValue}>${(Number(price) || 0).toLocaleString("es-CL")}</Text>
+                <Text style={styles.breakdownValue}>${priceValue.toLocaleString('es-CL')}</Text>
               </View>
-              
               <View style={styles.breakdownRow}>
                 <Text style={styles.breakdownLabel}>Comisión de plataforma:</Text>
-                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>
-                  - ${commissionAmount.toLocaleString("es-CL")}
-                </Text>
+                <Text style={[styles.breakdownValue, { color: TOKENS.colors.statusDanger }]}>- ${commissionAmount.toLocaleString('es-CL')}</Text>
               </View>
-              
               <View style={[styles.breakdownRow, styles.breakdownTotal]}>
                 <Text style={styles.breakdownTotalLabel}>Pago neto para trabajador:</Text>
-                <Text style={styles.breakdownTotalValue}>${receiveAmount.toLocaleString("es-CL")}</Text>
+                <Text style={styles.breakdownTotalValue}>${receiveAmount.toLocaleString('es-CL')}</Text>
               </View>
             </View>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* FIXED FOOTER */}
-      <View style={styles.fixedFooter}>
+      <View style={[styles.fixedFooter, { paddingBottom: insets.bottom + TOKENS.spacing.md }]}>
         <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
         <View style={styles.footerButtons}>
-          <Button 
-            title="Cancelar" 
-            variant="secondary" 
-            onPress={() => navigation.goBack()} 
-            style={{ flex: 1 }} 
-          />
-          <Button 
-            title={loading ? 'Publicando...' : 'Publicar Trabajo'} 
-            onPress={handlePublish} 
-            disabled={loading || !title || !desc || !region || !city || !price}
-            style={{ flex: 2 }} 
-          />
+          <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
+          <Button title={loading ? 'Publicando...' : 'Publicar Trabajo'} onPress={handlePublish} loading={loading} disabled={loading || !title || !desc || !selectedRegion || !city || !price} style={{ flex: 2 }} />
         </View>
       </View>
+
+      {/* PICKER MODAL */}
+      <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
+        <Text style={styles.pickerTitle}>{pickerTitle}</Text>
+        <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
+          {pickerOptions.map((opt) => (
+            <TouchableOpacity key={opt.value} style={styles.pickerOption} onPress={() => {
+              if (activePicker === 'region') {
+                setSelectedRegion(opt.value);
+                setCity('');
+              } else {
+                setCity(opt.value);
+              }
+              setActivePicker(null);
+            }}>
+              <Text style={styles.pickerOptionText}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </Modal>
     </View>
   );
 };
@@ -198,16 +188,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 120 },
   introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.md, lineHeight: 20 },
-  
+
   section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  
+
   inputGroup: { marginBottom: TOKENS.spacing.md },
   label: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain, marginBottom: 8 },
   input: { backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200, borderRadius: 12, padding: TOKENS.spacing.md, fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
   textArea: { height: 120, textAlignVertical: 'top' },
-  
+
+  selectField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput, borderWidth: 1, borderColor: TOKENS.colors.surface200, paddingHorizontal: TOKENS.spacing.md, height: 52, ...TOKENS.shadows.soft },
+  selectFieldDisabled: { backgroundColor: TOKENS.colors.surface50, borderColor: TOKENS.colors.surface100 },
+  selectFieldText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.medium, flex: 1, paddingRight: TOKENS.spacing.sm },
+  selectFieldPlaceholder: { color: TOKENS.colors.textMuted },
+
   breakdownBox: { backgroundColor: TOKENS.colors.brand50, borderRadius: 12, padding: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.brand200, marginTop: TOKENS.spacing.sm },
   breakdownTitle: { fontSize: 12, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand700, textAlign: 'center', marginBottom: TOKENS.spacing.md, letterSpacing: 0.5 },
   breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
@@ -220,4 +215,10 @@ const styles = StyleSheet.create({
   fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
   footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
+
+  pickerModal: { maxWidth: 340, maxHeight: 480 },
+  pickerTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
+  pickerList: { maxHeight: 360 },
+  pickerOption: { paddingVertical: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
+  pickerOptionText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
 });

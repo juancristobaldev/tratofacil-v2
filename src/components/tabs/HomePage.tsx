@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, FlatList, Image } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -11,12 +11,13 @@ import { useRole } from '../../context/RoleContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCategories } from '../../hooks/useCategories';
+import { useCategories } from '../../context/CategoriesContext';
 import { ENDPOINT } from '../../config/endpoints';
 import { getImageUrl } from '../../utils/imageUrl';
 import { geocodeCity, getCachedCoords } from '../../utils/geocode';
 import { getDirections } from '../../utils/directions';
 import { resolveCategorySlugs } from '../../utils/categoryTree';
+import { EMPTY_ARRAY } from '../../utils/emptyArray';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -44,13 +45,9 @@ export const HomePage: React.FC = () => {
   const navigation = useNavigation<any>();
   const { location } = useLocation();
   const mapRef = useRef<MapView>(null);
-  const { openPanel, closePanel, updatePanelData, panelState, activePanel } = usePanel();
-  const [region, setRegion] = useState({
-    latitude: -33.4489,
-    longitude: -70.6693,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  });
+  const { openPanel, closePanel, clearPanel, updatePanelData, panelState, activePanel } = usePanel();
+  const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(null);
+  const initialCenterDone = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isEditingRadius, setIsEditingRadius] = useState(false);
   const [radiusKm, setRadiusKm] = useState(5);
@@ -58,6 +55,21 @@ export const HomePage: React.FC = () => {
 
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
+
+  // Si el preview de proveedor se cierra por swipe-down/backdrop (no por el botón "Cancelar",
+  // que ya limpia esto explícitamente), igual deseleccionamos — evita que el pin quede marcado
+  // como seleccionado con la ruta trazada después de cerrar el sheet de cualquier forma.
+  const wasProviderPreviewOpenRef = useRef(false);
+  useEffect(() => {
+    const isProviderPreviewOpen = activePanel === 'provider_preview' && panelState !== 'hidden';
+    if (isProviderPreviewOpen) {
+      wasProviderPreviewOpenRef.current = true;
+    } else if (wasProviderPreviewOpenRef.current) {
+      wasProviderPreviewOpenRef.current = false;
+      setSelectedProvider(null);
+      setRouteCoords([]);
+    }
+  }, [activePanel, panelState]);
 
   const [clusters, setClusters] = useState<any[]>([]);
   const superclusterRef = useRef<Supercluster>(new Supercluster({ radius: 50, maxZoom: 16 }));
@@ -94,6 +106,7 @@ export const HomePage: React.FC = () => {
 
   const handleRegionChangeComplete = useCallback((newRegion: any) => {
     const current = regionRef.current;
+    if (!current) return;
     const moved = (
       Math.abs(newRegion.latitude - current.latitude) > 0.0005 ||
       Math.abs(newRegion.longitude - current.longitude) > 0.0005 ||
@@ -107,13 +120,18 @@ export const HomePage: React.FC = () => {
   }, [updateClusters]);
 
   useEffect(() => {
-    if (location?.coords) {
-      setRegion({
+    if (location?.coords && !initialCenterDone.current) {
+      const newRegion = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
-      });
+      };
+      setRegion(newRegion);
+      initialCenterDone.current = true;
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(newRegion, 600);
+      }
     }
   }, [location?.coords?.latitude, location?.coords?.longitude]);
 
@@ -135,16 +153,11 @@ export const HomePage: React.FC = () => {
     const onProviderStatus = () => {
       refetchServicesByCategory();
     };
-    const onProviderLocation = () => {
-      refetchServicesByCategory();
-    };
 
     socket.on('provider:realtime:status', onProviderStatus);
-    socket.on('provider:location-updated', onProviderLocation);
 
     return () => {
       socket.off('provider:realtime:status', onProviderStatus);
-      socket.off('provider:location-updated', onProviderLocation);
     };
   }, [(realtime as any).socketRef, refetchServicesByCategory]);
 
@@ -183,7 +196,7 @@ export const HomePage: React.FC = () => {
   }, [mainCategories]);
 
   const displayProviders = useMemo(() => {
-    if (!servicesByCategory?.length) return [];
+    if (!servicesByCategory?.length) return EMPTY_ARRAY;
     const providers: any[] = [];
     servicesByCategory.forEach((service: any) => {
       service.serviceProviders?.forEach((sp: any) => {
@@ -196,15 +209,20 @@ export const HomePage: React.FC = () => {
         if (service.slug === 'reparacion-de-llaves-de-agua' || service.slug === 'albanileria-en-general') {
           if (__DEV__) console.log('[DEBUG:MAP] Provider found | service:', service.slug, '| catSlug:', service.category?.slug, '| provider:', p.name, '| lat:', lat, '| lng:', lng, '| city:', cityKey, '| hasFallback:', !!fallbackCoords, '| isRealtime:', p.isRealtimeActive);
         }
+        // Un proveedor puede tener reseñas de órdenes normales (reviews) y/o de
+        // órdenes realtime (realtimeReviews) — hay que sumar ambas o el rating
+        // aparece en 0 para proveedores que solo tienen reseñas realtime.
+        const allReviews = [...(p.reviews || []), ...(p.realtimeReviews || [])];
         providers.push({
           id: String(p.id),
           spId: sp.id,
+          serviceId: service.id,
           name: p.name,
           avatar: getImageUrl(p.logoImage?.cdnUrl || null),
-          rating: p.reviews?.length
-            ? p.reviews.reduce((s: number, r: any) => s + r.rating, 0) / p.reviews.length
+          rating: allReviews.length
+            ? allReviews.reduce((s: number, r: any) => s + r.rating, 0) / allReviews.length
             : 0,
-          reviewsCount: p.reviews?.length || 0,
+          reviewsCount: allReviews.length,
           verified: !!(p.certificates?.some((c: any) => c.verified)),
           isRealtimeActive: p.isRealtimeActive || false,
           serviceName: service.name,
@@ -229,19 +247,21 @@ export const HomePage: React.FC = () => {
   }, [servicesByCategory, resolvedCoords]);
 
   const filteredProviders = useMemo(() => {
-    if (!selectedCategory) return [];
+    if (!selectedCategory) return EMPTY_ARRAY;
 
-    const selectedSlugs = resolveCategorySlugs(
-      categories,
-      selectedCategory.slug,
-    );
-
-    const result = displayProviders.filter((p: any) =>
-      selectedSlugs.includes(p.categorySlug),
-    );
+    let result: any[];
+    if (selectedCategory.slug.startsWith('service-')) {
+      const serviceId = parseInt(selectedCategory.slug.replace('service-', ''), 10);
+      result = displayProviders.filter((p: any) => p.serviceId === serviceId);
+    } else {
+      const selectedSlugs = resolveCategorySlugs(categories, selectedCategory.slug);
+      result = displayProviders.filter((p: any) =>
+        selectedSlugs.includes(p.categorySlug),
+      );
+    }
 
     if (__DEV__) {
-      console.log('[DEBUG:MAP] filteredProviders | selectedCategory:', selectedCategory.slug, '| resolvedSlugs:', selectedSlugs, '| displayProviders:', displayProviders.length, '| filtered:', result.length);
+      console.log('[DEBUG:MAP] filteredProviders | selectedCategory:', selectedCategory.slug, '| displayProviders:', displayProviders.length, '| filtered:', result.length);
       if (result.length > 0) {
         result.forEach((p: any) => console.log('[DEBUG:MAP]  → provider:', p.name, '| catSlug:', p.categorySlug, '| lat:', p.lat, '| lng:', p.lng));
       }
@@ -267,13 +287,18 @@ export const HomePage: React.FC = () => {
   }, [filteredProviders, location?.coords?.latitude, location?.coords?.longitude]);
 
   useEffect(() => {
-    if (__DEV__) console.log('[AUDIT:1] supercluster effect START | selectedCategory:', selectedCategory?.slug, '| filteredProviders.length:', filteredProviders.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5), '| latDelta:', region.latitudeDelta, '| lngDelta:', region.longitudeDelta);
+    if (__DEV__) console.log('[AUDIT:1] supercluster effect START | selectedCategory:', selectedCategory?.slug, '| filteredProviders.length:', filteredProviders.length, '| region:', region?.latitude.toFixed(5), region?.longitude.toFixed(5), '| latDelta:', region?.latitudeDelta, '| lngDelta:', region?.longitudeDelta);
 
     if (!selectedCategory) {
       superclusterRef.current.load([]);
-      setClusters([]);
+      // Forma funcional: si ya estaba vacío, devolvemos la misma referencia para
+      // que React no dispare un re-render (y por lo tanto no vuelva a correr este
+      // efecto) cuando filteredProviders cambia de identidad sin cambiar de contenido.
+      setClusters((prev) => (prev.length === 0 ? prev : []));
       return;
     }
+
+    if (!region) return;
 
     filteredProviders.forEach((p: any) => {
       const hasCoords = p.lat != null && p.lng != null;
@@ -316,29 +341,45 @@ export const HomePage: React.FC = () => {
     setSelectedCategory(category);
     setSelectedProvider(null);
 
-    const slugs = resolveCategorySlugs(categories, category.slug);
-    const matched = displayProviders.filter((p: any) =>
-      slugs.includes(p.categorySlug),
-    );
-    const validLat = matched.map((p: any) => p.lat).filter((v: any) => v != null);
-    const validLng = matched.map((p: any) => p.lng).filter((v: any) => v != null);
-
-    if (validLat.length > 0) {
-      const pad = 0.01;
-      setRegion({
-        latitude: (Math.min(...validLat) + Math.max(...validLat)) / 2,
-        longitude: (Math.min(...validLng) + Math.max(...validLng)) / 2,
-        latitudeDelta: Math.max(
-          (Math.max(...validLat) - Math.min(...validLat)) * 1.5,
-          pad,
-        ),
-        longitudeDelta: Math.max(
-          (Math.max(...validLng) - Math.min(...validLng)) * 1.5,
-          pad,
-        ),
-      });
+    let matched: any[];
+    if (category.slug.startsWith('service-')) {
+      const serviceId = parseInt(category.slug.replace('service-', ''), 10);
+      matched = displayProviders.filter((p: any) => p.serviceId === serviceId);
+    } else {
+      const slugs = resolveCategorySlugs(categories, category.slug);
+      matched = displayProviders.filter((p: any) =>
+        slugs.includes(p.categorySlug),
+      );
     }
+
+    matched.forEach((p: any) => {
+      if ((p.lat == null || p.lng == null) && p.city) {
+        const city = p.city.toLowerCase();
+        if (!getCachedCoords(city)) {
+          geocodeCity(city).then((coords) => {
+            if (coords) setResolvedCoords((prev) => ({ ...prev, [city]: coords }));
+          });
+        }
+      }
+    });
   }, [displayProviders, categories]);
+
+  useEffect(() => {
+    if (!selectedCategory || filteredProviders.length === 0) return;
+    const withCoords = filteredProviders.filter(
+      (p: any) => p.lat != null && p.lng != null,
+    );
+    if (withCoords.length === 0) return;
+    const validLat = withCoords.map((p: any) => p.lat);
+    const validLng = withCoords.map((p: any) => p.lng);
+    const pad = 0.01;
+    setRegion({
+      latitude: (Math.min(...validLat) + Math.max(...validLat)) / 2,
+      longitude: (Math.min(...validLng) + Math.max(...validLng)) / 2,
+      latitudeDelta: Math.max((Math.max(...validLat) - Math.min(...validLat)) * 1.5, pad),
+      longitudeDelta: Math.max((Math.max(...validLng) - Math.min(...validLng)) * 1.5, pad),
+    });
+  }, [filteredProviders, selectedCategory]);
 
   const onClearCategoryRef = useRef<() => void>(null);
   onClearCategoryRef.current = useCallback(() => {
@@ -434,16 +475,17 @@ export const HomePage: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        region={region}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        customMapStyle={mapStyle}
-        showsUserLocation={false}
-        showsMyLocationButton={false}
-        showsCompass={false}
-      >
+      {region && (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          region={region}
+          onRegionChangeComplete={handleRegionChangeComplete}
+          customMapStyle={mapStyle}
+          showsUserLocation={false}
+          showsMyLocationButton={false}
+          showsCompass={false}
+        >
         {location && (
           <AnimatedUserMarker 
             coordinate={{ 
@@ -508,10 +550,15 @@ export const HomePage: React.FC = () => {
                   selectedIndex: idx < 0 ? 0 : idx,
                   onIndexChange: handleNavigateProvider,
                   onViewProfile: (p: any) => {
-                    closePanel();
+                    clearPanel();
                     setSelectedProvider(null);
                     setRouteCoords([]);
                     navigation.navigate('ProviderProfile', { providerId: p.id });
+                  },
+                  onDeselect: () => {
+                    clearPanel();
+                    setSelectedProvider(null);
+                    setRouteCoords([]);
                   },
                 });
               }}
@@ -527,6 +574,7 @@ export const HomePage: React.FC = () => {
           />
         )}
       </MapView>
+      )}
 
       {/* Top Floating Controls */}
       <View style={styles.topFloatingControls}>

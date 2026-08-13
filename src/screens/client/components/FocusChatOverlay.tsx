@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { TOKENS } from '../../../theme';
 import { Icon, Avatar } from '../../../components/ui';
 
@@ -50,59 +51,65 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
 
   return (
     <SafeAreaView style={styles.chatOverlay}>
-      <View style={styles.chatHeader}>
-        <TouchableOpacity onPress={onClose} style={styles.chatBackBtn}>
-          <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
-        <Avatar uri={chatUser?.avatar} name={chatUser?.name || chatUser?.displayName} size={36} />
-        <Text style={styles.chatHeaderTitle}>{chatUser?.name || chatUser?.displayName}</Text>
-      </View>
-
-      <ScrollView
-        ref={chatScrollRef}
-        contentContainerStyle={styles.chatScroll}
-        onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {chatMessages.map((msg) => {
-          const isMe = msg.sender === role;
-          return (
-            <View
-              key={msg.id}
-              style={[
-                styles.chatBubbleContainer,
-                isMe ? styles.chatBubbleContainerMe : styles.chatBubbleContainerThem,
-              ]}
-            >
+        <View style={styles.chatHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.chatBackBtn} accessibilityLabel="Volver" accessibilityRole="button">
+            <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
+          </TouchableOpacity>
+          <Avatar uri={chatUser?.avatar} name={chatUser?.name || chatUser?.displayName} size={36} />
+          <Text style={styles.chatHeaderTitle}>{chatUser?.name || chatUser?.displayName}</Text>
+        </View>
+
+        <ScrollView
+          ref={chatScrollRef}
+          contentContainerStyle={styles.chatScroll}
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+        >
+          {chatMessages.map((msg) => {
+            const isMe = msg.sender === role;
+            return (
               <View
+                key={msg.id}
                 style={[
-                  styles.chatBubble,
-                  isMe ? styles.chatBubbleMe : styles.chatBubbleThem,
+                  styles.chatBubbleContainer,
+                  isMe ? styles.chatBubbleContainerMe : styles.chatBubbleContainerThem,
                 ]}
               >
-                <Text style={isMe ? styles.chatBubbleTextMe : styles.chatBubbleTextThem}>
-                  {msg.text}
-                </Text>
-                <Text style={isMe ? styles.chatBubbleTimeMe : styles.chatBubbleTimeThem}>
-                  {msg.time}
-                </Text>
+                <View
+                  style={[
+                    styles.chatBubble,
+                    isMe ? styles.chatBubbleMe : styles.chatBubbleThem,
+                  ]}
+                >
+                  <Text style={isMe ? styles.chatBubbleTextMe : styles.chatBubbleTextThem}>
+                    {msg.text}
+                  </Text>
+                  <Text style={isMe ? styles.chatBubbleTimeMe : styles.chatBubbleTimeThem}>
+                    {msg.time}
+                  </Text>
+                </View>
               </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+            );
+          })}
+        </ScrollView>
 
-      <View style={styles.chatInputBar}>
-        <TextInput
-          placeholder="Escribe un mensaje aquí..."
-          placeholderTextColor={TOKENS.colors.textMuted}
-          value={typedMessage}
-          onChangeText={setTypedMessage}
-          style={styles.chatInput}
-        />
-        <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn}>
-          <Icon name="Send" size={18} color={TOKENS.colors.white} />
-        </TouchableOpacity>
-      </View>
+        <View style={styles.chatInputBar}>
+          <TextInput
+            placeholder="Escribe un mensaje aquí..."
+            placeholderTextColor={TOKENS.colors.textMuted}
+            value={typedMessage}
+            onChangeText={setTypedMessage}
+            style={styles.chatInput}
+          />
+          <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn} accessibilityLabel="Enviar mensaje" accessibilityRole="button">
+            <Icon name="Send" size={18} color={TOKENS.colors.white} />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 });

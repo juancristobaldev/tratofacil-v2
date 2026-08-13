@@ -16,6 +16,7 @@ export const API_BASE_URL = API_BASE;
 export const MEDIA_ENDPOINT = `${MEDIA_BASE}/`;
 export const WEB_CALLBACK_URL = `${FRONTEND_BASE}/api/callback`;
 export const REGISTER_CARD_CALLBACK_URL = `${FRONTEND_BASE}/api/register-card`;
+export const DEEP_LINK_CALLBACK = 'tratofacilv2://payment/callback';
 
 // Distancia maxima (km) para habilitar el inicio de la orden en tiempo real.
 // Debe coincidir con REALTIME_START_MAX_DISTANCE_KM del backend (0.3).

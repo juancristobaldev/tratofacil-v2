@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../config/endpoints';
+import { getToken } from './secureStorage';
 
 interface PickedAsset {
   uri?: string;
@@ -18,9 +19,12 @@ export async function uploadImage(
   const fileName = asset.fileName || `photo-${Date.now()}.jpg`;
   const extension = fileName.split('.').pop()?.toLowerCase() || 'jpg';
 
+  const token = await getToken();
+  const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
+
   const presignRes = await fetch(`${API_BASE_URL}/images/presign`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ mimeType, extension }),
   });
   if (!presignRes.ok) {
@@ -40,7 +44,7 @@ export async function uploadImage(
 
   const registerRes = await fetch(`${API_BASE_URL}/images/register`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({
       key,
       type,

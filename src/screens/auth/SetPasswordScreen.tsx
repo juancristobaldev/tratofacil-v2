@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Input, Button } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
@@ -26,7 +27,11 @@ export const SetPasswordScreen: React.FC = () => {
     setLoading(true);
     try {
       await setGuestPassword(password);
-      navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
+      Alert.alert(
+        'Cuenta consolidada',
+        'Tu cuenta ahora está protegida con contraseña. Ya puedes operar con normalidad.',
+        [{ text: 'Continuar', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] }) }],
+      );
     } catch {
       setError('No se pudo crear la contraseña. Intenta nuevamente.');
     }

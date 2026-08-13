@@ -93,6 +93,7 @@ const styles = StyleSheet.create({
     padding: TOKENS.spacing.lg,
     width: '100%',
     maxWidth: 340,
+    maxHeight: '85%',
     position: 'relative',
     ...TOKENS.shadows.floating,
   },

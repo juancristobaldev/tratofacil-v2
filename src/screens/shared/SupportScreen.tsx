@@ -68,13 +68,18 @@ export const SupportScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={styles.scrollBody}
+        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
       >
         <View style={styles.searchBarContainer}>
           <Icon name="Search" size={18} color={TOKENS.colors.brand500} style={styles.searchIcon} />
           <TextInput placeholder="Buscar soluciones en ayuda..." placeholderTextColor={TOKENS.colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} style={styles.searchInput} />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+              <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
+            </TouchableOpacity>
+          ) : null}
         </View>
         <Text style={styles.sectionTitle}>Preguntas Frecuentes</Text>
         <View style={styles.faqList}>
@@ -110,7 +115,7 @@ export const SupportScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
-  scrollBody: { padding: TOKENS.spacing.lg, paddingBottom: 40, gap: TOKENS.spacing.md },
+  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
   searchBarContainer: { height: 48, backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput, borderWidth: 1, borderColor: TOKENS.colors.surface200, flexDirection: 'row', alignItems: 'center', paddingHorizontal: TOKENS.spacing.md, ...TOKENS.shadows.soft },
   searchIcon: { marginRight: TOKENS.spacing.sm },
   searchInput: { flex: 1, color: TOKENS.colors.textMain, fontSize: TOKENS.typography.sizes.sm, height: '100%', padding: 0 },

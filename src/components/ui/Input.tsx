@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, ViewStyle, StyleProp, TextInputProps, TouchableOpacity } from 'react-native';
 import { TOKENS } from '../../theme';
 import { Icon, IconName } from './Icon';
+import { formatRut, formatDate, formatPhoneDisplay, parsePhoneValue } from '../../utils/formatters';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -15,6 +16,7 @@ interface InputProps extends TextInputProps {
   containerStyle?: StyleProp<ViewStyle>;
   error?: string;
   helperText?: string;
+  mask?: 'rut' | 'date' | 'phone';
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -30,6 +32,7 @@ export const Input: React.FC<InputProps> = ({
   error,
   helperText,
   secureTextEntry,
+  mask,
   ...props
 }) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -37,6 +40,22 @@ export const Input: React.FC<InputProps> = ({
 
   const isSecure = isPassword ? !showPassword : secureTextEntry;
   const activeIcon = icon || leftIcon;
+
+  const getDisplayValue = (val?: string) => {
+    if (val === undefined || val === null) return val;
+    if (mask === 'rut') return formatRut(val);
+    if (mask === 'date') return formatDate(val);
+    if (mask === 'phone') return formatPhoneDisplay(val);
+    return val;
+  };
+
+  const handleChangeText = (text: string) => {
+    if (!props.onChangeText) return;
+    if (mask === 'rut') props.onChangeText(formatRut(text));
+    else if (mask === 'date') props.onChangeText(formatDate(text));
+    else if (mask === 'phone') props.onChangeText(parsePhoneValue(text));
+    else props.onChangeText(text);
+  };
 
   return (
     <View style={[styles.outerContainer, containerStyle]}>
@@ -60,9 +79,12 @@ export const Input: React.FC<InputProps> = ({
           placeholderTextColor={TOKENS.colors.textMuted}
           style={styles.textInput}
           secureTextEntry={isSecure}
+          keyboardType={mask === 'phone' ? 'phone-pad' : mask === 'date' ? 'numeric' : props.keyboardType}
+          {...props}
+          value={getDisplayValue(props.value)}
+          onChangeText={handleChangeText}
           onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
           onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
-          {...props}
         />
         {isPassword && (
           <TouchableOpacity
@@ -100,51 +122,6 @@ export const Input: React.FC<InputProps> = ({
       </View>
       {error && <Text style={styles.errorText}>{error}</Text>}
       {!error && helperText && <Text style={styles.helperText}>{helperText}</Text>}
-    </View>
-  );
-};
-
-interface PhoneInputProps extends Omit<InputProps, 'onChangeText'> {
-  value: string;
-  onChangeText: (text: string) => void;
-}
-
-export const PhoneInput: React.FC<PhoneInputProps> = ({
-  label,
-  value,
-  onChangeText,
-  containerStyle,
-  error,
-  ...props
-}) => {
-  const [isFocused, setIsFocused] = useState(false);
-  return (
-    <View style={[styles.outerContainer, containerStyle]}>
-      {label && <Text style={styles.label}>{label}</Text>}
-      <View
-        style={[
-          styles.inputContainer,
-          isFocused ? styles.inputFocusedBorder : null,
-          error ? styles.inputErrorBorder : null,
-        ]}
-      >
-        <View style={styles.countryPrefixContainer}>
-          <Text style={[styles.countryPrefixText, isFocused && { color: TOKENS.colors.brand500 }]}>CL +56</Text>
-        </View>
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType="phone-pad"
-          placeholder="9 1234 5678"
-          placeholderTextColor={TOKENS.colors.textMuted}
-          style={[styles.textInput, styles.phoneInput]}
-          maxLength={9}
-          onFocus={(e) => { setIsFocused(true); props.onFocus?.(e); }}
-          onBlur={(e) => { setIsFocused(false); props.onBlur?.(e); }}
-          {...props}
-        />
-      </View>
-      {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
 };
@@ -234,7 +211,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: TOKENS.spacing.md,
-    height: 52,
+    minHeight: 52,
     ...TOKENS.shadows.soft,
   },
   inputFocusedBorder: {
@@ -249,7 +226,8 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    height: '100%',
+    minHeight: 52,
+    paddingVertical: TOKENS.spacing.sm,
     color: TOKENS.colors.textMain,
     fontSize: TOKENS.typography.sizes.md,
     fontWeight: TOKENS.typography.weights.medium,

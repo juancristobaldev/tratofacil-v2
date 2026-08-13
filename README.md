@@ -82,6 +82,37 @@ You've successfully run and modified your React Native App. :partying_face:
 - If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
 - If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
 
+# Release de Android (build firmado)
+
+El build `release` de Android **no compila** sin un keystore propio (a propósito: antes
+firmaba silenciosamente con el keystore de debug, público e inseguro).
+
+1. Generar el keystore una sola vez (fuera de este repo o directo en `android/`, nunca se
+   commitea — ver `.gitignore`):
+   ```sh
+   cd android
+   keytool -genkeypair -v -storetype PKCS12 -keystore release.keystore \
+     -alias tratofacilv2-release -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. Copiar `android/keystore.properties.example` a `android/keystore.properties` y completar
+   `storePassword`/`keyPassword` con lo que hayas puesto en `keytool` (en PKCS12 ambas
+   contraseñas deben ser iguales).
+3. Guardar `release.keystore` y las contraseñas en un gestor de secretos del equipo —
+   **perder el keystore impide publicar futuras actualizaciones de la app una vez esté en
+   la store**, no hay forma de recuperarlo.
+4. Compilar:
+   ```sh
+   cd android && ./gradlew assembleRelease
+   # o para Play Store: ./gradlew bundleRelease
+   ```
+   Sin `android/keystore.properties`, `assembleRelease`/`bundleRelease` fallan con un error
+   explícito en vez de firmar con debug.
+
+Verificar la firma del APK resultante:
+```sh
+apksigner verify --print-certs android/app/build/outputs/apk/release/app-release.apk
+```
+
 # Troubleshooting
 
 If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.

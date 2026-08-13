@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from '@apollo/client/react';
+import { useMemo } from 'react';
 import {
   GET_JOBS,
   GET_JOB,
@@ -12,6 +13,7 @@ import {
   CREATE_REVIEW_JOB,
 } from '../graphql/operations/jobs';
 import { useAuth } from '../context/AuthContext';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
 import type {
   Job,
   JobApplication,
@@ -111,9 +113,10 @@ export function useJobs(): UseJobsReturn {
   }>(CREATE_ORDER_JOB_WITH_PAYMENT);
   const [reviewMut] = useMutation(CREATE_REVIEW_JOB);
 
-  const myJobOrders = (myJobsData?.myJobs || []).flatMap(
-    (job) => job.orders || [],
-  ) as OrderJob[];
+  const myJobOrders = useMemo(
+    () => (myJobsData?.myJobs || []).flatMap((job) => job.orders || []) as OrderJob[],
+    [myJobsData],
+  );
 
   const createJob = async (input: CreateJobInput) => {
     const { data: result } = await createMut({
@@ -152,14 +155,14 @@ export function useJobs(): UseJobsReturn {
   };
 
   return {
-    jobs: jobsData?.jobs || [],
+    jobs: jobsData?.jobs ?? EMPTY_ARRAY,
     jobsLoading,
     jobsError,
     refetchJobs: () => refetchJobs({ skip: 0, take: 20 }),
-    myJobs: myJobsData?.myJobs || [],
+    myJobs: myJobsData?.myJobs ?? EMPTY_ARRAY,
     myJobsLoading,
     myJobsError,
-    myApplications: appsData?.myApplications || [],
+    myApplications: appsData?.myApplications ?? EMPTY_ARRAY,
     applicationsLoading,
     myOfferOrders: myJobOrders,
     fetchJobs,

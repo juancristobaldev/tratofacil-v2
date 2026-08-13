@@ -6,11 +6,10 @@ import {
   TextInput,
   TouchableOpacity,
   Linking,
-  ScrollView,
 } from 'react-native';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge } from '../ui';
-import { WEB_CALLBACK_URL, START_ORDER_DISTANCE_KM } from '../../config/endpoints';
+import { WEB_CALLBACK_URL, START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
 import { usePanel } from '../../context/PanelContext';
 import type { OrderRealTime } from '../../types/graphql';
@@ -96,7 +95,7 @@ export const FocusClientPanelContent: React.FC = () => {
   const handlePay = async () => {
     if (!activeOrder?.id || !realtime?.initPayment) return;
     try {
-      const result = await realtime.initPayment(activeOrder.id, `${WEB_CALLBACK_URL}?type=realtime&source=mobile`);
+      const result = await realtime.initPayment(activeOrder.id, `${DEEP_LINK_CALLBACK}?type=realtime`);
       if (result?.url) {
         await Linking.openURL(result.url);
       }
@@ -137,7 +136,7 @@ export const FocusClientPanelContent: React.FC = () => {
 
       {/* QUOTED — Quote recibida */}
       {status === 'QUOTED' && (
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+        <View style={styles.sheetBody}>
           <View style={styles.sheetHeader}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
               <Avatar uri={provider.avatar} name={provider.name} size={64} />
@@ -183,6 +182,7 @@ export const FocusClientPanelContent: React.FC = () => {
               <Icon name="Clock" size={32} color={TOKENS.colors.brand500} />
               <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
               <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
+              <Button title="Cancelar orden" variant="outline" onPress={handleCancel} style={{ width: '100%' }} />
             </View>
           ) : (
             <>
@@ -192,6 +192,9 @@ export const FocusClientPanelContent: React.FC = () => {
                   <TouchableOpacity
                     onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
                     style={styles.adjusterBtn}
+                    accessibilityLabel="Disminuir monto de contraoferta"
+                    accessibilityHint="Resta 1000 pesos a tu propuesta"
+                    accessibilityRole="button"
                   >
                     <Icon name="Minus" size={20} color={TOKENS.colors.textMain} />
                   </TouchableOpacity>
@@ -199,6 +202,9 @@ export const FocusClientPanelContent: React.FC = () => {
                   <TouchableOpacity
                     onPress={() => setNegotiatedPrice((p) => p + 1000)}
                     style={styles.adjusterBtn}
+                    accessibilityLabel="Aumentar monto de contraoferta"
+                    accessibilityHint="Suma 1000 pesos a tu propuesta"
+                    accessibilityRole="button"
                   >
                     <Icon name="Plus" size={20} color={TOKENS.colors.textMain} />
                   </TouchableOpacity>
@@ -233,17 +239,18 @@ export const FocusClientPanelContent: React.FC = () => {
               </View>
             </>
           )}
-        </ScrollView>
+        </View>
       )}
 
       {/* ACCEPTED — En camino / Listo para iniciar */}
       {status === 'ACCEPTED' && (
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+        <View style={styles.sheetBody}>
           {canStartOrder ? (
             <>
               <Badge label="LLEGÓ" tone="success" />
               <Text style={{ fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginTop: 8 }}>Listo para iniciar</Text>
               <Button title="Confirmar inicio de servicio" onPress={handleStartOrder} style={styles.confirmStartBtn} />
+              <Button title="Cancelar orden" variant="outline" onPress={handleCancel} style={{ width: '100%', marginTop: 12 }} />
             </>
           ) : (
             <>
@@ -260,12 +267,12 @@ export const FocusClientPanelContent: React.FC = () => {
               <Button title="Cancelar orden" variant="outline" onPress={handleCancel} />
             </>
           )}
-        </ScrollView>
+        </View>
       )}
 
       {/* IN_PROGRESS — Servicio en curso */}
       {status === 'IN_PROGRESS' && (
-        <ScrollView contentContainerStyle={styles.sheetBody}>
+        <View style={styles.sheetBody}>
           <View style={styles.timerHeader}>
             <Text style={styles.timerLabel}>Tiempo de servicio</Text>
             <Text style={styles.timerVal}>{serviceElapsed}</Text>
@@ -273,7 +280,7 @@ export const FocusClientPanelContent: React.FC = () => {
           <Text style={styles.workingDesc}>
             {provider.name} está trabajando en tu servicio
           </Text>
-        </ScrollView>
+        </View>
       )}
 
       {/* COMPLETED — Calificar */}

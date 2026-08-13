@@ -12,6 +12,7 @@ import {
   CREATE_FLOW_AD_TRANSACTION,
 } from '../graphql/operations/wallet';
 import { useAuth } from '../context/AuthContext';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
 import type {
   PlanOrder,
   PlanUserOrder,
@@ -68,7 +69,7 @@ interface UsePlansReturn {
   requestWithdrawal: () => Promise<WithdrawalResult>;
   withdrawalLoading: boolean;
   createAd: (input: CreateAdInput) => Promise<{ id: number; status: string; total: number }>;
-  createFlowAd: (orderId: number) => Promise<{ url: string; token: string }>;
+  createFlowAd: (orderId: number, returnUrl?: string) => Promise<{ url: string; token: string }>;
   refetch: () => void;
 }
 
@@ -159,8 +160,8 @@ export function usePlans(): UsePlansReturn {
     return result!.createOrderAdWithPayment;
   };
 
-  const createFlowAd = async (orderId: number) => {
-    const { data: result } = await createFlowAdMut({ variables: { orderId } });
+  const createFlowAd = async (orderId: number, returnUrl?: string) => {
+    const { data: result } = await createFlowAdMut({ variables: { orderId, returnUrl } });
     return result!.createFlowAdTransaction;
   };
 
@@ -170,7 +171,7 @@ export function usePlans(): UsePlansReturn {
     marketplacePlan,
     wallet: walletData?.myWallet || user?.wallet || null,
     walletLoading,
-    paymentHistory: historyData?.myPaymentHistory?.payments || [],
+    paymentHistory: historyData?.myPaymentHistory?.payments ?? EMPTY_ARRAY,
     paymentHistoryLoading,
     paymentHistoryError,
     totalSpent: historyData?.myPaymentHistory?.totalSpent || 0,

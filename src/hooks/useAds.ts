@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useLocation } from '../context/LocationContext';
 import { GET_ADS, GET_DATA_AND_TRANSITIONS } from '../graphql/operations/ads';
+import { EMPTY_ARRAY } from '../utils/emptyArray';
 
 export const useAds = (slug?: string | null) => {
   const { location } = useLocation();
@@ -18,10 +19,10 @@ export const useAds = (slug?: string | null) => {
   const { data: adsTransitions }:any = useQuery(GET_DATA_AND_TRANSITIONS);
 
   const getAdsData: any = data?.getAds;
-  const ads: any[] = getAdsData?.ads || [];
-  const marketingHero: any[] = getAdsData?.marketingHero || [];
-  const marketingHorizontal: any[] = getAdsData?.marketingHorizontal || [];
-  const marketingVertical: any[] = getAdsData?.marketingVertical || [];
+  const ads: any[] = getAdsData?.ads ?? EMPTY_ARRAY;
+  const marketingHero: any[] = getAdsData?.marketingHero ?? EMPTY_ARRAY;
+  const marketingHorizontal: any[] = getAdsData?.marketingHorizontal ?? EMPTY_ARRAY;
+  const marketingVertical: any[] = getAdsData?.marketingVertical ?? EMPTY_ARRAY;
 
   const horizontal = [...ads, ...marketingHorizontal];
   const vertical = [...ads, ...marketingVertical];

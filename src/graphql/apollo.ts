@@ -1,4 +1,4 @@
-import { ApolloClient, InMemoryCache, HttpLink, ApolloLink, CombinedGraphQLErrors } from '@apollo/client';
+import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
 import { ErrorLink } from '@apollo/client/link/error';
 import { GRAPHQL_ENDPOINT } from '../config/endpoints';
@@ -27,10 +27,13 @@ const authLink = setContext((_, { headers }) => {
   };
 });
 
-const errorLink = new ErrorLink(({ error }) => {
-  if (CombinedGraphQLErrors.is(error)) {
-    const authError = error.errors?.find(
-      (e) => e.extensions?.code === 'UNAUTHENTICATED',
+const errorLink = new ErrorLink(({ graphQLErrors, networkError, operation }: any) => {
+  console.error('[APOLLO:ERROR]', operation.operationName, '|',
+    networkError?.message || graphQLErrors?.[0]?.message || 'unknown');
+
+  if (graphQLErrors) {
+    const authError = graphQLErrors.find(
+      (e: any) => e.extensions?.code === 'UNAUTHENTICATED',
     );
     if (authError) {
       cachedToken = null;

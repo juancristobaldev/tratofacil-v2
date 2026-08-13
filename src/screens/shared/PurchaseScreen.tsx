@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TextInput, Modal as RNModal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
@@ -7,7 +7,7 @@ import { Button, Icon } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
-import { WEB_CALLBACK_URL } from '../../config/endpoints';
+import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useFlow } from '../../hooks/useFlow';
 import { getProductCommission } from '../../utils/comission';
 
@@ -16,31 +16,13 @@ export const PurchaseScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { product, shippingData } = route.params || {};
-  const { role, setRole } = useRole();
+  const { role } = useRole();
   const { showNotification } = useNotification();
 
   const { createOrder } = useMarketplace();
   const { pay } = useFlow();
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showGuestCheckout, setShowGuestCheckout] = useState(false);
-  const [guestForm, setGuestForm] = useState(() => {
-    let defaultPhone = '';
-    let defaultName = '';
-    let defaultLastName = '';
-
-    if (shippingData && !shippingData.shippingDisabled) {
-      defaultPhone = shippingData.phone || '';
-      
-      if (shippingData.receiverName) {
-        const parts = shippingData.receiverName.trim().split(' ');
-        defaultName = parts[0] || '';
-        defaultLastName = parts.slice(1).join(' ') || '';
-      }
-    }
-
-    return { name: defaultName, lastName: defaultLastName, email: '', phone: defaultPhone };
-  });
 
   if (!product) {
     return (
@@ -77,15 +59,10 @@ export const PurchaseScreen: React.FC = () => {
         const flowResult = await pay({
           type: 'product',
           orderId: orderProductId,
-          returnUrl: `${WEB_CALLBACK_URL}?type=product&source=mobile`,
+          returnUrl: `${DEEP_LINK_CALLBACK}?type=product`,
         });
         if (flowResult.url) {
-          navigation.navigate('PaymentSuccess', {
-            title: '¡Compra Exitosa!',
-            subtitle: 'Redirigiendo al pago seguro...',
-            type: 'product',
-            flowUrl: flowResult.url,
-          });
+          await Linking.openURL(flowResult.url);
           setIsProcessing(false);
           return;
         }
@@ -99,7 +76,8 @@ export const PurchaseScreen: React.FC = () => {
 
   const handleConfirm = () => {
     if (role === 'guest') {
-      setShowGuestCheckout(true);
+      // Comprar en el marketplace requiere una cuenta autenticada.
+      navigation.navigate('Login');
       return;
     }
     processPayment();
@@ -198,63 +176,6 @@ export const PurchaseScreen: React.FC = () => {
           <Text style={styles.secureText}>Tus datos viajan encriptados</Text>
         </View>
       </View>
-
-      <RNModal visible={showGuestCheckout} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Datos de Facturación</Text>
-            <Text style={styles.modalSubtitle}>Completa tus datos para finalizar la compra.</Text>
-            
-            <TextInput
-              placeholder="Nombre"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={guestForm.name}
-              onChangeText={(text) => setGuestForm({ ...guestForm, name: text })}
-              style={styles.guestInput}
-            />
-            <TextInput
-              placeholder="Apellido"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={guestForm.lastName}
-              onChangeText={(text) => setGuestForm({ ...guestForm, lastName: text })}
-              style={styles.guestInput}
-            />
-            <TextInput
-              placeholder="Correo Electrónico"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={guestForm.email}
-              onChangeText={(text) => setGuestForm({ ...guestForm, email: text })}
-              keyboardType="email-address"
-              style={styles.guestInput}
-            />
-            <TextInput
-              placeholder="Teléfono"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={guestForm.phone}
-              onChangeText={(text) => setGuestForm({ ...guestForm, phone: text })}
-              keyboardType="phone-pad"
-              style={styles.guestInput}
-            />
-
-            <View style={{ marginTop: 16 }}>
-              <Button 
-                title="Confirmar y Pagar" 
-                onPress={() => {
-                  setRole('client');
-                  setShowGuestCheckout(false);
-                  processPayment();
-                }} 
-              />
-              <Button 
-                title="Cancelar" 
-                variant="secondary" 
-                onPress={() => setShowGuestCheckout(false)} 
-                style={{ marginTop: 8 }}
-              />
-            </View>
-          </View>
-        </View>
-      </RNModal>
     </View>
   );
 };
@@ -400,37 +321,5 @@ const styles = StyleSheet.create({
   secureText: {
     fontSize: 10,
     color: TOKENS.colors.textSubtle,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: TOKENS.colors.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: TOKENS.spacing.xl,
-  },
-  modalTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.textMain,
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.textSubtle,
-    marginBottom: 16,
-  },
-  guestInput: {
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.surface50,
-    padding: 12,
-    fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.textMain,
-    marginBottom: 12,
   },
 });

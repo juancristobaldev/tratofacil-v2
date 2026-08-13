@@ -1,5 +1,13 @@
 import { gql } from '@apollo/client';
 
+export const GET_PROVIDER_PLAN = gql`
+  query GetProviderPlan {
+    myProviderPlan {
+      plan
+    }
+  }
+`;
+
 export const MY_SERVICES = gql`
   query MyServices {
     myServices {

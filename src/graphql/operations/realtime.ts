@@ -78,6 +78,10 @@ export const GET_MY_REALTIME_ORDERS_AS_CLIENT = gql`
           id
           rating
         }
+        realtimeReviews {
+          id
+          rating
+        }
         certificates {
           id
           verified
@@ -165,6 +169,10 @@ export const GET_MY_REALTIME_STATE = gql`
             cdnUrl
           }
           reviews {
+            id
+            rating
+          }
+          realtimeReviews {
             id
             rating
           }

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, Dimensions, Linking, Animated } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Linking, Animated } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +42,7 @@ function formatEta(meters: number): string {
 }
 
 export const FocusModeProviderScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
   const { location } = useLocation();
@@ -54,15 +56,18 @@ export const FocusModeProviderScreen: React.FC = () => {
   const [distanceRemaining, setDistanceRemaining] = useState('...');
   const [etaRemaining, setEtaRemaining] = useState('...');
 
-  const [workSeconds, setWorkSeconds] = useState(0);
-
   const formatTimer = (sec: number) => {
     const mm = Math.floor(sec / 60).toString().padStart(2, '0');
     const ss = (sec % 60).toString().padStart(2, '0');
     return `${mm}:${ss}`;
   };
 
-  const activeOrder: OrderRealTime | null = realtime.providerActiveOrder;
+  const _rawOrder: OrderRealTime | null = realtime.providerActiveOrder;
+  const lastOrderRef = useRef<OrderRealTime | null>(_rawOrder);
+  if (_rawOrder) {
+    lastOrderRef.current = _rawOrder;
+  }
+  const activeOrder = _rawOrder || lastOrderRef.current;
 
   const clientLat = activeOrder?.clientLat ?? location?.coords?.latitude;
   const clientLng = activeOrder?.clientLng ?? location?.coords?.longitude;
@@ -99,23 +104,28 @@ export const FocusModeProviderScreen: React.FC = () => {
   const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
 
   const handleFinish = () => {
-    const clientSummary = summarizeForRole(activeOrder?.client, 'client');
     clearPanel();
-    navigation.navigate('Rating', {
-      role: 'provider',
-      targetUser: {
-        name: activeOrder?.client?.displayName || 'Cliente',
-        avatar: null,
-        rating: clientSummary?.rating ?? 0,
-        reviewsCount: clientSummary?.count ?? 0,
-        subtext: activeOrder?.serviceProvider?.service?.name || '',
-      },
-      serviceDetails: activeOrder?.clientDescription || '',
-      amount: activeOrder?.quotedPrice || 0,
-      address: activeOrder?.clientAddress || '',
-      orderRealtimeId: activeOrder?.id,
-      clientId: activeOrder?.client?.id,
-    });
+    realtime.setLocalActiveOrder(null);
+    if (orderState === 'COMPLETED') {
+      const clientSummary = summarizeForRole(activeOrder?.client, 'client');
+      navigation.navigate('Rating', {
+        role: 'provider',
+        targetUser: {
+          name: activeOrder?.client?.displayName || 'Cliente',
+          avatar: null,
+          rating: clientSummary?.rating ?? 0,
+          reviewsCount: clientSummary?.count ?? 0,
+          subtext: activeOrder?.serviceProvider?.service?.name || '',
+        },
+        serviceDetails: activeOrder?.clientDescription || '',
+        amount: activeOrder?.quotedPrice || 0,
+        address: activeOrder?.clientAddress || '',
+        orderRealtimeId: activeOrder?.id,
+        clientId: activeOrder?.client?.id,
+      });
+    } else {
+      navigation.navigate('MainApp');
+    }
   };
 
   useEffect(() => {
@@ -124,7 +134,6 @@ export const FocusModeProviderScreen: React.FC = () => {
         orderState,
         etaRemaining,
         distanceRemaining,
-        workSeconds,
         formatTimer,
         setOrderState,
         handleFinish,
@@ -138,7 +147,6 @@ export const FocusModeProviderScreen: React.FC = () => {
         orderState,
         etaRemaining,
         distanceRemaining,
-        workSeconds,
         formatTimer,
         setOrderState,
         handleFinish,
@@ -147,7 +155,7 @@ export const FocusModeProviderScreen: React.FC = () => {
         realtime,
       });
     }
-  }, [orderState, etaRemaining, distanceRemaining, workSeconds, openPanel, updatePanelData, activeOrder]);
+  }, [orderState, etaRemaining, distanceRemaining, openPanel, updatePanelData, activeOrder]);
 
   useEffect(() => {
     const r = realtime?.providerActiveOrder;
@@ -186,16 +194,6 @@ export const FocusModeProviderScreen: React.FC = () => {
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
 
   useEffect(() => {
-    if (orderState !== 'IN_PROGRESS') return;
-    const start = activeOrder?.startedAt ? new Date(activeOrder.startedAt).getTime() : Date.now();
-    setWorkSeconds(Math.floor((Date.now() - start) / 1000));
-    const timer = setInterval(() => {
-      setWorkSeconds(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [orderState, activeOrder?.startedAt]);
-
-  useEffect(() => {
     if (orderState !== 'EN_CAMINO' || !providerCoords || !clientCoords) return;
     const m = getMetersBetween(providerCoords.latitude, providerCoords.longitude, clientCoords.latitude, clientCoords.longitude);
     if (m < 100) {
@@ -222,6 +220,7 @@ export const FocusModeProviderScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
+          mapPadding={{ top: insets.top + 20, right: 16, bottom: 220, left: 16 }}
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 
