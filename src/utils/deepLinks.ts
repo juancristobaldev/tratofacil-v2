@@ -1,43 +1,25 @@
 import { Linking } from 'react-native';
+import { PAYMENT_CALLBACK_PATH } from '../payments/parsePaymentReturnUrl';
+import { handlePaymentReturnUrl } from '../payments/PaymentReturnHandler';
 
 export const DEEP_LINK_SCHEME = 'tratofacilv2';
-export const PAYMENT_CALLBACK_PATH = 'payment/callback';
+export { PAYMENT_CALLBACK_PATH };
 
-type PaymentCallbackHandler = (token: string, type?: string) => void;
 type OrderOpenHandler = (orderId: number) => void;
 
-let paymentHandler: PaymentCallbackHandler | null = null;
 let orderOpenHandler: OrderOpenHandler | null = null;
-
-export function setPaymentCallbackHandler(handler: PaymentCallbackHandler) {
-  paymentHandler = handler;
-}
 
 export function setOrderOpenHandler(handler: OrderOpenHandler | null) {
   orderOpenHandler = handler;
 }
 
-export function parsePaymentCallback(url: string): { token: string; type?: string } | null {
-  if (!url) return null;
-
-  const decoded = decodeURIComponent(url);
-  const tokenMatch = decoded.match(/[?&]token_ws=([^&]+)/) || decoded.match(/[?&]token=([^&]+)/);
-  if (!tokenMatch) return null;
-
-  const typeMatch = decoded.match(/[?&]type=([^&]+)/);
-  return { token: tokenMatch[1], type: typeMatch?.[1] };
-}
-
 export function initializeDeepLinks() {
-  const handleOpenURL = (event: { url: string }) => {
+  const handleOpenURL = (event: { url: string }, coldStart: boolean) => {
     const { url } = event;
     if (!url) return;
 
     if (url.includes(PAYMENT_CALLBACK_PATH)) {
-      const parsed = parsePaymentCallback(url);
-      if (parsed && paymentHandler) {
-        paymentHandler(parsed.token, parsed.type);
-      }
+      handlePaymentReturnUrl(url, coldStart);
       return;
     }
 
@@ -51,11 +33,11 @@ export function initializeDeepLinks() {
     }
   };
 
-  const subscription = Linking.addEventListener('url', handleOpenURL);
+  const subscription = Linking.addEventListener('url', (event) => handleOpenURL(event, false));
 
   Linking.getInitialURL().then((url) => {
     if (url) {
-      handleOpenURL({ url });
+      handleOpenURL({ url }, true);
     }
   });
 

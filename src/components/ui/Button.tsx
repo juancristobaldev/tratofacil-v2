@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, ActivityIndicator, ViewStyle, TextStyle, StyleProp, Pressable } from 'react-native';
+import { StyleSheet, Text, ActivityIndicator, ViewStyle, TextStyle, StyleProp } from 'react-native';
+import { TouchableOpacity } from '@gorhom/bottom-sheet';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { TOKENS } from '../../theme';
 import { Icon, IconName } from './Icon';
@@ -7,6 +8,7 @@ import { Icon, IconName } from './Icon';
 interface ButtonProps {
   title: string;
   onPress: () => void;
+  debugId?: string;
   variant?: 'primary' | 'secondary' | 'outline' | 'white' | 'danger';
   icon?: IconName;
   iconColor?: string;
@@ -19,6 +21,7 @@ interface ButtonProps {
 export const Button: React.FC<ButtonProps> = ({
   title,
   onPress,
+  debugId,
   variant = 'primary',
   icon,
   iconColor,
@@ -72,33 +75,62 @@ export const Button: React.FC<ButtonProps> = ({
   }));
 
   const handlePressIn = () => {
+    if (__DEV__ && debugId) {
+      console.log(`[UI:BUTTON_PRESS_IN] debugId=${debugId} label=${title}`);
+    }
     if (!disabled && !loading) {
       scale.value = withSpring(0.96, TOKENS.animation.springConfig);
     }
   };
 
   const handlePressOut = () => {
+    if (__DEV__ && debugId) {
+      console.log(`[UI:BUTTON_PRESS_OUT] debugId=${debugId} label=${title}`);
+    }
     scale.value = withSpring(1, TOKENS.animation.springConfig);
   };
 
+  const handlePress = () => {
+    if (__DEV__ && debugId) {
+      console.log(`[UI:BUTTON_PRESS] debugId=${debugId} label=${title} handlerAvailable=${typeof onPress === 'function'}`);
+    }
+    onPress();
+  };
+
+  const handleTouchStart = () => {
+    if (__DEV__ && debugId) {
+      console.log(`[UI:BUTTON_TOUCH_START] debugId=${debugId} label=${title}`);
+    }
+  };
+
+  const isUnavailable = disabled || loading;
+  const debugTouchProps = debugId ? ({ onTouchStart: handleTouchStart } as any) : undefined;
+
   return (
-    <Animated.View
+    <TouchableOpacity
       style={[
         styles.baseContainer,
         currentStyles.container,
         disabled && styles.disabledContainer,
         style,
-        animatedStyle,
       ]}
+      onPress={handlePress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={isUnavailable}
+      activeOpacity={1}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isUnavailable, busy: loading }}
+      onLayout={(event) => {
+        if (__DEV__ && debugId) {
+          const { width, height } = event.nativeEvent.layout;
+          console.log(`[UI:BUTTON_LAYOUT] debugId=${debugId} width=${width} height=${height}`);
+          console.log(`[UI:BUTTON_TOUCHABLE_LAYOUT] debugId=${debugId} width=${width} height=${height}`);
+        }
+      }}
+      {...debugTouchProps}
     >
-      <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        disabled={disabled || loading}
-        style={StyleSheet.absoluteFill}
-      />
-      <Animated.View style={styles.contentContainer} pointerEvents="none">
+      <Animated.View style={[styles.contentContainer, animatedStyle]} pointerEvents="none">
         {loading ? (
           <ActivityIndicator size="small" color={currentStyles.loaderColor} />
         ) : (
@@ -121,7 +153,7 @@ export const Button: React.FC<ButtonProps> = ({
           </>
         )}
       </Animated.View>
-    </Animated.View>
+    </TouchableOpacity>
   );
 };
 

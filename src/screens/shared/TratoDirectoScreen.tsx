@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: TOKENS.spacing.md,
-    paddingBottom: 120,
+    paddingBottom: TOKENS.spacing.xl,
   },
   headerSection: {
     backgroundColor: TOKENS.colors.white,

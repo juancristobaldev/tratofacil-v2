@@ -2,16 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Animated, Image, TouchableOpacity, Linking, Modal } from 'react-native';
 import { ChevronLeft, ChevronRight, MessageCircle, Globe, Sparkles, X, ImageIcon } from 'lucide-react-native';
 import { TOKENS } from '../../theme';
-import { mediaUrl, getImageUrl } from '../../utils/imageUrl';
+import type { HorizontalAd } from '../../hooks/useAds';
 
 interface Props {
-  images?: any[];
+  images?: HorizontalAd[];
   transitionDuration?: number;
 }
 
 export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionDuration = 6000 }) => {
   const [current, setCurrent] = useState(0);
-  const [selected, setSelected] = useState<any>(null);
+  const [selected, setSelected] = useState<HorizontalAd | null>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -51,18 +51,10 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
 
   if (!images || images.length === 0) return null;
 
-  const activeImg = images[current];
-  const activeOrder = activeImg?.orders?.[0];
-  const activeUser = activeOrder?.user;
-  const activeUserName = activeUser?.provider?.name || activeUser?.displayName;
-  const activeUserPhone = activeUser?.phone;
-  const activeService = activeOrder?.service;
-  const activeLink = activeOrder?.link;
-
-  const activeImageUrl =
-    getImageUrl(activeOrder?.imageRelation?.cdnUrl) ||
-    getImageUrl(activeImg?.image?.cdnUrl) ||
-    getImageUrl(activeOrder?.image || activeImg?.key);
+  const activeAd = images[Math.min(current, images.length - 1)];
+  const phone = activeAd.phone || null;
+  const link = activeAd.link || null;
+  const canOpenDetails = !activeAd.isMarketing && Boolean(activeAd.publisherName || activeAd.info || activeAd.phone || activeAd.link);
 
   return (
     <View style={styles.wrapper}>
@@ -72,18 +64,18 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
 
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => activeUser && setSelected(activeImg)}
+        onPress={() => canOpenDetails && setSelected(activeAd)}
         style={styles.container}
       >
-        {activeImageUrl ? (
+        {activeAd.imageUrl ? (
           <View style={StyleSheet.absoluteFill}>
             <Image
-              source={{ uri: activeImageUrl }}
+              source={{ uri: activeAd.imageUrl }}
               style={[StyleSheet.absoluteFill, { opacity: 0.4 }]}
               blurRadius={20}
             />
             <Animated.Image
-              source={{ uri: activeImageUrl }}
+              source={{ uri: activeAd.imageUrl }}
               style={[StyleSheet.absoluteFill, { opacity: fadeAnim, resizeMode: 'contain' }]}
             />
           </View>
@@ -91,13 +83,13 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
           <View style={[StyleSheet.absoluteFill, { backgroundColor: TOKENS.colors.surface100 }]} />
         )}
 
-        {activeOrder && (
+        {canOpenDetails && (
           <View style={styles.gradientOverlay} />
         )}
 
-        {activeUser && (
+        {(activeAd.isMarketing || activeAd.publisherName) && (
           <View style={styles.topBadgesContainer}>
-            {!activeOrder && (
+            {activeAd.isMarketing && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>PUBLICIDAD</Text>
               </View>
@@ -109,34 +101,34 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
           </View>
         )}
 
-        {activeUser && (
+        {canOpenDetails && (
           <View style={styles.bottomContent}>
             <View style={styles.infoContainer}>
-              <Text style={styles.userName} numberOfLines={1}>{activeUserName}</Text>
-              {activeOrder?.info && (
-                <Text style={styles.userInfo} numberOfLines={1}>{activeOrder.info}</Text>
+              <Text style={styles.userName} numberOfLines={1}>{activeAd.publisherName}</Text>
+              {activeAd.info && (
+                <Text style={styles.userInfo} numberOfLines={1}>{activeAd.info}</Text>
               )}
             </View>
 
             <View style={styles.actionsContainer}>
-              {activeUserPhone && (
+              {phone && (
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: '#25D366' }]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    Linking.openURL(`https://wa.me/${activeUserPhone.replace(/\\+/g, "")}`);
+                    Linking.openURL(`https://wa.me/${phone.replace(/\\+/g, "")}`);
                   }}
                 >
                   <MessageCircle size={16} color="#fff" />
                   <Text style={styles.actionButtonText}>WhatsApp</Text>
                 </TouchableOpacity>
               )}
-              {activeLink && (
+              {link && (
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' }]}
                   onPress={(e) => {
                     e.stopPropagation();
-                    Linking.openURL(activeLink.startsWith('http') ? activeLink : `https://${activeLink}`);
+                    Linking.openURL(link.startsWith('http') ? link : `https://${link}`);
                   }}
                 >
                   <Globe size={16} color="#fff" />
@@ -175,13 +167,12 @@ export const RotatingHorizontalAd: React.FC<Props> = ({ images = [], transitionD
   );
 };
 
-const AdModal = ({ isOpen = false, onClose = () => {}, data = {} }: any) => {
+const AdModal = ({ isOpen = false, onClose = () => {}, data = null }: { isOpen?: boolean; onClose?: () => void; data?: HorizontalAd | null }) => {
   if (!isOpen) return null;
 
-  const activeImg = data;
-  const activeOrder = activeImg?.orders?.[0];
-  
-  if (!activeOrder) {
+  const activeAd = data;
+
+  if (!activeAd || (!activeAd.publisherName && !activeAd.info && !activeAd.phone && !activeAd.link)) {
     return (
       <Modal transparent visible={isOpen} onRequestClose={onClose} animationType="fade">
         <View style={modalStyles.overlay}>
@@ -196,13 +187,10 @@ const AdModal = ({ isOpen = false, onClose = () => {}, data = {} }: any) => {
     );
   }
 
-  const publisherName = activeOrder.user?.provider?.name || activeOrder.user?.displayName || "Usuario Anónimo";
-  const adImageUrl =
-    getImageUrl(activeOrder.imageRelation?.cdnUrl) ||
-    getImageUrl(activeImg?.image?.cdnUrl) ||
-    getImageUrl(activeOrder.image || activeImg?.key);
-  const whatsappLink = activeOrder.user?.phone ? `https://wa.me/${activeOrder.user.phone.replace(/\\+/g, "")}` : null;
-  const externalLink = activeOrder.link ? (activeOrder.link.startsWith("http") ? activeOrder.link : `https://${activeOrder.link}`) : null;
+  const publisherName = activeAd.publisherName || "Usuario Anónimo";
+  const adImageUrl = activeAd.imageUrl;
+  const whatsappLink = activeAd.phone ? `https://wa.me/${activeAd.phone.replace(/\\+/g, "")}` : null;
+  const externalLink = activeAd.link ? (activeAd.link.startsWith("http") ? activeAd.link : `https://${activeAd.link}`) : null;
 
   return (
     <Modal transparent visible={isOpen} onRequestClose={onClose} animationType="slide">
@@ -230,14 +218,14 @@ const AdModal = ({ isOpen = false, onClose = () => {}, data = {} }: any) => {
 
           <View style={modalStyles.textArea}>
             <Text style={modalStyles.title}>
-              {activeOrder.service?.name || activeOrder.category?.name || "Servicio Destacado"}
+              {activeAd.serviceName || "Servicio Destacado"}
             </Text>
             <View style={modalStyles.publisherRow}>
               <View style={modalStyles.blueDot} />
               <Text style={modalStyles.publisherText}>Publicado por: <Text style={modalStyles.publisherBold}>{publisherName}</Text></Text>
             </View>
             <Text style={modalStyles.infoText}>
-              {activeOrder.info || "Este anuncio no tiene descripción adicional detallada."}
+              {activeAd.info || "Este anuncio no tiene descripción adicional detallada."}
             </Text>
 
             <View style={modalStyles.buttonsRow}>

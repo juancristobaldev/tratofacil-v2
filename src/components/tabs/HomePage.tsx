@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, LoadingScreen, ErrorState } from '../ui';
-import { usePanel } from '../../context/PanelContext';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
+import { isSheetAllowedForRole } from '../../bottom-sheet/core/bottomSheet.registry';
+import type { SheetKey } from '../../bottom-sheet/core/bottomSheet.types';
 import { useRole } from '../../context/RoleContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -20,6 +23,19 @@ import { resolveCategorySlugs } from '../../utils/categoryTree';
 import { EMPTY_ARRAY } from '../../utils/emptyArray';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+let homePageRuntimeOwnerGeneration = 0;
+const TERMINAL_REALTIME_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+const PROVIDER_FOCUS_STATUSES = ['PENDING', 'QUOTED', 'ACCEPTED', 'IN_PROGRESS'];
+
+type DesiredMapSurface =
+  | { kind: 'SHEET'; key: SheetKey; reason: string }
+  | { kind: 'NO_SHEET_BY_DESIGN'; reason: 'WAITING_PROVIDER_QUOTE' };
+
+function selectClientRealtimeOrder(localOrder: any, domainOrder: any) {
+  if (domainOrder?.status && !TERMINAL_REALTIME_STATUSES.includes(domainOrder.status)) return domainOrder;
+  if (localOrder?.status && !TERMINAL_REALTIME_STATUSES.includes(localOrder.status)) return localOrder;
+  return domainOrder || localOrder;
+}
 
 interface Category {
   id: string;
@@ -42,26 +58,85 @@ const mapStyle = DARK_VISIBLE_MAP_STYLE;
 
 export const HomePage: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const navigation = useNavigation<any>();
   const { location } = useLocation();
   const mapRef = useRef<MapView>(null);
-  const { openPanel, closePanel, clearPanel, updatePanelData, panelState, activePanel } = usePanel();
+  const {
+    present,
+    dismiss,
+    update,
+    active,
+    activePayload,
+    setMapFlowActive,
+    bindRuntimeActionHandlers,
+    unbindRuntimeActionHandlers,
+  } = useBottomSheet();
+  const runtimeOwnerRef = useRef({
+    ownerId: `HomePage:${++homePageRuntimeOwnerGeneration}`,
+    generation: homePageRuntimeOwnerGeneration,
+  });
+  const lastRoleReconcileLogRef = useRef<string | null>(null);
   const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(null);
   const initialCenterDone = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isEditingRadius, setIsEditingRadius] = useState(false);
   const [radiusKm, setRadiusKm] = useState(5);
+  const { role } = useRole();
   const realtime = useRealtime();
+  const hasActiveRealtimeOrder = useMemo(() => {
+    const order = role === 'provider' ? realtime.providerActiveOrder : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    if (!order?.status) return false;
+    return !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status);
+  }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
+
+  const desiredMapSurface = useMemo<DesiredMapSurface>(() => {
+    if (role === 'provider') {
+      const order = realtime.providerActiveOrder;
+      if (order?.status && PROVIDER_FOCUS_STATUSES.includes(order.status)) {
+        return { kind: 'SHEET', key: 'focus_provider', reason: 'provider_domain_order' };
+      }
+      return { kind: 'SHEET', key: 'provider_dashboard', reason: 'provider_default' };
+    }
+
+    const order = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    if (order?.id && order.status === 'PENDING') {
+      return { kind: 'NO_SHEET_BY_DESIGN', reason: 'WAITING_PROVIDER_QUOTE' };
+    }
+    if (order?.id && order.status && !TERMINAL_REALTIME_STATUSES.includes(order.status)) {
+      return { kind: 'SHEET', key: 'focus_client', reason: order.provider ? 'client_domain_order_with_provider' : 'client_domain_order_missing_provider' };
+    }
+    return { kind: 'SHEET', key: 'categories', reason: 'client_default' };
+  }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
+
+  useEffect(() => {
+      const order = role === 'provider'
+      ? realtime.providerActiveOrder
+      : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    const desired = desiredMapSurface.kind === 'SHEET' ? desiredMapSurface.key : 'NO_SHEET_BY_DESIGN';
+    bottomSheetDebug('DESIRED', {
+      role,
+      orderId: order?.id ?? null,
+      status: order?.status ?? null,
+      current: active,
+      desired,
+      reason: desiredMapSurface.reason,
+      hasProvider: !!order?.provider,
+      hasServiceProvider: !!order?.serviceProvider,
+    });
+  }, [active, desiredMapSurface, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
 
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
+  const hydratedCategoriesPayloadRef = useRef(false);
+  const hydratedProviderPreviewPayloadRef = useRef(false);
 
   // Si el preview de proveedor se cierra por swipe-down/backdrop (no por el botón "Cancelar",
   // que ya limpia esto explícitamente), igual deseleccionamos — evita que el pin quede marcado
   // como seleccionado con la ruta trazada después de cerrar el sheet de cualquier forma.
   const wasProviderPreviewOpenRef = useRef(false);
   useEffect(() => {
-    const isProviderPreviewOpen = activePanel === 'provider_preview' && panelState !== 'hidden';
+    const isProviderPreviewOpen = active === 'provider_preview';
     if (isProviderPreviewOpen) {
       wasProviderPreviewOpenRef.current = true;
     } else if (wasProviderPreviewOpenRef.current) {
@@ -69,11 +144,12 @@ export const HomePage: React.FC = () => {
       setSelectedProvider(null);
       setRouteCoords([]);
     }
-  }, [activePanel, panelState]);
+  }, [active]);
 
   const [clusters, setClusters] = useState<any[]>([]);
   const superclusterRef = useRef<Supercluster>(new Supercluster({ radius: 50, maxZoom: 16 }));
   const regionRef = useRef(region);
+  const mapPanActiveRef = useRef(false);
   regionRef.current = region;
 
   const updateClusters = useCallback((currentRegion: any) => {
@@ -117,7 +193,17 @@ export const HomePage: React.FC = () => {
       setRegion(newRegion);
     }
     updateClusters(newRegion);
+    if (mapPanActiveRef.current) {
+      mapPanActiveRef.current = false;
+      console.log('[MAP:GESTURE] PAN_END');
+    }
   }, [updateClusters]);
+
+  const handleMapPanDrag = useCallback(() => {
+    if (mapPanActiveRef.current) return;
+    mapPanActiveRef.current = true;
+    console.log('[MAP:GESTURE] PAN_START');
+  }, []);
 
   useEffect(() => {
     if (location?.coords && !initialCenterDone.current) {
@@ -135,14 +221,11 @@ export const HomePage: React.FC = () => {
     }
   }, [location?.coords?.latitude, location?.coords?.longitude]);
 
-  const { role } = useRole();
   const { token } = useAuth();
 
   const {
-    mainCategories,
     servicesByCategory,
     categories,
-    categoryTree,
     refetchServicesByCategory,
   } = useCategories();
 
@@ -183,17 +266,6 @@ export const HomePage: React.FC = () => {
       }
     });
   }, [servicesByCategory]);
-
-  const displayCategories = useMemo(() => {
-    if (!mainCategories?.length) return [];
-    return mainCategories.map((cat: any) => ({
-      id: String(cat.id),
-      name: cat.name,
-      slug: cat.slug,
-      icon: 'Grid',
-      subcategories: [],
-    }));
-  }, [mainCategories]);
 
   const displayProviders = useMemo(() => {
     if (!servicesByCategory?.length) return EMPTY_ARRAY;
@@ -336,8 +408,7 @@ export const HomePage: React.FC = () => {
     if (__DEV__) console.log('[DEBUG:MAP] clusters loaded | points prepared:', points.length, '| filteredProviders total:', filteredProviders.length, '| filtered with coords:', uniqueProvidersMap.size);
   }, [filteredProviders, updateClusters]);
 
-  const onCategoryPressRef = useRef<(category: Category) => void>(null);
-  onCategoryPressRef.current = useCallback((category: Category) => {
+  const handleCategoryPress = useCallback((category: Category) => {
     setSelectedCategory(category);
     setSelectedProvider(null);
 
@@ -364,6 +435,9 @@ export const HomePage: React.FC = () => {
     });
   }, [displayProviders, categories]);
 
+  const onCategoryPressRef = useRef<(category: Category) => void>(null);
+  onCategoryPressRef.current = handleCategoryPress;
+
   useEffect(() => {
     if (!selectedCategory || filteredProviders.length === 0) return;
     const withCoords = filteredProviders.filter(
@@ -381,12 +455,17 @@ export const HomePage: React.FC = () => {
     });
   }, [filteredProviders, selectedCategory]);
 
-  const onClearCategoryRef = useRef<() => void>(null);
-  onClearCategoryRef.current = useCallback(() => {
+  const handleClearCategory = useCallback(() => {
     setSelectedCategory(null);
     setSelectedProvider(null);
     setRouteCoords([]);
   }, []);
+
+  const onClearCategoryRef = useRef<() => void>(null);
+  onClearCategoryRef.current = handleClearCategory;
+  const onNavigateProviderRef = useRef<(provider: any) => void>(null);
+  const onViewProviderProfileRef = useRef<(provider: any) => void>(null);
+  const onDeselectProviderRef = useRef<() => void>(null);
 
   useEffect(() => {
     const provider = selectedProvider;
@@ -427,42 +506,277 @@ export const HomePage: React.FC = () => {
   }, []);
 
   // Navegación desde el carrusel: selecciona proveedor, centra cámara y sincroniza el sheet
-  // SIN reabrir el panel (usa updatePanelData para evitar loops de openPanel).
+  // SIN reabrir el panel (usa update para evitar loops de present).
   const handleNavigateProvider = useCallback(
     (provider: any) => {
+      bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'INDEX_CHANGE', owner: runtimeOwnerRef.current.ownerId });
       setSelectedProvider(provider);
       animateToProvider(provider);
       const idx = orderedFilteredProviders.findIndex(
         (p: any) => String(p.id) === String(provider.id),
       );
-      updatePanelData({ provider, selectedIndex: idx < 0 ? 0 : idx });
+      update({ provider, selectedIndex: idx < 0 ? 0 : idx });
     },
-    [setSelectedProvider, animateToProvider, orderedFilteredProviders, updatePanelData],
+    [setSelectedProvider, animateToProvider, orderedFilteredProviders, update],
+  );
+
+  const handleViewProviderProfile = useCallback(
+    (p: any) => {
+      bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'VIEW_PROFILE', owner: runtimeOwnerRef.current.ownerId });
+      navigation.navigate('ProviderProfile', { providerId: p.id });
+    },
+    [navigation],
   );
 
   const selectedCategoryRef = useRef(selectedCategory);
   selectedCategoryRef.current = selectedCategory;
 
-  useEffect(() => {
-    updatePanelData({ selectedCategory });
-  }, [selectedCategory, updatePanelData]);
+  const presentCategories = useCallback(() => {
+    present('categories', {
+      selectedCategory: selectedCategoryRef.current,
+    });
+  }, [present]);
+
+  const logTransitionRequest = useCallback((params: { actionId?: number; from: SheetKey | null; to: SheetKey; origin: string; reason: string }) => {
+    bottomSheetDebug('TRANSITION_REQUEST', {
+      transitionId: nextBottomSheetTransitionId(),
+      actionId: params.actionId,
+      from: params.from,
+      to: params.to,
+      origin: params.origin,
+      reason: params.reason,
+    });
+  }, []);
+
+  const handleDeselectProvider = useCallback(() => {
+    bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'DESELECT', owner: runtimeOwnerRef.current.ownerId });
+    setSelectedProvider(null);
+    setRouteCoords([]);
+    presentCategories();
+  }, [presentCategories]);
+
+  onNavigateProviderRef.current = handleNavigateProvider;
+  onViewProviderProfileRef.current = handleViewProviderProfile;
+  onDeselectProviderRef.current = handleDeselectProvider;
 
   useEffect(() => {
-    if ((role === 'client' || role === 'guest') && (activePanel === null || activePanel === 'categories')) {
-      openPanel('categories', {
-        categories: displayCategories,
-        categoryTree,
-        selectedCategory: selectedCategoryRef.current,
-        onCategoryPress: (category: Category) => onCategoryPressRef.current?.(category),
-        onClearCategory: () => onClearCategoryRef.current?.(),
-        closePanel,
-        selectedProvider,
-        setSelectedProvider,
-      });
+    bottomSheetDebug('MAP_FLOW', { reason: 'home_mounted' });
+    return () => {
+      bottomSheetDebug('MAP_FLOW', { reason: 'home_unmounted', mapFlowActive: false });
+      setMapFlowActive(false);
+    };
+  }, [setMapFlowActive]);
+
+  useEffect(() => {
+    const owner = runtimeOwnerRef.current;
+    bindRuntimeActionHandlers(owner, {
+      categories: {
+        SELECT_CATEGORY: (category, meta) => {
+          bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'categories', action: 'SELECT_CATEGORY', target: 'categories:selected' });
+          onCategoryPressRef.current?.({
+            id: category.id,
+            name: category.name,
+            slug: category.slug,
+            icon: category.icon ?? 'Grid',
+            subcategories: category.subcategories ?? [],
+          });
+        },
+        CLEAR_CATEGORY: (_payload, meta) => {
+          bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'categories', action: 'CLEAR_CATEGORY', target: 'categories' });
+          onClearCategoryRef.current?.();
+        },
+      },
+      provider_preview: {
+        INDEX_CHANGE: (provider, meta) => {
+          bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'provider_preview', action: 'INDEX_CHANGE', target: 'provider_preview' });
+          onNavigateProviderRef.current?.(provider);
+        },
+        VIEW_PROFILE: (provider, meta) => {
+          bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'provider_preview', action: 'VIEW_PROFILE', target: 'ProviderProfile' });
+          onViewProviderProfileRef.current?.(provider);
+        },
+        DESELECT: (_payload, meta) => {
+          bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'provider_preview', action: 'DESELECT', target: 'categories' });
+          onDeselectProviderRef.current?.();
+        },
+      },
+    });
+
+    return () => {
+      unbindRuntimeActionHandlers(owner);
+    };
+  }, [bindRuntimeActionHandlers, unbindRuntimeActionHandlers]);
+
+  useEffect(() => {
+    // Authority for MAP_FLOW_ACTIVE
+    setMapFlowActive(isFocused);
+    if (!isFocused) {
+      bottomSheetDebug('MAP_FLOW', { reason: 'home_blur_suspend', mapFlowActive: false });
     }
-  }, [role, activePanel, openPanel, displayCategories]);
+  }, [isFocused, setMapFlowActive]);
 
-  const handleRecenter = () => {
+  useEffect(() => {
+    if (active !== 'categories') {
+      hydratedCategoriesPayloadRef.current = false;
+      return;
+    }
+
+    const payload = activePayload && typeof activePayload === 'object'
+      ? activePayload as { selectedCategory?: Category | null }
+      : null;
+    const payloadSelectedCategory = payload?.selectedCategory ?? null;
+
+    if (!hydratedCategoriesPayloadRef.current) {
+      hydratedCategoriesPayloadRef.current = true;
+      if (payloadSelectedCategory && selectedCategory?.slug !== payloadSelectedCategory.slug) {
+        setSelectedCategory(payloadSelectedCategory);
+        return;
+      }
+    }
+
+    update({ selectedCategory });
+  }, [active, selectedCategory, update]);
+
+  useEffect(() => {
+    if (active !== 'provider_preview') {
+      hydratedProviderPreviewPayloadRef.current = false;
+      return;
+    }
+
+    const payload = activePayload && typeof activePayload === 'object'
+      ? activePayload as { provider?: any }
+      : null;
+    const payloadProvider = payload?.provider ?? null;
+
+    if (!hydratedProviderPreviewPayloadRef.current) {
+      hydratedProviderPreviewPayloadRef.current = true;
+      if (payloadProvider && String(selectedProvider?.id) !== String(payloadProvider.id)) {
+        setSelectedProvider(payloadProvider);
+      }
+    }
+
+  }, [active, selectedProvider?.id]);
+
+  useEffect(() => {
+    if (!isFocused) return;
+
+    const reconcileOrder = role === 'provider'
+      ? realtime.providerActiveOrder
+      : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+
+    if (desiredMapSurface.kind === 'NO_SHEET_BY_DESIGN') {
+      bottomSheetDebug('NO_SHEET', {
+        role,
+        orderId: reconcileOrder?.id ?? null,
+        status: reconcileOrder?.status ?? null,
+        current: active,
+        reason: desiredMapSurface.reason,
+      });
+
+      bottomSheetDebug('RECONCILE_DECISION', {
+        role,
+        orderId: reconcileOrder?.id ?? null,
+        status: reconcileOrder?.status ?? null,
+        current: active,
+        desired: 'NO_SHEET_BY_DESIGN',
+        decision: active ? 'DISMISS' : 'KEEP',
+        reason: desiredMapSurface.reason,
+        hasProvider: !!reconcileOrder?.provider,
+        hasServiceProvider: !!reconcileOrder?.serviceProvider,
+      });
+
+      if (active) {
+        dismiss();
+      }
+      return;
+    }
+
+    const target = desiredMapSurface.key;
+    const activeAllowed = active ? isSheetAllowedForRole(active, role) : false;
+    const targetHasRealtimePriority = target === 'focus_client' || target === 'focus_provider';
+    const needsReconcile = active !== target && (!activeAllowed || !active || targetHasRealtimePriority);
+
+    if (!needsReconcile) {
+      bottomSheetDebug('RECONCILE_DECISION', {
+        role,
+        orderId: reconcileOrder?.id ?? null,
+        status: reconcileOrder?.status ?? null,
+        current: active,
+        desired: target,
+        decision: 'KEEP',
+        reason: activeAllowed ? 'allowed_for_role' : 'target_active',
+        hasProvider: !!reconcileOrder?.provider,
+        hasServiceProvider: !!reconcileOrder?.serviceProvider,
+      });
+      const keepLogKey = `${role}:${active}:KEEP`;
+      if (lastRoleReconcileLogRef.current !== keepLogKey) {
+        bottomSheetDebug('ROLE_RECONCILE', {
+          role,
+          key: active,
+          action: 'KEEP',
+          reason: activeAllowed ? 'allowed_for_role' : 'target_active',
+        });
+        lastRoleReconcileLogRef.current = keepLogKey;
+      }
+      return;
+    }
+
+    const reason = active && !activeAllowed
+      ? (target === 'focus_client' || target === 'focus_provider'
+        ? 'active_not_allowed_for_role_realtime_priority'
+        : 'active_not_allowed_for_role')
+      : active === null
+        ? 'initial_target'
+        : 'domain_priority_changed';
+
+    bottomSheetDebug('RECONCILE_DECISION', {
+      role,
+      orderId: reconcileOrder?.id ?? null,
+      status: reconcileOrder?.status ?? null,
+      current: active,
+      desired: target,
+      decision: active === null ? 'PRESENT' : 'REPLACE',
+      reason,
+      hasProvider: !!reconcileOrder?.provider,
+      hasServiceProvider: !!reconcileOrder?.serviceProvider,
+    });
+
+    const reconcileLogKey = `${role}:${active ?? 'null'}:${target}:${reason}`;
+    if (lastRoleReconcileLogRef.current !== reconcileLogKey) {
+      bottomSheetDebug('ROLE_RECONCILE', {
+        role,
+        from: active,
+        to: target,
+        reason,
+      });
+      lastRoleReconcileLogRef.current = reconcileLogKey;
+    }
+
+    if (target === 'categories') {
+      bottomSheetDebug('CALL', { key: 'categories', role, mapFlowActive: isFocused, reason });
+      logTransitionRequest({ from: active, to: 'categories', origin: 'HOME_RECONCILE', reason });
+      presentCategories();
+    } else if (target === 'provider_dashboard') {
+      bottomSheetDebug('CALL', { key: 'provider_dashboard', role, mapFlowActive: isFocused, reason });
+      logTransitionRequest({ from: active, to: 'provider_dashboard', origin: 'HOME_RECONCILE', reason });
+      present('provider_dashboard', undefined);
+    } else if (target === 'focus_client') {
+      const order = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+      if (!order?.id) return;
+      bottomSheetDebug('CALL', { key: 'focus_client', role, mapFlowActive: isFocused, reason });
+      logTransitionRequest({ from: active, to: 'focus_client', origin: 'REALTIME_RECONCILE', reason });
+      present('focus_client', { orderId: order.id });
+    } else if (target === 'focus_provider') {
+      const order = realtime.providerActiveOrder;
+      if (!order?.id) return;
+      bottomSheetDebug('CALL', { key: 'focus_provider', role, mapFlowActive: isFocused, reason });
+      logTransitionRequest({ from: active, to: 'focus_provider', origin: 'REALTIME_RECONCILE', reason });
+      present('focus_provider', { orderId: order.id });
+    }
+  }, [active, desiredMapSurface, dismiss, isFocused, logTransitionRequest, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
+
+  const handleRecenter = (source: 'gps_button' | 'user_marker' = 'gps_button') => {
+    console.log(`[MAP:INTERACTION] type=USER_LOCATION_PRESS source=${source}`);
     if (location?.coords) {
       setRegion({
         latitude: location.coords.latitude,
@@ -473,6 +787,10 @@ export const HomePage: React.FC = () => {
     }
   };
 
+  const handleMapPress = () => {
+    console.log('[MAP:INTERACTION] type=BACKGROUND_PRESS');
+  };
+
   return (
     <View style={styles.container}>
       {region && (
@@ -481,6 +799,8 @@ export const HomePage: React.FC = () => {
           style={styles.map}
           region={region}
           onRegionChangeComplete={handleRegionChangeComplete}
+          onPanDrag={handleMapPanDrag}
+          onPress={handleMapPress}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
@@ -492,6 +812,7 @@ export const HomePage: React.FC = () => {
               latitude: location.coords.latitude, 
               longitude: location.coords.longitude 
             }} 
+            onPress={() => handleRecenter('user_marker')}
           />
         )}
         {(() => {
@@ -540,27 +861,24 @@ export const HomePage: React.FC = () => {
               coordinate={{ latitude, longitude }}
               isSelected={isSelected}
               onPress={() => {
+                console.log(`[MAP:INTERACTION] type=PROVIDER_PRESS providerId=${provider.id}`);
+                bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'PROVIDER_PRESS', origin: 'MAP_PROVIDER_PIN' });
+                bottomSheetDebug('FLOW_INTENT', { key: 'provider_preview', action: 'PROVIDER_PRESS', target: 'provider_preview' });
                 const idx = orderedFilteredProviders.findIndex(
                   (p: any) => String(p.id) === String(provider.id),
                 );
                 setSelectedProvider(provider);
-                openPanel('provider_preview', {
+                const previewPayload = {
                   provider,
                   providers: orderedFilteredProviders,
                   selectedIndex: idx < 0 ? 0 : idx,
-                  onIndexChange: handleNavigateProvider,
-                  onViewProfile: (p: any) => {
-                    clearPanel();
-                    setSelectedProvider(null);
-                    setRouteCoords([]);
-                    navigation.navigate('ProviderProfile', { providerId: p.id });
-                  },
-                  onDeselect: () => {
-                    clearPanel();
-                    setSelectedProvider(null);
-                    setRouteCoords([]);
-                  },
-                });
+                };
+                if (active === 'provider_preview') {
+                  update(previewPayload);
+                } else {
+                  logTransitionRequest({ from: active, to: 'provider_preview', origin: 'PROVIDER_PRESS', reason: 'provider_pin_press' });
+                  present('provider_preview', previewPayload);
+                }
               }}
             />
           );
@@ -625,7 +943,7 @@ export const HomePage: React.FC = () => {
         {/* GPS button */}
         <View style={styles.gpsBtnWrapper}>
           <TouchableOpacity
-            onPress={handleRecenter}
+            onPress={() => handleRecenter('gps_button')}
             activeOpacity={0.8}
             style={styles.gpsBtn}
           >

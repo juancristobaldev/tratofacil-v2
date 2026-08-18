@@ -1,36 +1,44 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
-  Linking,
+  useWindowDimensions,
 } from 'react-native';
+import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
+import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Button, Badge, Rating, WorkTimer } from '../ui';
-import { usePanel } from '../../context/PanelContext';
 import { useNotification } from '../../context/NotificationContext';
-import type { OrderRealTime } from '../../types/graphql';
+import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
+import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-export const FocusProviderPanelContent: React.FC = () => {
-  const { panelData, closePanel } = usePanel();
+export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_provider'>> = () => {
   const { showNotification } = useNotification();
   const [quoteHours, setQuoteHours] = useState(1);
   const [quoteTransport, setQuoteTransport] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  // DEV-only measurement probe (Fase 0) — no layout change
+  const primaryActionRef = useRef<View>(null);
+  const { height: winH } = useWindowDimensions();
+  const navHeight = useBottomNavHeight();
+  const session = useFocusSession('provider');
   const {
-    orderState,
-    etaRemaining,
-    distanceRemaining,
-    workSeconds,
-    formatTimer,
-    setOrderState,
-    handleFinish,
-    setShowChat,
     activeOrder,
+    orderState,
+    setOrderState,
+    distanceLabel,
+    etaLabel,
+    setShowChat,
+    handleFinish,
     realtime,
-  } = panelData || {};
+  } = session;
 
-  const order = (activeOrder as OrderRealTime) || null;
+  const order = activeOrder;
+  const etaRemaining = etaLabel || '...';
+  const distanceRemaining = distanceLabel || '...';
   const clientName = order?.client?.displayName || 'Cliente';
   const clientAddress = order?.clientAddress || '';
   const clientDescription = order?.clientDescription || '';
@@ -40,91 +48,166 @@ export const FocusProviderPanelContent: React.FC = () => {
     ? (order?.client as any).reviewsReceived.reduce((s: number, r: any) => s + r.rating, 0) / (order?.client as any).reviewsReceived.length
     : 0;
   const clientReviewCount = (order?.client as any)?.reviewsReceived?.length || 0;
+  const derivedPhase = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null
+    ? 'REQUEST_CREATED'
+    : orderState === 'VIEW_REQUEST' && order?.counterOfferPrice != null
+      ? 'WAITING_PROVIDER_RESPONSE'
+      : orderState;
+  const turn = derivedPhase === 'REQUEST_CREATED' || derivedPhase === 'WAITING_PROVIDER_RESPONSE'
+    ? 'PROVIDER'
+    : derivedPhase === 'WAITING_CLIENT_RESPONSE'
+      ? 'CLIENT'
+      : 'NONE';
+  const sendQuoteVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
+  const rejectVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
+  const cancelVisible = orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'EN_CAMINO' || orderState === 'ARRIVED';
+  const acceptCounterVisible = order?.counterOfferPrice != null && (orderState === 'VIEW_REQUEST' || orderState === 'WAITING_CLIENT_RESPONSE');
+  const updateQuoteVisible = orderState === 'WAITING_CLIENT_RESPONSE';
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log(
+      `[NEG:PROVIDER_PHASE] orderId=${order?.id ?? 'null'} status=${order?.status ?? 'null'} orderState=${orderState} quotedPrice=${order?.quotedPrice ?? 'null'} counterOfferPrice=${order?.counterOfferPrice ?? 'null'} derivedPhase=${derivedPhase} turn=${turn} sheetKey=focus_provider sheetIndex=unknown contentHeight=${contentHeight}`,
+    );
+    console.log(
+      `[NEG:PROVIDER_ACTIONS] sendQuoteVisible=${sendQuoteVisible} rejectVisible=${rejectVisible} cancelVisible=${cancelVisible} acceptCounterVisible=${acceptCounterVisible} updateQuoteVisible=${updateQuoteVisible}`,
+    );
+  }, [acceptCounterVisible, cancelVisible, contentHeight, derivedPhase, order?.counterOfferPrice, order?.id, order?.quotedPrice, order?.status, orderState, rejectVisible, sendQuoteVisible, turn, updateQuoteVisible]);
 
   const handleSendQuote = async () => {
-    if (order?.id && realtime?.quoteOrder) {
-      try {
-        await realtime.quoteOrder({
-          orderRealtimeId: order.id,
-          quotedPrice: totalQuote,
-          quotedHours: quoteHours,
-          quotedTransport: quoteTransport,
-        });
-        if (setOrderState) setOrderState('WAITING_CLIENT_RESPONSE');
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo enviar la cotización.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'SEND_QUOTE', origin: 'FOCUS_PROVIDER', payload: { quotedPrice: totalQuote, quotedHours: quoteHours, quotedTransport: quoteTransport } });
+    if (!order?.id || !realtime?.quoteOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'SEND_QUOTE', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'SEND_QUOTE', result: 'quote_order' });
+    try {
+      await realtime.quoteOrder({
+        orderRealtimeId: order.id,
+        quotedPrice: totalQuote,
+        quotedHours: quoteHours,
+        quotedTransport: quoteTransport,
+      });
+      setOrderState('WAITING_CLIENT_RESPONSE');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo enviar la cotización.', type: 'error' });
     }
   };
 
   const handleAcceptCounterOffer = async () => {
-    if (order?.id && realtime?.respondToCounterOffer) {
-      try {
-        await realtime.respondToCounterOffer(order.id, 'ACCEPTED');
-        if (setOrderState) setOrderState('WAITING_CLIENT_RESPONSE');
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo aceptar la contraoferta.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'ACCEPT_COUNTEROFFER', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.respondToCounterOffer) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'ACCEPT_COUNTEROFFER', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'ACCEPT_COUNTEROFFER', result: 'accept_counteroffer' });
+    try {
+      await realtime.respondToCounterOffer(order.id, 'ACCEPTED');
+      setOrderState('WAITING_CLIENT_RESPONSE');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo aceptar la contraoferta.', type: 'error' });
     }
   };
 
   const handleRejectCounterOffer = async () => {
-    if (order?.id && realtime?.respondToCounterOffer) {
-      try {
-        await realtime.respondToCounterOffer(order.id, 'REJECTED');
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo rechazar la contraoferta.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'REJECT_COUNTEROFFER', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.respondToCounterOffer) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'REJECT_COUNTEROFFER', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'REJECT_COUNTEROFFER', result: 'reject_counteroffer' });
+    try {
+      await realtime.respondToCounterOffer(order.id, 'REJECTED');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo rechazar la contraoferta.', type: 'error' });
     }
   };
 
   const handleReject = async () => {
-    if (order?.id && realtime?.respondRequest) {
-      try {
-        await realtime.respondRequest(order.id, 'reject');
-        closePanel();
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo rechazar la solicitud.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'REJECT_REQUEST', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.respondRequest) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'REJECT_REQUEST', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'REJECT_REQUEST', result: 'reject_request' });
+    try {
+      await realtime.respondRequest(order.id, 'reject');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo rechazar la solicitud.', type: 'error' });
     }
   };
 
   const handleCancelOrder = async () => {
-    if (order?.id && realtime?.cancelOrder) {
-      try {
-        await realtime.cancelOrder(order.id);
-        closePanel();
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'CANCEL_ORDER', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.cancelOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'CANCEL_ORDER', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'CANCEL_ORDER', result: 'cancel_order' });
+    try {
+      await realtime.cancelOrder(order.id);
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
     }
   };
 
   const handleStartWork = async () => {
-    if (order?.id && realtime?.startOrder) {
-      try {
-        await realtime.startOrder(order.id);
-        if (setOrderState) setOrderState('IN_PROGRESS');
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo iniciar el trabajo.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'START_WORK', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.startOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'START_WORK', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'START_WORK', result: 'start_work' });
+    try {
+      await realtime.startOrder(order.id);
+      setOrderState('IN_PROGRESS');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo iniciar el trabajo.', type: 'error' });
     }
   };
 
   const handleCompleteWork = async () => {
-    if (order?.id && realtime?.finishOrder) {
-      try {
-        await realtime.finishOrder(order.id);
-        if (setOrderState) setOrderState('COMPLETED');
-      } catch {
-        showNotification({ title: 'Error', message: 'No se pudo completar el trabajo.', type: 'error' });
-      }
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'COMPLETE_WORK', origin: 'FOCUS_PROVIDER' });
+    if (!order?.id || !realtime?.finishOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'COMPLETE_WORK', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'COMPLETE_WORK', result: 'complete_work' });
+    try {
+      await realtime.finishOrder(order.id);
+      setOrderState('COMPLETED');
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo completar el trabajo.', type: 'error' });
     }
   };
 
+  const handleOpenChat = () => {
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'OPEN_CHAT', origin: 'FOCUS_PROVIDER' });
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'OPEN_CHAT', target: 'chat_overlay' });
+    setShowChat(true);
+  };
+
+  const handleReturnPanel = () => {
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'RETURN_PANEL', origin: 'FOCUS_PROVIDER' });
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'RETURN_PANEL', target: orderState === 'COMPLETED' ? 'Rating' : 'MainApp' });
+    handleFinish();
+  };
+
   return (
-    <View style={styles.container}>
-      <View style={styles.sheetBody}>
+    <BottomSheetScrollView style={styles.container}>
+      <View
+        style={styles.sheetBody}
+        onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
+      >
         {orderState === 'VIEW_REQUEST' && (
           <View style={styles.viewRequestContainer}>
             <View style={styles.clientCard}>
@@ -223,17 +306,37 @@ export const FocusProviderPanelContent: React.FC = () => {
                   </View>
                 </View>
 
-                <View style={styles.actionRow}>
+                <View
+                  ref={primaryActionRef}
+                  collapsable={false}
+                  style={styles.primaryActionStack}
+                  onLayout={() => {
+                    if (!__DEV__) return;
+                    primaryActionRef.current?.measureInWindow((x, y, w, h) => {
+                      const navTop = winH - navHeight;
+                      console.log('[BS:ACTION_GEOMETRY]', {
+                        key: 'focus_provider',
+                        action: 'PRIMARY_ACTION_STACK',
+                        description: 'SEND_QUOTE(above) + REJECT(last)',
+                        stackTop: y,
+                        stackBottom: y + h,
+                        navTop,
+                        windowHeight: winH,
+                        overlapPx: y + h - navTop,
+                      });
+                    });
+                  }}
+                >
+                  <Button
+                    title="Enviar cotización"
+                    onPress={handleSendQuote}
+                    style={styles.actionBtn}
+                  />
                   <Button
                     title="Rechazar"
                     variant="outline"
                     onPress={handleReject}
-                    style={styles.actionRowBtn}
-                  />
-                  <Button
-                    title="Enviar cotización"
-                    onPress={handleSendQuote}
-                    style={styles.actionRowBtn}
+                    style={styles.actionBtn}
                   />
                 </View>
               </>
@@ -289,7 +392,7 @@ export const FocusProviderPanelContent: React.FC = () => {
                 <Text style={styles.clientName}>{clientName}</Text>
                 <Text style={styles.clientAddress} numberOfLines={1}>{clientAddress || 'Ubicación'}</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowChat?.(true)} style={styles.chatIconBtnSmall}>
+              <TouchableOpacity onPress={handleOpenChat} style={styles.chatIconBtnSmall}>
                 <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />
               </TouchableOpacity>
             </View>
@@ -318,7 +421,7 @@ export const FocusProviderPanelContent: React.FC = () => {
                 <Text style={styles.clientName}>{clientName}</Text>
                 <Text style={styles.clientAddress}>Se encuentra esperando tu llegada</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowChat?.(true)} style={styles.chatIconBtnSmall}>
+              <TouchableOpacity onPress={handleOpenChat} style={styles.chatIconBtnSmall}>
                 <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />
               </TouchableOpacity>
             </View>
@@ -347,7 +450,7 @@ export const FocusProviderPanelContent: React.FC = () => {
               title="Abrir Chat"
               variant="outline"
               icon="MessageCircle"
-              onPress={() => setShowChat?.(true)}
+              onPress={handleOpenChat}
               style={styles.actionBtn}
             />
 
@@ -371,7 +474,7 @@ export const FocusProviderPanelContent: React.FC = () => {
 
             <Button
               title="Volver al Panel"
-              onPress={handleFinish}
+              onPress={handleReturnPanel}
               style={styles.actionBtn}
             />
           </>
@@ -389,19 +492,19 @@ export const FocusProviderPanelContent: React.FC = () => {
 
             <Button
               title="Volver al Panel"
-              onPress={handleFinish}
+              onPress={handleReturnPanel}
               style={styles.actionBtn}
             />
           </>
         )}
       </View>
-    </View>
+    </BottomSheetScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 0,
   },
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.md,
@@ -636,6 +739,10 @@ const styles = StyleSheet.create({
   },
   actionRowBtn: {
     flex: 1,
+  },
+  primaryActionStack: {
+    gap: TOKENS.spacing.sm,
+    marginTop: TOKENS.spacing.sm,
   },
   waitingContainer: {
     alignItems: 'center',

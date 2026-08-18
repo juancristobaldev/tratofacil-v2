@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
@@ -62,7 +62,6 @@ export const PurchaseScreen: React.FC = () => {
           returnUrl: `${DEEP_LINK_CALLBACK}?type=product`,
         });
         if (flowResult.url) {
-          await Linking.openURL(flowResult.url);
           setIsProcessing(false);
           return;
         }

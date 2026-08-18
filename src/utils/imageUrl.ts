@@ -9,6 +9,30 @@ export function mediaUrl(key: string, extension = 'jpg'): string {
   return `${MEDIA_ENDPOINT}files/${key}.${extension}`;
 }
 
+type MediaSource = {
+  cdnUrl?: string | null;
+  compressedKey?: string | null;
+  key?: string | null;
+  extension?: string | null;
+};
+
+export function resolveMediaUrl(source: MediaSource | string | null | undefined): string {
+  if (!source) return '';
+
+  if (typeof source === 'string') {
+    return getImageUrl(source);
+  }
+
+  const { cdnUrl, compressedKey, key, extension } = source;
+  const normalizedExtension = extension || undefined;
+
+  return (
+    getImageUrl(cdnUrl) ||
+    (compressedKey ? mediaUrl(compressedKey, normalizedExtension) : '') ||
+    (key ? mediaUrl(key, normalizedExtension) : '')
+  );
+}
+
 export function getImageUrl(url: string | null | undefined): string {
   if (!url) {
     if (__DEV__) console.log('[getImageUrl] entrada vacía, retornando ""');

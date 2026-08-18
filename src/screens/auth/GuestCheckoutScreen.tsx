@@ -7,7 +7,6 @@ import { TOKENS } from '../../theme';
 import { Button, Input, Icon } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
-import { usePanel } from '../../context/PanelContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { CHECK_LOGIN_EMAIL_EXISTS } from '../../graphql/operations/auth';
 
@@ -16,7 +15,6 @@ export const GuestCheckoutScreen: React.FC = () => {
   const route = useRoute<any>();
   const { setSession } = useAuth();
   const { location, refreshLocation } = useLocation();
-  const { openPanel } = usePanel();
   const { guestCreateContactRequest } = useRealtime();
 
   const [checkEmailExists] = useLazyQuery<{
@@ -78,15 +76,7 @@ export const GuestCheckoutScreen: React.FC = () => {
 
       await setSession(result.accessToken, result.user as any);
 
-      navigation.navigate('MainApp');
-      openPanel('focus_client', {
-        providerId: provider.id,
-        serviceProviderId: provider.serviceProviderId,
-        provider,
-        isRealtimeActive: true,
-        orderAlreadyCreated: true,
-        pendingOrderId: result.order.id,
-      });
+      navigation.navigate('MainApp', { screen: 'Home' });
     } catch (err: any) {
       const conflict =
         err?.graphQLErrors?.[0]?.extensions?.status === 409 ||

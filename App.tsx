@@ -14,6 +14,9 @@ import { RealtimeProvider } from './src/realtime/RealtimeContext';
 import { CategoriesProvider } from './src/context/CategoriesContext';
 import { client } from './src/graphql/apollo';
 import { initializeDeepLinks } from './src/utils/deepLinks';
+import { PaymentReturnGate } from './src/payments/PaymentReturnGate';
+// Removed BottomSheetProvider
+import { FocusSessionProvider } from './src/features/focus-session/FocusSessionProvider';
 
 function DeepLinkSetup() {
   useEffect(() => {
@@ -24,8 +27,15 @@ function DeepLinkSetup() {
 }
 
 function App() {
+  const handleRootLayout = (e: any) => {
+    if (__DEV__) {
+      const { width, height, x, y } = e.nativeEvent.layout;
+      console.log(`[BS:ROOT_LAYOUT] width=${width} height=${height} x=${x} y=${y}`);
+    }
+  };
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }} onLayout={handleRootLayout}>
       <SafeAreaProvider>
         <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent={true} />
         <ErrorBoundary>
@@ -36,9 +46,12 @@ function App() {
                   <NotificationProvider>
                   <DeepLinkSetup />
                   <RealtimeProvider>
+                  <PaymentReturnGate />
                   <CategoriesProvider>
                   <RefreshProvider>
-                    <AppNavigator />
+                    <FocusSessionProvider>
+                      <AppNavigator />
+                    </FocusSessionProvider>
                   </RefreshProvider>
                   </CategoriesProvider>
                   </RealtimeProvider>

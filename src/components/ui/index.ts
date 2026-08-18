@@ -11,7 +11,6 @@ export * from './Badge';
 export * from './Avatar';
 export * from './Rating';
 export * from './Gradient';
-export * from './BottomSheet';
 export * from './Modal';
 export * from './RotatingHorizontalAd';
 export * from './LocationModal';

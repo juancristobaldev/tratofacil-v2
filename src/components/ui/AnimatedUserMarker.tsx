@@ -10,9 +10,10 @@ interface AnimatedUserMarkerProps {
     latitude: number;
     longitude: number;
   };
+  onPress?: () => void;
 }
 
-export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordinate }) => {
+export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordinate, onPress }) => {
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const progress1 = useRef(new Animated.Value(0)).current;
   const progress2 = useRef(new Animated.Value(0)).current;
@@ -108,6 +109,10 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
         centerOffset={{ x: 0, y: 0 }}
         zIndex={999}
         tracksViewChanges={tracksViewChanges}
+        onPress={(e) => {
+          e.stopPropagation();
+          onPress?.();
+        }}
       >
         <View style={styles.container}>
           <View style={styles.outerGlow}>

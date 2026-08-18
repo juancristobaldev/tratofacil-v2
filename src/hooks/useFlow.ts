@@ -23,7 +23,7 @@ interface FlowInitResult {
 
 interface UseFlowReturn {
   pay: (params: FlowInitParams) => Promise<FlowInitResult>;
-  confirm: (type: FlowPaymentType, token: string) => Promise<void>;
+  confirm: (type: FlowPaymentType, token: string) => Promise<string>;
   isProcessing: boolean;
   lastError: string | null;
 }
@@ -102,27 +102,37 @@ export function useFlow(): UseFlowReturn {
   );
 
   const confirm = useCallback(
-    async (type: FlowPaymentType, token: string): Promise<void> => {
+    async (type: FlowPaymentType, token: string): Promise<string> => {
       setIsProcessing(true);
       setLastError(null);
 
       try {
+        let status: string | undefined;
         switch (type) {
-          case 'product':
-            await confirmProduct({ variables: { token } });
+          case 'product': {
+            const { data } = await confirmProduct({ variables: { token } });
+            status = data?.confirmFlowProduct?.status;
             break;
-          case 'realtime':
-            await confirmRealtime({ variables: { token } });
+          }
+          case 'realtime': {
+            const { data } = await confirmRealtime({ variables: { token } });
+            status = data?.confirmRealtimeFlowPayment?.status;
             break;
-          case 'job':
-            await confirmJob({ variables: { token } });
+          }
+          case 'job': {
+            const { data } = await confirmJob({ variables: { token } });
+            status = data?.confirmFlowJob?.status;
             break;
-          case 'ad':
-            await confirmAd({ variables: { token } });
+          }
+          case 'ad': {
+            const { data } = await confirmAd({ variables: { token } });
+            status = data?.confirmFlowAdTransaction?.status;
             break;
+          }
           default:
             throw new Error('Confirmación no soportada para este tipo');
         }
+        return status ?? 'UNKNOWN';
       } catch (err: any) {
         const msg = err?.message || 'Error al confirmar el pago';
         setLastError(msg);

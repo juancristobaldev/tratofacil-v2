@@ -4,7 +4,6 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Badge, Button, Card, ErrorState } from '../../components';
-import { usePanel } from '../../context/PanelContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -16,7 +15,6 @@ export const ProviderProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { openPanel } = usePanel();
   const { isAuthenticated } = useAuth();
   const { location } = useLocation();
   const { createContactRequest } = useRealtime();
@@ -100,20 +98,14 @@ export const ProviderProfileScreen: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await createContactRequest({
+      const result = await createContactRequest({
         serviceProviderId: Number(provider.serviceProviderId),
         description: description.trim(),
         lat: location.coords.latitude,
         lng: location.coords.longitude,
       });
       showNotification({ title: 'Solicitud enviada', message: `Espera la cotización de ${provider.name}`, type: 'success' });
-      openPanel('focus_client', {
-        providerId: provider.id,
-        serviceProviderId: provider.serviceProviderId,
-        provider,
-        isRealtimeActive: provider.isRealtimeActive,
-      });
-      navigation.goBack();
+      navigation.navigate('MainApp', { screen: 'Home' });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo enviar la solicitud.', type: 'error' });
     }

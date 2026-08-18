@@ -13,7 +13,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Rating } from '../../components/ui';
-import { usePanel } from '../../context/PanelContext';
 import { useRole } from '../../context/RoleContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useJobs } from '../../hooks/useJobs';
@@ -22,7 +21,6 @@ export const RatingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { clearPanel } = usePanel();
   const { role: userRole } = useRole();
   const { createProviderReview, createClientReview } = useRealtime();
   const { reviewJob } = useJobs();
@@ -79,7 +77,6 @@ export const RatingScreen: React.FC = () => {
     } catch (_err) {
       // Review submission is best-effort, don't block the flow
     }
-    clearPanel();
     if (jobId) {
       navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
       return;

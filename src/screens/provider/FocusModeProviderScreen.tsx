@@ -1,205 +1,24 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Linking, Animated } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React from 'react';
+import { StyleSheet, View, TouchableOpacity, Text, Linking, Animated, Dimensions } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import { useRoute, useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin } from '../../components/ui';
-import { usePanel } from '../../context/PanelContext';
-import { useLocation } from '../../context/LocationContext';
-import { useRealtime } from '../../realtime/RealtimeContext';
-import { useRoutePolyline } from '../../hooks/useRoute';
-import type { OrderRealTime } from '../../types/graphql';
-import { useNotification } from '../../context/NotificationContext';
+import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
-import { summarizeForRole } from '../../utils/ratings';
+import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type ProviderOrderState = 'VIEW_REQUEST' | 'WAITING_CLIENT_RESPONSE' | 'EN_CAMINO' | 'ARRIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
-
-function getMetersBetween(la1: number, lo1: number, la2: number, lo2: number): number {
-  const R = 6371e3;
-  const dLat = ((la2 - la1) * Math.PI) / 180;
-  const dLon = ((lo2 - lo1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((la1 * Math.PI) / 180) * Math.cos((la2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)}m`;
-  return `${(meters / 1000).toFixed(1)} km`;
-}
-
-function formatEta(meters: number): string {
-  const minutes = Math.ceil(meters / 200);
-  if (minutes <= 0) return 'Llegó';
-  if (minutes === 1) return '1 min';
-  return `${minutes} min`;
-}
-
 export const FocusModeProviderScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
-  const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
-  const { location } = useLocation();
-  const realtime = useRealtime();
-
-  const [orderState, setOrderState] = useState<ProviderOrderState>(panelData?.orderState || 'VIEW_REQUEST');
-  const lastOrderState = useRef<ProviderOrderState | null>(null);
-  const [showChat, setShowChat] = useState(false);
-
-  const [providerCoords, setProviderCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [distanceRemaining, setDistanceRemaining] = useState('...');
-  const [etaRemaining, setEtaRemaining] = useState('...');
-
-  const formatTimer = (sec: number) => {
-    const mm = Math.floor(sec / 60).toString().padStart(2, '0');
-    const ss = (sec % 60).toString().padStart(2, '0');
-    return `${mm}:${ss}`;
-  };
-
-  const _rawOrder: OrderRealTime | null = realtime.providerActiveOrder;
-  const lastOrderRef = useRef<OrderRealTime | null>(_rawOrder);
-  if (_rawOrder) {
-    lastOrderRef.current = _rawOrder;
-  }
-  const activeOrder = _rawOrder || lastOrderRef.current;
-
-  const clientLat = activeOrder?.clientLat ?? location?.coords?.latitude;
-  const clientLng = activeOrder?.clientLng ?? location?.coords?.longitude;
-  const clientCoords = clientLat && clientLng ? { latitude: clientLat, longitude: clientLng } : null;
-
-  const myLat = location?.coords?.latitude ?? activeOrder?.providerLat;
-  const myLng = location?.coords?.longitude ?? activeOrder?.providerLng;
-
-  useEffect(() => {
-    if (location && myLat != null && myLng != null) {
-      setProviderCoords({ latitude: myLat, longitude: myLng });
-    }
-  }, [myLat, myLng, location]);
-
-  useEffect(() => {
-    if (activeOrder?.providerLat && activeOrder?.providerLng) {
-      setProviderCoords({ latitude: activeOrder.providerLat, longitude: activeOrder.providerLng });
-    }
-  }, [activeOrder?.providerLat, activeOrder?.providerLng]);
-
-  useEffect(() => {
-    if (!providerCoords || !clientCoords) return;
-    const m = getMetersBetween(providerCoords.latitude, providerCoords.longitude, clientCoords.latitude, clientCoords.longitude);
-    setDistanceRemaining(formatDistance(m));
-    setEtaRemaining(formatEta(m));
-  }, [providerCoords?.latitude, providerCoords?.longitude, clientCoords?.latitude, clientCoords?.longitude, orderState]);
-
-  const { routeCoords } = useRoutePolyline(
-    providerCoords,
-    clientCoords,
-    orderState === 'EN_CAMINO' || orderState === 'ARRIVED',
-  );
+  const bottomNavHeight = useBottomNavHeight();
+  const session = useFocusSession('provider');
+  const { activeOrder, orderState, providerCoords, clientCoords, routeCoords, showChat, setShowChat, realtime } = session;
 
   const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
 
-  const handleFinish = () => {
-    clearPanel();
-    realtime.setLocalActiveOrder(null);
-    if (orderState === 'COMPLETED') {
-      const clientSummary = summarizeForRole(activeOrder?.client, 'client');
-      navigation.navigate('Rating', {
-        role: 'provider',
-        targetUser: {
-          name: activeOrder?.client?.displayName || 'Cliente',
-          avatar: null,
-          rating: clientSummary?.rating ?? 0,
-          reviewsCount: clientSummary?.count ?? 0,
-          subtext: activeOrder?.serviceProvider?.service?.name || '',
-        },
-        serviceDetails: activeOrder?.clientDescription || '',
-        amount: activeOrder?.quotedPrice || 0,
-        address: activeOrder?.clientAddress || '',
-        orderRealtimeId: activeOrder?.id,
-        clientId: activeOrder?.client?.id,
-      });
-    } else {
-      navigation.navigate('MainApp');
-    }
-  };
-
-  useEffect(() => {
-    if (orderState !== lastOrderState.current) {
-      openPanel('focus_provider', {
-        orderState,
-        etaRemaining,
-        distanceRemaining,
-        formatTimer,
-        setOrderState,
-        handleFinish,
-        setShowChat,
-        activeOrder,
-        realtime,
-      });
-      lastOrderState.current = orderState;
-    } else {
-      updatePanelData({
-        orderState,
-        etaRemaining,
-        distanceRemaining,
-        formatTimer,
-        setOrderState,
-        handleFinish,
-        setShowChat,
-        activeOrder,
-        realtime,
-      });
-    }
-  }, [orderState, etaRemaining, distanceRemaining, openPanel, updatePanelData, activeOrder]);
-
-  useEffect(() => {
-    const r = realtime?.providerActiveOrder;
-    if (!r) return;
-    const statusMap: Record<string, ProviderOrderState> = {
-      PENDING: 'VIEW_REQUEST',
-      QUOTED: 'WAITING_CLIENT_RESPONSE',
-      ACCEPTED: 'EN_CAMINO',
-      IN_PROGRESS: 'IN_PROGRESS',
-      COMPLETED: 'COMPLETED',
-      CANCELLED: 'CANCELLED',
-      REJECTED: 'CANCELLED',
-      EXPIRED: 'CANCELLED',
-    };
-    const mapped = statusMap[r.status];
-    if (mapped && mapped !== orderState) {
-      setOrderState(mapped);
-    }
-    updatePanelData({ activeOrder: r });
-  }, [realtime?.providerActiveOrder]);
-
-  const { showNotification } = useNotification();
-  
-  useEffect(() => {
-    if (orderState === 'EN_CAMINO') {
-      showNotification({ title: 'Nueva Orden de Trabajo', message: 'Dirígete a la ubicación del cliente para iniciar el servicio.', type: 'info' });
-    } else if (orderState === 'ARRIVED') {
-      showNotification({ title: 'Llegada a Destino', message: 'Has llegado a la ubicación del cliente.', type: 'success' });
-    } else if (orderState === 'IN_PROGRESS') {
-      showNotification({ title: 'Servicio Iniciado', message: 'Cronómetro activo.', type: 'info' });
-    } else if (orderState === 'COMPLETED') {
-      showNotification({ title: 'Trabajo Completado', message: 'Has finalizado el servicio.', type: 'success' });
-    }
-  }, [orderState]);
-
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
-
-  useEffect(() => {
-    if (orderState !== 'EN_CAMINO' || !providerCoords || !clientCoords) return;
-    const m = getMetersBetween(providerCoords.latitude, providerCoords.longitude, clientCoords.latitude, clientCoords.longitude);
-    if (m < 100) {
-      setOrderState('ARRIVED');
-    }
-  }, [orderState, providerCoords?.latitude, providerCoords?.longitude, clientCoords?.latitude, clientCoords?.longitude]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -220,7 +39,7 @@ export const FocusModeProviderScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: insets.top + 20, right: 16, bottom: 220, left: 16 }}
+          mapPadding={{ top: insets.top + 20, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 

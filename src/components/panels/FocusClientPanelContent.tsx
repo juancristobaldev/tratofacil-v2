@@ -1,47 +1,36 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   Linking,
 } from 'react-native';
+import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge } from '../ui';
-import { WEB_CALLBACK_URL, START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
+import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
-import { usePanel } from '../../context/PanelContext';
-import type { OrderRealTime } from '../../types/graphql';
+import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
+import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-function getDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-export const FocusClientPanelContent: React.FC = () => {
-  const { panelData, clearPanel } = usePanel();
+export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client'>> = () => {
   const { showNotification } = useNotification();
+  const session = useFocusSession('client');
   const {
-    order,
+    activeOrder,
     provider,
-    etaRemaining,
-    distanceRemaining,
-    userLat,
-    userLng,
-    distanceToProvider: liveDistanceToProvider,
+    distanceLabel,
+    etaLabel,
+    distanceToProviderKm,
     realtime,
     setShowChat,
-    handleFinishReview,
-  } = panelData || {};
+  } = session;
 
-  const activeOrder = (order as OrderRealTime) || null;
-  const clientPrice = activeOrder?.quotedPrice || 0;
   const status = activeOrder?.status || 'PENDING';
+  const etaRemaining = etaLabel || '...';
+  const distanceRemaining = distanceLabel || '...';
 
   const [serviceElapsed, setServiceElapsed] = useState('00:00');
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(activeOrder?.quotedPrice || 0);
@@ -68,16 +57,9 @@ export const FocusClientPanelContent: React.FC = () => {
 
     prevCounterOfferRef.current = activeOrder?.counterOfferPrice;
     prevNegotiatedPriceRef.current = activeOrder?.quotedPrice || 0;
-  }, [activeOrder?.quotedPrice, activeOrder?.counterOfferPrice]);
+  }, [activeOrder?.quotedPrice, activeOrder?.counterOfferPrice, counterOfferSent, showNotification]);
 
-  const providerLat = activeOrder?.providerLat;
-  const providerLng = activeOrder?.providerLng;
-
-  const distanceToProvider = useMemo(() => {
-    if (liveDistanceToProvider != null) return liveDistanceToProvider;
-    if (userLat == null || userLng == null || providerLat == null || providerLng == null) return null;
-    return getDistanceKm(userLat, userLng, providerLat, providerLng);
-  }, [liveDistanceToProvider, userLat, userLng, providerLat, providerLng]);
+  const distanceToProvider = distanceToProviderKm;
 
   const canStartOrder = status === 'ACCEPTED' && distanceToProvider !== null && distanceToProvider <= START_ORDER_DISTANCE_KM;
 
@@ -93,7 +75,13 @@ export const FocusClientPanelContent: React.FC = () => {
   }, [status, activeOrder?.startedAt]);
 
   const handlePay = async () => {
-    if (!activeOrder?.id || !realtime?.initPayment) return;
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'PAY_NOW', origin: 'FOCUS_CLIENT' });
+    if (!activeOrder?.id || !realtime?.initPayment) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'PAY_NOW', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'PAY_NOW', target: 'payment_url' });
     try {
       const result = await realtime.initPayment(activeOrder.id, `${DEEP_LINK_CALLBACK}?type=realtime`);
       if (result?.url) {
@@ -103,34 +91,60 @@ export const FocusClientPanelContent: React.FC = () => {
   };
 
   const handleCancel = async () => {
-    if (activeOrder?.id && realtime?.cancelOrder) {
-      try {
-        await realtime.cancelOrder(activeOrder.id);
-        clearPanel();
-      } catch {}
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'CANCEL_ORDER', origin: 'FOCUS_CLIENT' });
+    if (!activeOrder?.id || !realtime?.cancelOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'CANCEL_ORDER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
     }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'CANCEL_ORDER', result: 'cancel_order' });
+    try {
+      await realtime.cancelOrder(activeOrder.id);
+    } catch {}
   };
 
   const handleRejectQuote = () => {
-    if (activeOrder?.id && realtime?.rejectQuote) {
-      realtime.rejectQuote(activeOrder.id).catch(() => {});
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'REJECT_QUOTE', origin: 'FOCUS_CLIENT' });
+    if (!activeOrder?.id || !realtime?.rejectQuote) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'REJECT_QUOTE', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
     }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'REJECT_QUOTE', result: 'reject_quote' });
+    realtime.rejectQuote(activeOrder.id).catch(() => {});
   };
 
   const handleStartOrder = () => {
-    if (activeOrder?.id && realtime?.startOrder) {
-      realtime.startOrder(activeOrder.id).catch(() => {});
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'CONFIRM_START', origin: 'FOCUS_CLIENT' });
+    if (!activeOrder?.id || !realtime?.startOrder) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'CONFIRM_START', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
     }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'CONFIRM_START', result: 'start_order' });
+    realtime.startOrder(activeOrder.id).catch(() => {});
   };
 
 
 
-  if (!provider) return null;
+  if (!provider) {
+    return (
+      <BottomSheetScrollView style={styles.container} contentContainerStyle={styles.emptyStateBody}>
+        <View style={styles.emptyStateIcon}>
+          <Icon name="Clock" size={28} color={TOKENS.colors.brand500} />
+        </View>
+        <Text style={styles.emptyStateTitle}>Preparando seguimiento</Text>
+        <Text style={styles.emptyStateText}>
+          Estamos sincronizando la información del profesional para esta orden.
+        </Text>
+      </BottomSheetScrollView>
+    );
+  }
 
 
   if (__DEV__) console.log({status})
   return (
-    <View style={styles.container}>
+    <BottomSheetScrollView style={styles.container}>
       {/* PENDING — Esperando cotización */}
       
 
@@ -143,10 +157,15 @@ export const FocusClientPanelContent: React.FC = () => {
               <View style={[styles.sheetHeaderText, { marginLeft: 16 }]}>
                 <Text style={styles.sheetTitle}>{provider.name}</Text>
                 <View style={styles.ratingRow}>
-                  <Rating rating={provider.rating} size={14} showText textSuffix="reseñas" reviewsCount={provider.reviewsCount} />
+                  <Rating rating={provider.rating ?? 0} size={14} showText textSuffix="reseñas" reviewsCount={provider.reviewsCount} />
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setShowChat?.(true)} style={styles.chatIconBtnSmall}>
+              <TouchableOpacity onPress={() => {
+                const actionId = nextBottomSheetActionId();
+                bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
+                bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'OPEN_CHAT', target: 'chat_overlay' });
+                setShowChat(true);
+              }} style={styles.chatIconBtnSmall}>
                 <Icon name="MessageSquare" size={20} color={TOKENS.colors.brand500} />
               </TouchableOpacity>
             </View>
@@ -216,7 +235,13 @@ export const FocusClientPanelContent: React.FC = () => {
                   <Button
                     title="Enviar contraoferta"
                     onPress={async () => {
-                      if (!activeOrder?.id || !realtime?.clientCounterOffer) return;
+                      const actionId = nextBottomSheetActionId();
+                      bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
+                      if (!activeOrder?.id || !realtime?.clientCounterOffer) {
+                        bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+                        return;
+                      }
+                      bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
                       try {
                         await realtime.clientCounterOffer(
                           activeOrder.id,
@@ -285,13 +310,13 @@ export const FocusClientPanelContent: React.FC = () => {
 
       {/* COMPLETED — Calificar */}
      
-    </View>
+    </BottomSheetScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 0,
   },
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
@@ -480,6 +505,34 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
     textAlign: 'center',
+  },
+  emptyStateBody: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: TOKENS.spacing.lg,
+    paddingVertical: 44,
+  },
+  emptyStateIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: TOKENS.colors.brand50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: TOKENS.spacing.md,
+  },
+  emptyStateTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    marginTop: TOKENS.spacing.xs,
+    lineHeight: 20,
   },
   trackerText: {
     fontSize: TOKENS.typography.sizes.xs,

@@ -50,7 +50,7 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
         latitudeDelta: 0,
         longitudeDelta: 0,
         duration: 800,
-        useNativeDriver: true,
+        useNativeDriver: false,
       })
       .start();
   }, [region, coordinate.latitude, coordinate.longitude]);

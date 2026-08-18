@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
@@ -85,15 +85,12 @@ export const JobsTab: React.FC = () => {
       const order = await createOrder({
         jobId: selectedJobForCandidates.id,
       });
-      const result = await pay({
+      await pay({
         type: 'job',
         orderId: order.id,
-          returnUrl: `${DEEP_LINK_CALLBACK}?type=job`,
+        returnUrl: `${DEEP_LINK_CALLBACK}?type=job`,
       });
       setShowCandidatesModal(false);
-      if (result.url) {
-        await Linking.openURL(result.url);
-      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
     } finally {
@@ -433,7 +430,7 @@ const styles = StyleSheet.create({
   mainTabActive: { borderBottomColor: TOKENS.colors.brand500 },
   mainTabText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textSubtle },
   mainTabTextActive: { color: TOKENS.colors.brand600, fontWeight: TOKENS.typography.weights.bold },
-  scrollContent: { padding: TOKENS.spacing.md, paddingBottom: 160 },
+  scrollContent: { padding: TOKENS.spacing.md, paddingBottom: 96 },
   loadingBox: { padding: 40, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingText: { color: TOKENS.colors.textSubtle, fontWeight: TOKENS.typography.weights.medium },
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
@@ -453,7 +450,7 @@ const styles = StyleSheet.create({
   priceText: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtnText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand600 },
-  ctaFloat: { position: 'absolute', bottom: 90, left: TOKENS.spacing.md, right: TOKENS.spacing.md },
+  ctaFloat: { position: 'absolute', bottom: TOKENS.spacing.md, left: TOKENS.spacing.md, right: TOKENS.spacing.md },
   ctaBtn: { width: '100%' },
   appliedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: TOKENS.colors.statusSuccess + '1A', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: TOKENS.colors.statusSuccess + '33' },
   appliedText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.statusSuccess },

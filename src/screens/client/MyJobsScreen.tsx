@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -43,15 +43,12 @@ export const MyJobsScreen: React.FC = () => {
       if (!orderResult?.id) {
         throw new Error('No se pudo crear la orden de trabajo.');
       }
-      const flowResult = await payFlow({
+      await payFlow({
         type: 'job',
         orderId: orderResult.id,
         returnUrl: `${DEEP_LINK_CALLBACK}?type=job`,
       });
       setShowCandidatesModal(false);
-      if (flowResult?.url) {
-        await Linking.openURL(flowResult.url);
-      }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
     } finally {

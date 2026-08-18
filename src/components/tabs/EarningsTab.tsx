@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.surface50, gap: 16 },
   loadingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
-  listContent: { padding: TOKENS.spacing.md, paddingBottom: 100 },
+  listContent: { padding: TOKENS.spacing.md, paddingBottom: TOKENS.spacing.xl },
   filtersRow: { marginHorizontal: -TOKENS.spacing.md, marginBottom: TOKENS.spacing.lg },
   filtersContainer: { paddingHorizontal: TOKENS.spacing.md, gap: 8 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: TOKENS.colors.white, borderWidth: 1, borderColor: TOKENS.colors.surface200 },

@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Switch } from 'react-native';
+import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
 import Geolocation, { GeoPosition } from 'react-native-geolocation-service';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Card, Button, Badge } from '../ui';
-import { usePanel } from '../../context/PanelContext';
+import { Icon, Card, Button } from '../ui';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useServices } from '../../hooks/useServices';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
+import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-export const ProviderPanelContent: React.FC = () => {
+export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashboard'>> = () => {
   const navigation = useNavigation<any>();
-  const { openPanel } = usePanel();
+  const { present } = useBottomSheet();
   const { user } = useAuth();
   const { wallet } = usePlans();
   const { location } = useLocation();
@@ -34,9 +37,17 @@ export const ProviderPanelContent: React.FC = () => {
     user?.isProfileFullyComplete === true && (myServices?.length || 0) > 0;
 
   const handleToggleOnline = async (value: boolean) => {
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'TOGGLE_ONLINE', origin: 'PROVIDER_DASHBOARD', payload: { value } });
     // Solo se bloquea el ENCENDIDO. Apagar siempre está permitido.
     if (value && !canGoOnline) {
       setOnline(false);
+      bottomSheetDebug('ACTION_BLOCKED', {
+        actionId,
+        key: 'provider_dashboard',
+        action: 'TOGGLE_ONLINE',
+        reason: !user?.isProfileFullyComplete ? 'profile_incomplete' : 'no_services_published',
+      });
       if (!user?.isProfileFullyComplete) {
         showNotification({
           title: 'Perfil incompleto',
@@ -55,6 +66,8 @@ export const ProviderPanelContent: React.FC = () => {
       return;
     }
 
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'TOGGLE_ONLINE', result: value ? 'go_online' : 'go_offline' });
+
     setOnline(value);
     let lat: number | null | undefined = null;
     let lng: number | null | undefined = null;
@@ -69,7 +82,7 @@ export const ProviderPanelContent: React.FC = () => {
         });
         lat = pos.coords.latitude;
         lng = pos.coords.longitude;
-      } catch (_) {
+      } catch {
         lat = location?.coords?.latitude ?? null;
         lng = location?.coords?.longitude ?? null;
       }
@@ -98,13 +111,15 @@ export const ProviderPanelContent: React.FC = () => {
   const planActive = user?.planOrders?.some((p) => p.planActive) || false;
 
   const handleAcceptRequest = (orderId: number) => {
-    openPanel('focus_provider', { requestId: orderId, orderState: 'VIEW_REQUEST' });
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'VIEW_ORDER', origin: 'PROVIDER_DASHBOARD', payload: { orderId } });
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'VIEW_ORDER', target: 'focus_provider' });
+    present('focus_provider', { orderId });
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.scrollBody}>
-        <View style={styles.onlineRow}>
+    <BottomSheetScrollView style={styles.container} contentContainerStyle={styles.scrollBody} bounces={true}>
+      <View style={styles.onlineRow}>
           <View style={styles.onlineInfo}>
             <View style={[styles.statusDot, online && styles.statusDotActive]} />
             <Text style={[styles.onlineLabel, online && styles.onlineLabelActive]}>
@@ -122,7 +137,12 @@ export const ProviderPanelContent: React.FC = () => {
         <Card style={styles.walletCard} padded={false}>
           <TouchableOpacity
             style={styles.walletBtn}
-            onPress={() => navigation.navigate('Wallet')}
+            onPress={() => {
+              const actionId = nextBottomSheetActionId();
+              bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', origin: 'PROVIDER_DASHBOARD' });
+              bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', target: 'Wallet' });
+              navigation.navigate('Wallet');
+            }}
             activeOpacity={0.9}
           >
             <View style={styles.walletTextCol}>
@@ -144,13 +164,19 @@ export const ProviderPanelContent: React.FC = () => {
                 <Text style={styles.planNoticeTitle}>Plan Profesional Activo</Text>
                 <Text style={styles.planNoticeSub}>Tienes acceso a todas las funciones premium.</Text>
               </View>
-              <TouchableOpacity onPress={() => navigation.navigate('Plans')}>
+              <TouchableOpacity onPress={() => {
+                const actionId = nextBottomSheetActionId();
+                bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'OPEN_PLANS', origin: 'PROVIDER_DASHBOARD' });
+                bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'OPEN_PLANS', target: 'Plans' });
+                navigation.navigate('Plans');
+              }}>
                 <Text style={styles.planNoticeLink}>Ver Planes</Text>
               </TouchableOpacity>
             </View>
           </Card>
         )}
 
+      {/*
         <View style={styles.requestsSection}>
           <Text style={styles.sectionTitle}>
             Solicitudes en curso ({online ? (realtime?.providerActiveOrder ? 1 : 0) : 0})
@@ -207,14 +233,14 @@ export const ProviderPanelContent: React.FC = () => {
             </View>
           )}
         </View>
-      </View>
-    </View>
+      */}
+    </BottomSheetScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 0,
   },
   scrollBody: {
     padding: TOKENS.spacing.lg,

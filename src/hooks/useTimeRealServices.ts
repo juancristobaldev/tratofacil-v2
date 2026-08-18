@@ -215,6 +215,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const providerActiveOrder = (providerState?.activeRealtimeOrder as OrderRealTime) ?? null;
   const clientId = data?.me?.id ?? null;
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log(
+      `[RT:DOMAIN] role=${role} clientOrderId=${activeOrder?.id ?? 'null'} providerOrderId=${providerActiveOrder?.id ?? 'null'} status=${activeOrder?.status ?? providerActiveOrder?.status ?? 'null'} hasProvider=${!!activeOrder?.provider} hasServiceProvider=${!!activeOrder?.serviceProvider}`,
+    );
+  }, [role, activeOrder?.id, activeOrder?.status, activeOrder?.provider, activeOrder?.serviceProvider, providerActiveOrder?.id, providerActiveOrder?.status]);
+
   // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
   // en modo cliente, pasamos a modo proveedor. Al terminar esa misma orden (y solo si
   // fue esta lógica la que lo activó), volvemos a modo cliente. Nunca sobrescribe un
@@ -336,6 +343,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       setSocketStatus('connected');
       setSocketLogIdentifiers(socket.id || '', String(clientId ?? ''));
       logSocketIn('connect', { socketId: socket.id });
+      if (__DEV__) console.log(`[RT:EVENT] source=BOOT type=socket_connect orderId=null status=null role=${roleRef.current}`);
       refetch();
       refetchClientOrders();
     });
@@ -358,6 +366,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     socket.on('order-realtime:created', (payload) => {
       logSocketIn('order-realtime:created', payload);
+      if (__DEV__) console.log(`[RT:EVENT] source=SOCKET type=order-realtime:created orderId=${payload?.orderRealtimeId ?? payload?.id ?? 'null'} status=${payload?.status ?? 'null'} role=${roleRef.current}`);
       refetch();
       refetchClientOrders();
       if (roleRef.current === 'provider') {
@@ -367,6 +376,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     socket.on('order-realtime:updated', (payload: { orderRealtimeId: number; status: string }) => {
       logSocketIn('order-realtime:updated', payload);
+      if (__DEV__) console.log(`[RT:EVENT] source=SOCKET type=order-realtime:updated orderId=${payload.orderRealtimeId} status=${payload.status} role=${roleRef.current}`);
       
       const currentRole = roleRef.current;
       if (payload.status === 'PROVIDER_ON_THE_WAY' && currentRole === 'client') {
@@ -554,6 +564,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
   const createContactRequest = useCallback(
     async (input: CreateContactInput) => {
+      if (__DEV__) console.log(`[RT:EVENT] source=CREATE_REQUEST type=start orderId=null status=null role=${roleRef.current}`);
       const { data: result } = await createContactMut({
         variables: {
           input: {
@@ -565,9 +576,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           },
         },
       });
+      const order = result!.createRealtimeContactRequest;
+      if (__DEV__) console.log(`[RT:EVENT] source=CREATE_REQUEST type=result orderId=${order.id} status=${order.status} role=${roleRef.current}`);
+      await refetch();
+      await refetchClientOrders();
       return result!.createRealtimeContactRequest;
     },
-    [createContactMut],
+    [createContactMut, refetch, refetchClientOrders],
   );
 
   const quoteOrder = useCallback(
@@ -633,8 +648,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
   const cancelOrder = useCallback(
     async (orderRealtimeId: number) => {
+      if (__DEV__) console.log(`[RT:CANCEL_START] orderId=${orderRealtimeId} role=${roleRef.current}`);
       cancellingRef.current = true;
-      await cancelMut({ variables: { orderRealtimeId } });
+      const { data: cancelResult } = await cancelMut({ variables: { orderRealtimeId } });
+      const result = (cancelResult as any)?.cancelRealtimeOrder;
+      if (__DEV__) console.log(`[RT:CANCEL_RESULT] orderId=${result?.id ?? orderRealtimeId} status=${result?.status ?? 'unknown'} role=${roleRef.current}`);
       refetch();
       refetchClientOrders();
       setTimeout(() => { cancellingRef.current = false; }, 1000);

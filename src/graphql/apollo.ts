@@ -28,18 +28,26 @@ const authLink = setContext((_, { headers }) => {
 });
 
 const errorLink = new ErrorLink(({ graphQLErrors, networkError, operation }: any) => {
-  console.error('[APOLLO:ERROR]', operation.operationName, '|',
-    networkError?.message || graphQLErrors?.[0]?.message || 'unknown');
+  let isUnauthenticated = false;
+  let errorMessage = networkError?.message || graphQLErrors?.[0]?.message || 'unknown';
 
   if (graphQLErrors) {
     const authError = graphQLErrors.find(
-      (e: any) => e.extensions?.code === 'UNAUTHENTICATED',
+      (e: any) => e.extensions?.code === 'UNAUTHENTICATED' || e.message?.includes('Not Authenticated'),
     );
     if (authError) {
+      isUnauthenticated = true;
       cachedToken = null;
       onAuthError?.();
     }
   }
+
+  // Sanitize: do not clutter logs with expected auth errors on RegisterPushToken for guests
+  if (operation.operationName === 'RegisterPushToken' && isUnauthenticated) {
+    return;
+  }
+
+  console.error('[APOLLO:ERROR]', operation.operationName, '|', errorMessage);
 });
 
 const cache = new InMemoryCache({

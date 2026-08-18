@@ -53,7 +53,7 @@ const actionHandlers: Record<string, ActionHandler> = {
         mutation: INIT_REALTIME_FLOW_PAYMENT,
         variables: {
           orderRealtimeId: payload.orderId,
-          returnUrl: 'tratofacilv2://payment/callback',
+          returnUrl: 'tratofacilv2://payment/callback?type=realtime',
         },
       });
       const paymentUrl = data?.initRealtimeFlowPayment?.url;

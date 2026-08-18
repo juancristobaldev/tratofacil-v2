@@ -2,11 +2,13 @@ import { useQuery } from '@apollo/client/react';
 import { useLocation } from '../context/LocationContext';
 import { GET_ADS, GET_DATA_AND_TRANSITIONS } from '../graphql/operations/ads';
 import { EMPTY_ARRAY } from '../utils/emptyArray';
+import { normalizeHorizontalAds } from '../utils/normalizeHorizontalAds';
+import type { HorizontalAd } from '../utils/normalizeHorizontalAds';
+
+export type { HorizontalAd } from '../utils/normalizeHorizontalAds';
 
 export const useAds = (slug?: string | null) => {
   const { location } = useLocation();
-  // LocationContext in v2 provides coords (latitude, longitude). The Next.js web app's `useMe` has `location.city`.
-  // Here we'll pass undefined for city for now since the graphql expects string city name, unless we reverse geocode.
   const city = undefined;
 
   const { data, loading, error }:any = useQuery(GET_ADS, {
@@ -24,7 +26,8 @@ export const useAds = (slug?: string | null) => {
   const marketingHorizontal: any[] = getAdsData?.marketingHorizontal ?? EMPTY_ARRAY;
   const marketingVertical: any[] = getAdsData?.marketingVertical ?? EMPTY_ARRAY;
 
-  const horizontal = [...ads, ...marketingHorizontal];
+  const horizontal: HorizontalAd[] = normalizeHorizontalAds(getAdsData);
+
   const vertical = [...ads, ...marketingVertical];
 
   const getTransitionDuration = (

@@ -1,134 +1,44 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   Image,
-  TextInput,
-  ScrollView,
   Animated,
-  Dimensions,
   Easing,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
+import MapView, { Polyline, type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Button, Badge, AnimatedUserMarker, AnimatedProviderMarker } from '../../components/ui';
-import { usePanel } from '../../context/PanelContext';
-import { useLocation } from '../../context/LocationContext';
+import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker } from '../../components/ui';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useRealtime } from '../../realtime/RealtimeContext';
-import { useRoutePolyline } from '../../hooks/useRoute';
 import { getImageUrl } from '../../utils/imageUrl';
 import type { OrderRealTime } from '../../types/graphql';
 import { FocusChatOverlay } from './components/FocusChatOverlay';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const TERMINAL_STATUSES = new Set<string>(['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED']);
+import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
 export const FocusModeClientScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const bottomNavHeight = useBottomNavHeight();
   const navigation = useNavigation<any>();
-  const { panelData, closePanel, openPanel, updatePanelData, clearPanel } = usePanel();
-  const { location } = useLocation();
+  const { dismiss } = useBottomSheet();
+  const session = useFocusSession('client');
   const realtime = useRealtime();
 
-  const activeOrder: OrderRealTime | null = realtime.localActiveOrder || realtime.activeOrder;
+  const { activeOrder, provider, providerCoords, clientCoords, routeCoords, showChat, setShowChat } = session;
 
   const completedOrder: OrderRealTime | null = realtime.clientOrders?.find(
     (o: any) => o.id === activeOrder?.id && o.status === 'COMPLETED' && o.provider
   ) || null;
 
-  const provider = useMemo(() => {
-    const p = activeOrder?.provider;
-    const sp = activeOrder?.serviceProvider;
-    if (p) {
-      // Sumar reviews de órdenes normales y de órdenes realtime (ver HomePage.tsx).
-      const allReviews = [...(p.reviews || []), ...(p.realtimeReviews || [])];
-      return {
-        id: String(p.id),
-        name: p.name,
-        providerName: p.name,
-        avatar: getImageUrl(p.logoImage?.cdnUrl || null),
-        rating: allReviews.length ? allReviews.reduce((s: number, r: any) => s + r.rating, 0) / allReviews.length : 0,
-        reviewsCount: allReviews.length,
-        verified: p.certificates?.some((c: any) => c.verified) || false,
-        description: p.bio || '',
-        pricePerHour: sp?.price || 0,
-        serviceName: sp?.service?.name || '',
-        serviceProviderId: sp?.id,
-      };
-    }
-    return panelData?.provider || null;
-  }, [activeOrder, panelData?.provider]);
-
   const status = activeOrder?.status || 'PENDING';
 
-  const clientLat = activeOrder?.clientLat ?? location?.coords?.latitude;
-  const clientLng = activeOrder?.clientLng ?? location?.coords?.longitude;
-  const clientCoords = clientLat && clientLng ? { latitude: clientLat, longitude: clientLng } : null;
-
-  const providerLat = activeOrder?.providerLat ?? activeOrder?.provider?.lat;
-  const providerLng = activeOrder?.providerLng ?? activeOrder?.provider?.lng;
-  const providerCoords = providerLat && providerLng ? { latitude: providerLat, longitude: providerLng } : null;
-
-  const { routeCoords, routeDuration, routeDistance } = useRoutePolyline(
-    providerCoords,
-    clientCoords,
-    true,
-  );
-
   const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
-
-  // Distancia/ETA: prioriza datos de ruta real (OSRM). Fallback a haversine
-  // (línea recta) solo si la ruta no está disponible.
-  const distanceLabel = useMemo(() => {
-    if (routeDistance != null && routeDistance > 0) {
-      if (routeDistance < 1000) return `${Math.round(routeDistance)}m`;
-      return `${(routeDistance / 1000).toFixed(1)} km`;
-    }
-    if (!clientCoords || !providerCoords) return null;
-    const R = 6371e3;
-    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
-    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(1)} km`;
-  }, [clientCoords, providerCoords, routeDistance]);
-
-  const etaLabel = useMemo(() => {
-    if (routeDuration != null && routeDuration > 0) {
-      const minutes = Math.ceil(routeDuration / 60);
-      if (minutes <= 0) return 'Llegó';
-      if (minutes === 1) return '1 min';
-      return `${minutes} min`;
-    }
-    if (!clientCoords || !providerCoords) return null;
-    const R = 6371e3;
-    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
-    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    const meters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const minutes = Math.ceil(meters / 200);
-    if (minutes <= 0) return 'Llegó';
-    if (minutes === 1) return '1 min';
-    return `${minutes} min`;
-  }, [clientCoords, providerCoords, routeDuration]);
-
-  const distanceToProviderKm = useMemo(() => {
-    if (!clientCoords || !providerCoords) return null;
-    const R = 6371;
-    const dLat = ((providerCoords.latitude - clientCoords.latitude) * Math.PI) / 180;
-    const dLon = ((providerCoords.longitude - clientCoords.longitude) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos((clientCoords.latitude * Math.PI) / 180) * Math.cos((providerCoords.latitude * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }, [clientCoords, providerCoords]);
-
-  const [showChat, setShowChat] = useState(false);
 
   // Cámara: follow mode (auto-centra) vs manual (el usuario explora).
   const mapRef = useRef<MapView>(null);
@@ -165,7 +75,7 @@ export const FocusModeClientScreen: React.FC = () => {
     }
   };
 
-  // Sync panel data whenever order data changes
+  // Finalización: cuando la orden se completa con proveedor, navega a Rating.
   useEffect(() => {
     if (activeOrder?.status === 'COMPLETED' && activeOrder?.provider) {
       const providerImg = getImageUrl(activeOrder.provider.logoImage?.cdnUrl || null);
@@ -189,32 +99,10 @@ export const FocusModeClientScreen: React.FC = () => {
         orderRealtimeId: activeOrder.id,
         providerId: activeOrder.provider.id,
       });
-      clearPanel();
+      dismiss();
       return;
     }
-    if (!provider) return;
-    updatePanelData({
-      order: activeOrder,
-      provider,
-      userLat: location?.coords?.latitude,
-      userLng: location?.coords?.longitude,
-      etaRemaining: etaLabel || '...',
-      distanceRemaining: distanceLabel || '...',
-      setShowChat,
-      handleFinishReview,
-      realtime,
-    });
-  }, [activeOrder, completedOrder]);
-
-  useEffect(() => {
-    updatePanelData({ distanceToProvider: distanceToProviderKm });
-  }, [distanceToProviderKm, updatePanelData]);
-
-  const handleFinishReview = useCallback(() => {
-    closePanel();
-    clearPanel();
-    realtime.setLocalActiveOrder(null);
-  }, [closePanel, clearPanel, realtime]);
+  }, [activeOrder, completedOrder, dismiss, navigation]);
 
   // Radar animation values
   const pingScale = useRef(new Animated.Value(1)).current;
@@ -223,6 +111,13 @@ export const FocusModeClientScreen: React.FC = () => {
   const floatAnim = useRef(new Animated.Value(0)).current;
 
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
+
+  useEffect(() => {
+    if (__DEV__) console.log('[ANIM:UNMOUNT] component=FocusModeClientScreen mounted=true');
+    return () => {
+      if (__DEV__) console.log('[ANIM:UNMOUNT] component=FocusModeClientScreen');
+    };
+  }, []);
 
   useEffect(() => {
     if (status !== 'PENDING') return;
@@ -282,9 +177,11 @@ export const FocusModeClientScreen: React.FC = () => {
     );
 
     const composite = Animated.parallel([pingLoop, pulseLoop, floatLoop]);
+    if (__DEV__) console.log('[ANIM:START] component=FocusModeClientScreen name=pending_radar_composite');
     composite.start();
 
     return () => {
+      if (__DEV__) console.log('[ANIM:STOP] component=FocusModeClientScreen name=pending_radar_composite');
       composite.stop();
     };
   }, [status]);
@@ -302,7 +199,7 @@ export const FocusModeClientScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: insets.top + 20, right: 16, bottom: 220, left: 16 }}
+          mapPadding={{ top: insets.top + 20, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
         >
             {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
 
@@ -376,10 +273,12 @@ export const FocusModeClientScreen: React.FC = () => {
           <Text style={styles.radarSubText}>Notificando al profesional indicado</Text>
           
           <TouchableOpacity  onPress={async () => {
+            if (__DEV__) console.log(`[BS:ACTION] key=focus_client action=CANCEL_ORDER origin=FOCUS_MODE_CLIENT orderId=${activeOrder?.id ?? 'null'} status=${activeOrder?.status ?? 'null'}`);
             if (activeOrder?.id) {
               try { await realtime.cancelOrder(activeOrder.id); } catch {}
             }
-            clearPanel();
+            if (__DEV__) console.log(`[BS:DISMISS] key=focus_client reason=focus_mode_client_cancel_after_mutation orderId=${activeOrder?.id ?? 'null'}`);
+            dismiss();
           }} style={styles.cancelBtn}>
             <Text style={styles.cancelBtnText}>Cancelar búsqueda</Text>
           </TouchableOpacity>
@@ -394,10 +293,12 @@ export const FocusModeClientScreen: React.FC = () => {
           <Text style={styles.radarSubText}>Estamos verificando tu pago con la pasarela...</Text>
 
           <TouchableOpacity onPress={async () => {
+            if (__DEV__) console.log(`[BS:ACTION] key=focus_client action=CANCEL_ORDER origin=FOCUS_MODE_CLIENT_PAYMENT orderId=${activeOrder?.id ?? 'null'} status=${activeOrder?.status ?? 'null'}`);
             if (activeOrder?.id) {
               try { await realtime.cancelOrder(activeOrder.id); } catch {}
             }
-            clearPanel();
+            if (__DEV__) console.log(`[BS:DISMISS] key=focus_client reason=focus_mode_client_payment_cancel_after_mutation orderId=${activeOrder?.id ?? 'null'}`);
+            dismiss();
           }} style={styles.cancelBtn}>
             <Text style={styles.cancelBtnText}>Cancelar orden</Text>
           </TouchableOpacity>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePushNavigation } from '../push/usePushNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DrawerActions } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
@@ -9,12 +9,12 @@ import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navig
 import { TOKENS } from '../theme';
 import { Icon, Avatar, Badge, Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
-import { PanelProvider, usePanel } from '../context/PanelContext';
 import { getImageUrl } from '../utils/imageUrl';
 import { summarizeForRole } from '../utils/ratings';
 import { MainLayout } from '../components/layout/MainLayout';
 import { Header } from '../components/layout/Header';
 import { useRefresh } from '../context/RefreshContext';
+import { BottomSheetProvider } from '../bottom-sheet/core/BottomSheetProvider';
 const ROUTE_TITLES: Record<string, string> = {
   GuestCheckout: 'Datos de Contacto',
   ProviderProfile: 'Perfil Profesional',
@@ -65,7 +65,7 @@ const HEADER_CONFIG: Record<string, { showHelp?: boolean; subtitle?: string }> =
 
 const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({ currentRoute, navigationRef }) => {
   const { isRefreshing } = useRefresh();
-  const hiddenScreens = ['Splash', 'Onboarding', 'Login', 'Register', 'GuestCheckout', 'ServiceSuccess', 'SetPassword', 'PaymentSuccess'];
+  const hiddenScreens = ['Splash', 'Onboarding', 'Login', 'Register', 'GuestCheckout', 'ServiceSuccess', 'SetPassword', 'PaymentSuccess', 'PaymentConfirming', 'PaymentFailed'];
   if (hiddenScreens.includes(currentRoute)) {
     return null;
   }
@@ -133,8 +133,11 @@ import { ProductDetailScreen } from '../screens/client/ProductDetailScreen';
 import { ShippingScreen } from '../screens/shared/ShippingScreen';
 import { PurchaseScreen } from '../screens/shared/PurchaseScreen';
 import { PaymentSuccessScreen } from '../screens/shared/PaymentSuccessScreen';
+import { PaymentConfirmingScreen } from '../screens/shared/PaymentConfirmingScreen';
+import { PaymentFailedScreen } from '../screens/shared/PaymentFailedScreen';
 import { OrderDetailScreen } from '../screens/shared/OrderDetailScreen';
 import { ManageSaleScreen } from '../screens/shared/ManageSaleScreen';
+import { drainPendingPaymentReturn } from '../payments/PaymentReturnHandler';
 
 export { useAuth as useRole } from '../context/AuthContext';
 
@@ -145,7 +148,6 @@ const Drawer = createDrawerNavigator();
 // CUSTOM DRAWER CONTENT
 const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   const { role, user, logout, setRole } = useAuth();
-  const { openPanel } = usePanel();
   const { navigation } = props;
 
   const userName = user?.displayName || user?.username || 'Usuario';
@@ -261,7 +263,7 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 
         {role === 'provider' && (
           <>
-            <TouchableOpacity style={styles.drawerItem} onPress={() => openPanel('provider_dashboard')}>
+            <TouchableOpacity style={styles.drawerItem} onPress={() => navigation.navigate('MainApp')}>
               <Icon name="Grid" size={18} color={TOKENS.colors.statusSuccess} />
               <Text style={[styles.drawerItemText, { color: TOKENS.colors.statusSuccess }]}>Panel de Solicitudes</Text>
             </TouchableOpacity>
@@ -405,10 +407,16 @@ const MainDrawerNavigator: React.FC = () => {
         drawerStyle: { width: Math.min(width * 0.78, 400), borderTopRightRadius: 24, borderBottomRightRadius: 24 },
       }}
     >
-      <Drawer.Screen name="MainLayout" component={MainLayout} />
+      <Drawer.Screen name="MainLayout" component={MainLayoutWithSheets} />
     </Drawer.Navigator>
   );
 };
+
+const MainLayoutWithSheets: React.FC = () => (
+  <BottomSheetProvider>
+    <MainLayout />
+  </BottomSheetProvider>
+);
 
 function PushNavigationTracker() {
   usePushNavigation();
@@ -420,18 +428,18 @@ export const AppNavigator: React.FC = () => {
   const [currentRouteName, setCurrentRouteName] = useState('Splash');
 
   return (
-    <PanelProvider>
-      <NavigationContainer
-          ref={navigationRef}
-          onStateChange={() => {
-            const route = navigationRef.getCurrentRoute() as any;
-            if (route) {
-              setCurrentRouteName(route.name);
-            }
-          }}
-        >
-          <PushNavigationTracker />
-          <View style={{ flex: 1 }}>
+    <NavigationContainer
+        ref={navigationRef}
+        onReady={() => drainPendingPaymentReturn()}
+        onStateChange={() => {
+          const route = navigationRef.getCurrentRoute() as any;
+          if (route) {
+            setCurrentRouteName(route.name);
+          }
+        }}
+      >
+        <PushNavigationTracker />
+        <View style={{ flex: 1 }}>
             <HeaderGeneral currentRoute={currentRouteName} navigationRef={navigationRef} />
             <Stack.Navigator
               initialRouteName="Splash"
@@ -473,12 +481,13 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="Shipping" component={ShippingScreen} />
               <Stack.Screen name="Purchase" component={PurchaseScreen} />
               <Stack.Screen name="PaymentSuccess" component={PaymentSuccessScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+              <Stack.Screen name="PaymentConfirming" component={PaymentConfirmingScreen} options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
+              <Stack.Screen name="PaymentFailed" component={PaymentFailedScreen} options={{ headerShown: false, presentation: 'fullScreenModal' }} />
               <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
               <Stack.Screen name="ManageSale" component={ManageSaleScreen} />
             </Stack.Navigator>
-          </View>
-        </NavigationContainer>
-    </PanelProvider>
+        </View>
+      </NavigationContainer>
   );
 };
 

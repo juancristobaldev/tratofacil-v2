@@ -1,21 +1,42 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
-import { BottomSheetTextInput, BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { BottomSheetTextInput, BottomSheetFlatList } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
 import { Icon, RotatingHorizontalAd, EmptyState } from '../ui';
 import { useCategories } from '../../context/CategoriesContext';
 import { useAds } from '../../hooks/useAds';
-import { usePanel } from '../../context/PanelContext';
 import type { TreeNode } from '../../utils/categoryTree';
+import { useBottomSheet, usePanelState } from '../../bottom-sheet/core/useBottomSheet';
+import { bottomSheetDebug } from '../../bottom-sheet/core/bottomSheet.debug';
+import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
+import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 
-export const CategoriesPanelContent: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showOffline, setShowOffline] = useState(false);
+export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>> = ({ sheetKey, requestId, payload }) => {
+  const { dispatchBottomSheetAction } = useBottomSheet();
+  const [panelState, setPanelState] = usePanelState(sheetKey, { searchQuery: '', showOffline: false });
+  // DEV-only measurement probe (Fase 0) — no layout change
+  const rootRef = useRef<View>(null);
+  const { height: winH } = useWindowDimensions();
+  const navHeight = useBottomNavHeight();
+
+  useEffect(() => {
+    bottomSheetDebug('PANEL_MOUNT', { key: sheetKey, requestId });
+    return () => {
+      bottomSheetDebug('PANEL_UNMOUNT', { key: sheetKey, requestId });
+    };
+  }, [requestId, sheetKey]);
+  
+  const searchQuery = panelState.searchQuery;
+  const setSearchQuery = (text: string) => setPanelState({ ...panelState, searchQuery: text });
+  
+  const showOffline = panelState.showOffline;
+  const setShowOffline = (val: boolean) => setPanelState({ ...panelState, showOffline: val });
 
   const {
     categoryTree,
@@ -25,16 +46,12 @@ export const CategoriesPanelContent: React.FC = () => {
     servicesError,
     categoriesError,
     mainError,
-    refetchServicesByCategory,
   } = useCategories();
 
   const hasError = !!(servicesError || categoriesError || mainError);
   const isLoading = servicesLoading || categoriesLoading || mainLoading;
 
-  const { clearPanel, panelData } = usePanel();
-  const selectedCategory = panelData?.selectedCategory;
-  const onCategoryPress = panelData?.onCategoryPress;
-  const onClearCategory = panelData?.onClearCategory;
+  const selectedCategory = payload.selectedCategory;
 
   const { horizontal, getTransitionDuration } = useAds();
 
@@ -66,28 +83,40 @@ export const CategoriesPanelContent: React.FC = () => {
 
   const handleNodePress = useCallback(
     (node: TreeNode) => {
-      console.log('[DEBUG:CATEGORIES] TAP:', node.name, '| slug:', node.slug, '| type:', node.type);
-      onCategoryPress?.({
+      bottomSheetDebug('PANEL_PRESS', { key: 'categories', requestId, action: 'SELECT_CATEGORY', origin: 'CATEGORIES_PANEL' });
+      dispatchBottomSheetAction('categories', 'SELECT_CATEGORY', {
         id: String(node.id),
         name: node.name,
         slug: node.slug,
         icon: 'Grid',
         subcategories: [],
-      });
-      clearPanel();
+      }, 'CATEGORIES_PANEL');
     },
-    [onCategoryPress, clearPanel],
+    [dispatchBottomSheetAction, requestId],
   );
 
   const handleClear = useCallback(() => {
-    onClearCategory?.();
-    clearPanel();
-  }, [onClearCategory, clearPanel]);
+    dispatchBottomSheetAction('categories', 'CLEAR_CATEGORY', undefined, 'CATEGORIES_PANEL');
+  }, [dispatchBottomSheetAction]);
 
   const renderNodeCard = useCallback(
     ({ item }: { item: TreeNode }) => (
+      <View
+        onTouchStart={() => {
+          if (__DEV__) console.log(`[UI:TOUCH_START] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
+        }}
+      >
       <TouchableOpacity
-        onPress={() => handleNodePress(item)}
+        onPressIn={() => {
+          if (__DEV__) console.log(`[UI:BUTTON_PRESS_IN] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
+        }}
+        onPressOut={() => {
+          if (__DEV__) console.log(`[UI:BUTTON_PRESS_OUT] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
+        }}
+        onPress={() => {
+          if (__DEV__) console.log(`[UI:BUTTON_PRESS] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
+          handleNodePress(item);
+        }}
         style={[
           styles.nodeCard,
           item.type === 'category' && styles.nodeCardCategory,
@@ -123,12 +152,31 @@ export const CategoriesPanelContent: React.FC = () => {
           )}
         </View>
       </TouchableOpacity>
+      </View>
     ),
-    [handleNodePress],
+    [handleNodePress, requestId],
   );
 
   return (
-    <View style={[styles.container]}>
+    <View
+      ref={rootRef}
+      collapsable={false}
+      style={[styles.container]}
+      onLayout={() => {
+        if (!__DEV__) return;
+        rootRef.current?.measureInWindow((x, y, w, h) => {
+          console.log('[BS:MEASURE]', {
+            key: sheetKey,
+            contentTop: y,
+            contentBottom: y + h,
+            contentHeight: h,
+            navTop: winH - navHeight,
+            windowHeight: winH,
+            overlapPx: y + h - (winH - navHeight),
+          });
+        });
+      }}
+    >
       <View style={showSearch ? styles.contentFlex : styles.content}>
         <View style={styles.searchBar}>
           <Icon
@@ -143,7 +191,7 @@ export const CategoriesPanelContent: React.FC = () => {
             value={searchQuery}
             onChangeText={(text) => {
               if (selectedCategory && text) {
-                onClearCategory?.();
+                dispatchBottomSheetAction('categories', 'CLEAR_CATEGORY', undefined, 'CATEGORIES_SEARCH');
               }
               setSearchQuery(text);
             }}
@@ -234,12 +282,13 @@ export const CategoriesPanelContent: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {},
+  container: {
+    flexGrow: 0,
+  },
   content: {
     paddingHorizontal: TOKENS.spacing.lg,
   },
   contentFlex: {
-    flex: 1,
     paddingHorizontal: TOKENS.spacing.lg,
   },
   sheetTitle: {

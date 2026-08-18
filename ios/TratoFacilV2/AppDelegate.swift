@@ -55,6 +55,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     print("APNs registration failed: \(error.localizedDescription)")
   }
 
+  // MARK: - Deep Linking (custom URL scheme, e.g. Flow.cl payment return)
+
+  func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return RCTLinkingManager.application(app, open: url, options: options)
+  }
+
   // MARK: - UNUserNotificationCenterDelegate
 
   func userNotificationCenter(

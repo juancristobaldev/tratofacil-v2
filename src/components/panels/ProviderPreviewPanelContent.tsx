@@ -1,42 +1,39 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, Dimensions, FlatList, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, NativeSyntheticEvent, NativeScrollEvent, Pressable } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Avatar, Button, Rating } from '../ui';
-import { usePanel } from '../../context/PanelContext';
+import { Avatar, Button, Rating, EmptyState } from '../ui';
+import { BottomSheetFlatList } from '../../bottom-sheet/primitives';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { bottomSheetDebug } from '../../bottom-sheet/core/bottomSheet.debug';
+import type { ProviderPreviewItem } from '../../bottom-sheet/core/bottomSheet.types';
+import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_H_PADDING = TOKENS.spacing.lg;
 
-interface PreviewProvider {
-  id?: string;
-  spId?: string;
-  name?: string;
-  providerName?: string;
-  avatar?: string | null;
-  rating?: number;
-  reviewsCount?: number;
-  serviceName?: string;
-}
+export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider_preview'>> = ({ sheetKey, requestId, payload }) => {
+  const { dispatchBottomSheetAction } = useBottomSheet();
+  const selectedIndex = payload.selectedIndex ?? 0;
 
-export const ProviderPreviewPanelContent: React.FC = () => {
-  const { panelData } = usePanel();
-  const onIndexChange = panelData?.onIndexChange;
-  const onViewProfile = panelData?.onViewProfile;
-  const onDeselect = panelData?.onDeselect;
-  const selectedIndex = panelData?.selectedIndex ?? 0;
-
-  const listRef = useRef<FlatList<PreviewProvider>>(null);
+  const listRef = useRef<any>(null);
   const lastEmittedIndex = useRef<number>(selectedIndex);
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
 
+  useEffect(() => {
+    bottomSheetDebug('PANEL_MOUNT', { key: sheetKey, requestId });
+    return () => {
+      bottomSheetDebug('PANEL_UNMOUNT', { key: sheetKey, requestId });
+    };
+  }, [requestId, sheetKey]);
+
   // Si no vienen varios proveedores, mostramos al menos el seleccionado.
-  const clampedProviders: PreviewProvider[] = useMemo(
+  const clampedProviders: ProviderPreviewItem[] = useMemo(
     () => {
-      const list: PreviewProvider[] = panelData?.providers || [];
+      const list: ProviderPreviewItem[] = payload.providers || [];
       if (list.length > 0) return list;
-      return panelData?.provider ? [panelData.provider] : [];
+      return payload.provider ? [payload.provider] : [];
     },
-    [panelData?.providers, panelData?.provider],
+    [payload.providers, payload.provider],
   );
   const safeIndex = Math.min(Math.max(selectedIndex, 0), clampedProviders.length - 1);
 
@@ -57,18 +54,31 @@ export const ProviderPreviewPanelContent: React.FC = () => {
       if (index === lastEmittedIndex.current || !clampedProviders[index]) return;
       lastEmittedIndex.current = index;
       setActiveIndex(index);
-      if (typeof onIndexChange === 'function') {
-        onIndexChange(clampedProviders[index]);
-      }
+      dispatchBottomSheetAction('provider_preview', 'INDEX_CHANGE', clampedProviders[index], 'PROVIDER_PREVIEW_CAROUSEL');
     },
-    [clampedProviders, onIndexChange],
+    [clampedProviders, dispatchBottomSheetAction],
   );
 
-  if (clampedProviders.length === 0) return null;
+  if (clampedProviders.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <EmptyState
+          icon="Search"
+          title="Sin profesionales"
+          description="No hay profesionales disponibles para mostrar en este momento."
+        />
+      </View>
+    );
+  }
   const showDots = clampedProviders.length > 1;
 
-  const renderItem = ({ item }: { item: PreviewProvider }) => (
-    <View style={styles.card}>
+  const renderItem = ({ item }: { item: ProviderPreviewItem }) => (
+    <View
+      style={styles.card}
+      onTouchStart={() => {
+        if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=CARD requestId=${requestId ?? 'null'}`);
+      }}
+    >
       <View style={styles.providerRow}>
         <Avatar uri={item.avatar} name={item.name || item.providerName || ''} size={56} />
         <View style={styles.providerInfo}>
@@ -90,24 +100,47 @@ export const ProviderPreviewPanelContent: React.FC = () => {
         </View>
       </View>
 
-      <Button
-        title="Ver Profesional"
-        icon="User"
-        onPress={() => typeof onViewProfile === 'function' && onViewProfile(item)}
-        style={styles.button}
-      />
-      <Button
-        title="Cancelar"
-        variant="outline"
-        onPress={() => typeof onDeselect === 'function' && onDeselect()}
-        style={[styles.button, styles.cancelButton]}
-      />
+      <View onTouchStart={() => { if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=VIEW_PROFILE requestId=${requestId ?? 'null'} target=wrapper`); }}>
+        <Button
+          title="Ver Profesional"
+          icon="User"
+          debugId="provider_preview:view_profile"
+          onPress={() => {
+            bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
+            dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
+          }}
+          style={styles.button}
+        />
+      </View>
+      <View onTouchStart={() => { if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=DESELECT requestId=${requestId ?? 'null'} target=wrapper`); }}>
+        <Button
+          title="Cancelar"
+          variant="outline"
+          debugId="provider_preview:deselect"
+          onPress={() => {
+            bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
+            dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
+          }}
+          style={[styles.button, styles.cancelButton]}
+        />
+      </View>
+      {__DEV__ ? (
+        <Pressable
+          onTouchStart={() => console.log(`[TEST:NATIVE_TOUCH] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
+          onPressIn={() => console.log(`[TEST:NATIVE_PRESS_IN] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
+          onPressOut={() => console.log(`[TEST:NATIVE_PRESS_OUT] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
+          onPress={() => console.log(`[TEST:NATIVE_PRESS] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
+          style={styles.nativePressProbe}
+        >
+          <Text style={styles.nativePressProbeText}>TEST PRESS</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <BottomSheetFlatList
         ref={listRef}
         data={clampedProviders}
         keyExtractor={(p, i) => String(p.id ?? p.spId ?? i)}
@@ -139,6 +172,11 @@ const styles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
   },
+  emptyContainer: {
+    width: SCREEN_WIDTH,
+    paddingHorizontal: CARD_H_PADDING,
+    paddingBottom: TOKENS.spacing.lg,
+  },
   card: {
     width: SCREEN_WIDTH,
     paddingHorizontal: CARD_H_PADDING,
@@ -168,6 +206,18 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     marginTop: TOKENS.spacing.sm,
+  },
+  nativePressProbe: {
+    marginTop: TOKENS.spacing.sm,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: TOKENS.colors.surface100,
+  },
+  nativePressProbeText: {
+    color: TOKENS.colors.textSubtle,
+    fontSize: 12,
+    fontWeight: TOKENS.typography.weights.bold,
   },
   dotsRow: {
     flexDirection: 'row',

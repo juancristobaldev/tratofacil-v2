@@ -1,19 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { RequireLocation } from '../ui';
 import { BottomNav, AppTab } from './BottomNav';
-import { PanelContainer } from './PanelContainer';
 import { useRole } from '../../context/RoleContext';
 import { HomePage } from '../tabs/HomePage';
-import { usePanel } from '../../context/PanelContext';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useRealtime } from '../../realtime/RealtimeContext';
-import { useFlow } from '../../hooks/useFlow';
-import { setPaymentCallbackHandler } from '../../utils/deepLinks';
-import { getImageUrl } from '../../utils/imageUrl';
-import { summarizeForRole } from '../../utils/ratings';
+
 import { FocusModeClientScreen } from '../../screens/client/FocusModeClientScreen';
 import { FocusModeProviderScreen } from '../../screens/provider/FocusModeProviderScreen';
 import { MarketplaceTab } from '../tabs/MarketplaceTab';
@@ -21,29 +16,23 @@ import { JobsTab } from '../tabs/JobsTab';
 import { EarningsTab } from '../tabs/EarningsTab';
 import { MyServicesScreen } from '../../screens/shared/MyServicesScreen';
 import { TratoDirectoScreen } from '../../screens/shared/TratoDirectoScreen';
+import { useBottomNavHeight } from './bottomNavMetrics';
 
 interface MainLayoutProps {
   children?: React.ReactNode;
 }
 
-const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-
-const STATUS_TO_PROVIDER_STATE: Record<string, string> = {
-  PENDING: 'VIEW_REQUEST',
-  QUOTED: 'WAITING_CLIENT_RESPONSE',
-  ACCEPTED: 'EN_CAMINO',
-  IN_PROGRESS: 'IN_PROGRESS',
-};
-
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation<any>();
   const { role } = useRole();
-  const { activePanel, closePanel, openPanel, panelData } = usePanel();
+  const { active, pendingMapFlowKey } = useBottomSheet();
   const [activeTab, setActiveTab] = useState<AppTab>('home');
-  const hasAutoOpened = useRef(false);
-
-  const isChatActive = panelData?.orderState === 'CHAT';
+  const bottomNavHeight = useBottomNavHeight();
+  const realtime = useRealtime();
+  const clientRealtimeOrder = realtime.localActiveOrder || realtime.activeOrder;
+  const nonTerminalClientOrder = !!clientRealtimeOrder?.status && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(clientRealtimeOrder.status);
+  const shouldShowClientFocus = role !== 'provider' && (active === 'focus_client' || nonTerminalClientOrder);
+  const shouldShowProviderFocus = role === 'provider' && active === 'focus_provider';
 
   const renderCountRef = useRef(0);
   if (__DEV__) {
@@ -52,126 +41,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }
 
   useEffect(() => {
-    if (role === 'provider') {
-      openPanel('provider_dashboard');
-    } else {
-      // Si el panel actual era de provider y cambiamos a cliente, cerramos o forzamos categories
-      // Ya que HomePage tiene su propio useEffect para abrir 'categories', 
-      // esto asegura que el estado sea limpio al volver.
-      openPanel('categories');
-    }
-  }, [role, openPanel]);
-
-  const realtime = useRealtime();
-  const flow = useFlow();
-
-  useEffect(() => {
-    if (!nav) return;
-    setPaymentCallbackHandler((token: string, type?: string) => {
-      if (type === 'product') {
-        flow.confirm('product', token).then(() => {
-          nav.navigate('PaymentSuccess', {
-            title: '¡Compra Exitosa!',
-            subtitle: 'Tu producto será enviado pronto.',
-            type: 'product',
-          });
-        }).catch(() => {});
-      } else if (type === 'job') {
-        flow.confirm('job', token).then(() => {
-          nav.navigate('PaymentSuccess', {
-            title: '¡Trabajador Contratado!',
-            subtitle: 'El profesional será notificado.',
-            type: 'job',
-          });
-        }).catch(() => {});
-      } else if (type === 'ad') {
-        flow.confirm('ad', token).then(() => {
-          nav.navigate('PaymentSuccess', {
-            title: '¡Anuncio Publicado!',
-            subtitle: 'Tu anuncio ya está activo.',
-            type: 'ad',
-          });
-        }).catch(() => {});
-      } else if (type === 'realtime' && realtime?.confirmPayment) {
-        realtime.confirmPayment(token).catch(() => {});
-      }
-    });
-  }, [realtime?.confirmPayment, flow]);
-
-  useEffect(() => {
-    if (role === 'provider') return;
-    if (realtime.cancellingRef?.current) return;
-
-    const order = realtime.activeOrder;
-    if (!order?.status) return;
-    if (activePanel === 'focus_client') return;
-
-    const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-    if (TERMINAL.includes(order.status)) return;
-
-    const p = order.provider;
-    if (!p) return;
-
-    const providerSummary = summarizeForRole(p, 'provider');
-
-    openPanel('focus_client', {
-      order,
-      provider: {
-        id: String(p.id),
-        name: p.name,
-        providerName: p.name,
-        avatar: getImageUrl((p as any).logoImage?.cdnUrl || null),
-        rating: providerSummary?.rating ?? 0,
-        reviewsCount: providerSummary?.count ?? 0,
-        verified: !!(p as any).certificates?.some((c: any) => c.verified),
-        isRealtimeActive: true,
-        serviceName: order.serviceProvider?.service?.name || '',
-        serviceProviderId: order.serviceProvider?.id,
-      },
-      userLat: order.clientLat,
-      userLng: order.clientLng,
-      realtime,
-    });
-  }, [realtime.activeOrder, realtime.clientOrders, activePanel, openPanel]);
-
-  // Proveedor: si hay una orden en tiempo real activa (no terminal), retomar focus mode.
-  useEffect(() => {
-    if (role !== 'provider') return;
-    if (realtime.cancellingRef?.current) return;
-
-    const order = realtime.providerActiveOrder;
-    if (!order?.status) return;
-    if (activePanel === 'focus_provider') return;
-
-    if (TERMINAL_STATUSES.includes(order.status)) return;
-
-    const orderState = STATUS_TO_PROVIDER_STATE[order.status];
-    if (!orderState) return;
-
-    openPanel('focus_provider', {
-      requestId: order.id,
-      orderState,
-      activeOrder: order,
-      realtime,
-    });
-  }, [
-    realtime,
-    realtime.providerActiveOrder,
-    realtime.activeOrder,
-    realtime.cancellingRef,
-    activePanel,
-    openPanel,
-    role,
-  ]);
+    if (__DEV__) console.log('[TRACE:LAYOUT] MainLayout mounted');
+    return () => {
+      if (__DEV__) console.log('[TRACE:LAYOUT] MainLayout unmounted');
+    };
+  }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
     setActiveTab(tab);
-    if (activePanel === 'focus_client' || activePanel === 'focus_provider') {
-      closePanel();
-    }
-  }, [activePanel, closePanel]);
+    // Let the isMapFlowActive effect handle dismissAll automatically
+  }, []);
 
-  const BOTTOM_NAV_HEIGHT = 75 + insets.bottom;
+  useEffect(() => {
+    if (pendingMapFlowKey && activeTab !== 'home') {
+      setActiveTab('home');
+    }
+  }, [activeTab, pendingMapFlowKey]);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -196,26 +81,21 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
 
         {/* Content area */}
-        <View style={styles.content}>
+        <View style={[styles.content, { marginBottom: bottomNavHeight }]}>
           {renderTabContent()}
         </View>
 
-        {/* Overlays de Focus Mode (se detienen sobre el bottom nav) */}
-        {role !== 'provider' && activePanel === 'focus_client' && (
-          <View style={[styles.focusOverlay, { bottom: BOTTOM_NAV_HEIGHT }, isChatActive && { bottom: 0, zIndex: 600 }]}>
+        {/* Focus Mode background layers (se detienen sobre el bottom nav) */}
+        {shouldShowClientFocus && (
+          <View style={[styles.focusOverlay, { bottom: bottomNavHeight }]}> 
             <FocusModeClientScreen />
           </View>
         )}
 
-        {role === 'provider' && activePanel === 'focus_provider' && (
-          <View style={[styles.focusOverlay, { bottom: BOTTOM_NAV_HEIGHT }, isChatActive && { bottom: 0, zIndex: 600 }]}>
+        {shouldShowProviderFocus && (
+          <View style={[styles.focusOverlay, { bottom: bottomNavHeight }]}>
             <FocusModeProviderScreen />
           </View>
-        )}
-
-        {/* Panel container (above content, below bottom nav) */}
-        {activeTab === 'home' && !(activePanel === 'focus_client' && realtime.activeOrder?.status === 'PENDING') && (
-          <PanelContainer bottomNavHeight={BOTTOM_NAV_HEIGHT} />
         )}
 
         {/* Bottom nav */}
@@ -248,6 +128,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    zIndex: 250,
+    zIndex: 0,
+    elevation: 0,
   },
 });

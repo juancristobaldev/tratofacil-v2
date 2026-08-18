@@ -12,12 +12,14 @@ export const GET_ADS = gql`
           favicon
           info
           image
-          imageRelation { id cdnUrl }
+          imageRelation { id cdnUrl compressedKey key extension }
           city
           service {
+            id
             name
           }
           category {
+            id
             name
           }
           user {
@@ -25,26 +27,23 @@ export const GET_ADS = gql`
             displayName
             email
             phone
-            provider {
-              name
-            }
           }
         }
       }
       marketingHero {
         id
         key
-        image { id cdnUrl }
+        image { id cdnUrl compressedKey key extension }
       }
       marketingHorizontal {
         id
         key
-        image { id cdnUrl }
+        image { id cdnUrl compressedKey key extension }
       }
       marketingVertical {
         id
         key
-        image { id cdnUrl }
+        image { id cdnUrl compressedKey key extension }
       }
     }
   }

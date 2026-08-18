@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon } from '../ui/Icon';
+import { useBottomNavHeight } from './bottomNavMetrics';
 
 export type AppTab = 'home' | 'direct' | 'marketplace' | 'jobs' | 'trato_directo';
 
@@ -40,10 +41,21 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   notificationCount = 0,
 }) => {
   const insets = useSafeAreaInsets();
+  const bottomNavHeight = useBottomNavHeight();
   const tabs = (role === 'provider') ? PROVIDER_TABS : CLIENT_TABS;
+  const navRef = React.useRef<View>(null);
 
   return (
-    <View style={[styles.container, { height: 75 + insets.bottom, paddingBottom: insets.bottom + 4 }]}>
+    <View
+      ref={navRef}
+      collapsable={false}
+      onLayout={() => {
+        if (!__DEV__) return;
+        navRef.current?.measureInWindow((x, y, w, h) => {
+          console.log('[BS:NAV_MEASURE]', { navTop: y, navBottom: y + h, navHeight: h });
+        });
+      }}
+      style={[styles.container, { height: bottomNavHeight, paddingBottom: insets.bottom + 4 }]}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
         return (
@@ -99,6 +111,7 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingHorizontal: 4,
     zIndex: 500,
+    elevation: 24,
   },
   tab: {
     flex: 1,
