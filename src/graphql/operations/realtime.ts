@@ -69,6 +69,8 @@ export const GET_MY_REALTIME_ORDERS_AS_CLIENT = gql`
       provider {
         id
         name
+        lat
+        lng
         logoImage {
           id
           cdnUrl
@@ -164,6 +166,8 @@ export const GET_MY_REALTIME_STATE = gql`
         provider {
           id
           name
+          lat
+          lng
           logoImage {
             id
             cdnUrl

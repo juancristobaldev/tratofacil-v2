@@ -9,11 +9,11 @@ import {
   Easing,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Polyline, type Region } from 'react-native-maps';
+import MapView, { type Region } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker } from '../../components/ui';
+import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin } from '../../components/ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -38,7 +38,7 @@ export const FocusModeClientScreen: React.FC = () => {
 
   const status = activeOrder?.status || 'PENDING';
 
-  const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
+  const polylineCoords = routeCoords;
 
   // Cámara: follow mode (auto-centra) vs manual (el usuario explora).
   const mapRef = useRef<MapView>(null);
@@ -201,7 +201,7 @@ export const FocusModeClientScreen: React.FC = () => {
           showsCompass={false}
           mapPadding={{ top: insets.top + 20, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
         >
-            {clientCoords && <AnimatedUserMarker coordinate={clientCoords} />}
+            {clientCoords && <HousePin coordinate={clientCoords} />}
 
             {status !== 'PENDING' && providerCoords && (
               <AnimatedProviderMarker
@@ -210,12 +210,11 @@ export const FocusModeClientScreen: React.FC = () => {
               />
             )}
 
-            {polylineCoords.length > 0 && (
-              <Polyline
+            {polylineCoords.length >= 2 && (
+              <AnimatedPolyline
                 coordinates={polylineCoords}
                 strokeColor={TOKENS.colors.brand500}
                 strokeWidth={4}
-                lineDashPattern={[6, 3]}
               />
             )}
           </MapView>

@@ -119,121 +119,73 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
 
   return (
     <BottomSheetScrollView style={styles.container} contentContainerStyle={styles.scrollBody} bounces={true}>
-      <View style={styles.onlineRow}>
-          <View style={styles.onlineInfo}>
-            <View style={[styles.statusDot, online && styles.statusDotActive]} />
-            <Text style={[styles.onlineLabel, online && styles.onlineLabelActive]}>
-              {online ? 'En línea' : 'Desconectado'}
+      <View style={styles.onlineCard}>
+        <View style={styles.onlineInfo}>
+          <View style={[styles.statusDot, online && styles.statusDotActive]} />
+          <View>
+            <Text style={styles.onlineTitle}>
+              {online ? 'Disponible para órdenes' : 'Desconectado'}
+            </Text>
+            <Text style={styles.onlineSubtitle}>
+              {online ? 'Recibiendo solicitudes en tiempo real' : 'Actívate para recibir solicitudes'}
             </Text>
           </View>
-          <Switch
-            value={online}
-            onValueChange={handleToggleOnline}
-            trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
-            thumbColor={online ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
-          />
         </View>
+        <Switch
+          value={online}
+          onValueChange={handleToggleOnline}
+          trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
+          thumbColor={online ? TOKENS.colors.brand500 : TOKENS.colors.surface300}
+        />
+      </View>
 
-        <Card style={styles.walletCard} padded={false}>
-          <TouchableOpacity
-            style={styles.walletBtn}
-            onPress={() => {
-              const actionId = nextBottomSheetActionId();
-              bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', origin: 'PROVIDER_DASHBOARD' });
-              bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', target: 'Wallet' });
-              navigation.navigate('Wallet');
-            }}
-            activeOpacity={0.9}
-          >
-            <View style={styles.walletTextCol}>
-              <Text style={styles.walletLabel}>Saldo disponible</Text>
-              <Text style={styles.walletVal}>${walletBalance.toLocaleString('es-CL')}</Text>
-              <Text style={styles.walletSub}>{completedOrdersCount} servicios completados</Text>
-            </View>
-            <View style={styles.walletIconCircle}>
-              <Icon name="ArrowRight" size={18} color={TOKENS.colors.white} />
-            </View>
-          </TouchableOpacity>
-        </Card>
+      <View style={styles.walletCard}>
+        <TouchableOpacity
+          style={styles.walletBtn}
+          onPress={() => {
+            const actionId = nextBottomSheetActionId();
+            bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', origin: 'PROVIDER_DASHBOARD' });
+            bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'OPEN_WALLET', target: 'Wallet' });
+            navigation.navigate('Wallet');
+          }}
+          activeOpacity={0.9}
+        >
+          <View style={styles.walletTextCol}>
+            <Text style={styles.walletLabel}>Saldo disponible</Text>
+            <Text style={styles.walletVal}>${walletBalance.toLocaleString('es-CL')}</Text>
+            <Text style={styles.walletSub}>{completedOrdersCount} servicios completados</Text>
+          </View>
+          <View style={styles.walletIconCircle}>
+            <Icon name="ArrowRight" size={18} color={TOKENS.colors.white} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
-        {planActive && (
-          <Card style={styles.planNoticeCard} padded={true}>
-            <View style={styles.planNoticeRow}>
+      {planActive && (
+        <View style={styles.planNoticeCard}>
+          <View style={styles.planNoticeRow}>
+            <View style={styles.crownCircle}>
               <Icon name="Crown" size={20} color={TOKENS.colors.starActive} />
-              <View style={styles.planNoticeText}>
-                <Text style={styles.planNoticeTitle}>Plan Profesional Activo</Text>
-                <Text style={styles.planNoticeSub}>Tienes acceso a todas las funciones premium.</Text>
-              </View>
-              <TouchableOpacity onPress={() => {
+            </View>
+            <View style={styles.planNoticeText}>
+              <Text style={styles.planNoticeTitle}>Plan Profesional Activo</Text>
+              <Text style={styles.planNoticeSub}>Acceso a beneficios premium</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
                 const actionId = nextBottomSheetActionId();
                 bottomSheetDebug('ACTION', { actionId, key: 'provider_dashboard', action: 'OPEN_PLANS', origin: 'PROVIDER_DASHBOARD' });
                 bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'OPEN_PLANS', target: 'Plans' });
                 navigation.navigate('Plans');
-              }}>
-                <Text style={styles.planNoticeLink}>Ver Planes</Text>
-              </TouchableOpacity>
-            </View>
-          </Card>
-        )}
-
-      {/*
-        <View style={styles.requestsSection}>
-          <Text style={styles.sectionTitle}>
-            Solicitudes en curso ({online ? (realtime?.providerActiveOrder ? 1 : 0) : 0})
-          </Text>
-
-          {!online ? (
-            <View style={styles.offlinePlaceholder}>
-              <Icon name="WifiOff" size={48} color={TOKENS.colors.textMuted} />
-              <Text style={styles.offlineTextPlaceholder}>Conéctate para recibir solicitudes en tiempo real.</Text>
-            </View>
-          ) : realtime?.providerActiveOrder ? (
-            <Card style={styles.requestCard}>
-              <View style={styles.reqHeader}>
-                <View style={styles.reqHeaderMain}>
-                  <Text style={styles.reqTitle} numberOfLines={1}>
-                    {realtime.providerActiveOrder.serviceProvider?.service?.name || 'Servicio solicitado'}
-                  </Text>
-                  <Text style={styles.reqClient}>
-                    {realtime.providerActiveOrder.client?.displayName || 'Cliente'}
-                  </Text>
-                </View>
-                <Text style={styles.reqPrice}>
-                  ${(realtime.providerActiveOrder.quotedPrice || 0).toLocaleString('es-CL')}
-                </Text>
-              </View>
-
-              <View style={styles.reqMeta}>
-                <View style={styles.reqMetaItem}>
-                  <Icon name="MapPin" size={14} color={TOKENS.colors.textSubtle} />
-                  <Text style={styles.reqMetaText}>
-                    {realtime.providerActiveOrder.clientAddress || 'Dirección no especificada'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.reqActions}>
-                <Button
-                  title="Rechazar"
-                  variant="white"
-                  onPress={() => handleRejectRequest(realtime.providerActiveOrder!.id)}
-                  style={styles.declineBtn}
-                />
-                <Button
-                  title="Ver"
-                  onPress={() => handleAcceptRequest(realtime.providerActiveOrder!.id)}
-                  style={styles.acceptBtn}
-                />
-              </View>
-            </Card>
-          ) : (
-            <View style={styles.offlinePlaceholder}>
-              <Icon name="Clock" size={48} color={TOKENS.colors.textMuted} />
-              <Text style={styles.offlineTextPlaceholder}>Esperando nuevas solicitudes...</Text>
-            </View>
-          )}
+              }}
+              style={styles.planLinkBtn}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.planNoticeLink}>Ver Planes</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      */}
+      )}
     </BottomSheetScrollView>
   );
 };
@@ -241,48 +193,61 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
 const styles = StyleSheet.create({
   container: {
     flexGrow: 0,
+    paddingTop: TOKENS.spacing.xs,
   },
   scrollBody: {
-    padding: TOKENS.spacing.lg,
+    paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    gap: TOKENS.spacing.md,
-    paddingBottom: 20,
+    gap: 14,
+    paddingBottom: 24,
   },
-  onlineRow: {
+  onlineCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: 16,
+    ...TOKENS.shadows.soft,
   },
   onlineInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    flex: 1,
   },
   statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
     backgroundColor: TOKENS.colors.surface300,
   },
   statusDotActive: {
     backgroundColor: TOKENS.colors.statusSuccess,
   },
-  onlineLabel: {
+  onlineTitle: {
     fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.semibold,
-    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
   },
-  onlineLabelActive: {
-    color: TOKENS.colors.statusSuccess,
+  onlineSubtitle: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+    fontWeight: TOKENS.typography.weights.medium,
   },
   walletCard: {
     backgroundColor: TOKENS.colors.dark900,
-    borderColor: TOKENS.colors.dark800,
+    borderRadius: 24,
+    overflow: 'hidden',
+    ...TOKENS.shadows.floating,
   },
   walletBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: TOKENS.spacing.lg,
+    padding: 20,
     justifyContent: 'space-between',
   },
   walletTextCol: {
@@ -290,20 +255,22 @@ const styles = StyleSheet.create({
   },
   walletLabel: {
     color: TOKENS.colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     textTransform: 'uppercase',
     fontWeight: 'bold',
+    letterSpacing: 0.8,
   },
   walletVal: {
     color: TOKENS.colors.white,
-    fontSize: TOKENS.typography.sizes.xxl,
+    fontSize: 30,
     fontWeight: TOKENS.typography.weights.black,
     marginTop: 4,
+    letterSpacing: -0.5,
   },
   walletSub: {
     color: TOKENS.colors.brand100,
-    fontSize: TOKENS.typography.sizes.xxs,
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 4,
     fontWeight: '600',
   },
   walletIconCircle: {
@@ -313,111 +280,56 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.brand700,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 12,
   },
   planNoticeCard: {
     backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: 16,
+    ...TOKENS.shadows.soft,
   },
   planNoticeRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  crownCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: TOKENS.colors.warning50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.warning200,
+  },
   planNoticeText: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 12,
   },
   planNoticeTitle: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
+    color: TOKENS.colors.dark900,
   },
   planNoticeSub: {
-    fontSize: TOKENS.typography.sizes.xxs,
+    fontSize: 11,
     color: TOKENS.colors.textSubtle,
     marginTop: 2,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  planLinkBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
   },
   planNoticeLink: {
-    color: TOKENS.colors.brand500,
-    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.brand700,
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
-    textDecorationLine: 'underline',
-  },
-  requestsSection: {
-    gap: TOKENS.spacing.md,
-  },
-  sectionTitle: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  offlinePlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-    gap: 12,
-  },
-  offlineTextPlaceholder: {
-    color: TOKENS.colors.textSubtle,
-    fontSize: TOKENS.typography.sizes.sm,
-    textAlign: 'center',
-    paddingHorizontal: 30,
-    fontWeight: '500',
-  },
-  requestCard: {
-    backgroundColor: TOKENS.colors.white,
-    gap: 12,
-  },
-  reqHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  reqHeaderMain: {
-    flex: 1,
-    marginRight: 12,
-  },
-  reqTitle: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  reqClient: {
-    fontSize: TOKENS.typography.sizes.xxs,
-    color: TOKENS.colors.textSubtle,
-    marginTop: 2,
-    fontWeight: '500',
-  },
-  reqPrice: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand600,
-  },
-  reqMeta: {
-    gap: 6,
-    paddingVertical: TOKENS.spacing.xs,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: TOKENS.colors.surface100,
-  },
-  reqMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  reqMetaText: {
-    fontSize: TOKENS.typography.sizes.xxs,
-    color: TOKENS.colors.textSubtle,
-    fontWeight: '500',
-  },
-  reqActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  declineBtn: {
-    flex: 1,
-    height: 44,
-  },
-  acceptBtn: {
-    flex: 1,
-    height: 44,
   },
 });

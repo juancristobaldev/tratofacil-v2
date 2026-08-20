@@ -35,15 +35,23 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       windowHeight - HEADER_HEIGHT - TOP_GAP - NAVBAR_HEIGHT,
     );
 
-    const defaultSnapPoints = useMemo(() => [240, computedMaxDynamicContentSize], [computedMaxDynamicContentSize]);
-    const activeSnapPoints = useMemo(() => snapPoints ? [...snapPoints] : defaultSnapPoints, [defaultSnapPoints, snapPoints]);
-    const initialIndex = activeSnapPoints && activeSnapPoints.length > 1 ? 1 : 0;
+    const activeSnapPoints = useMemo(() => {
+      if (snapPoints && snapPoints.length > 0) {
+        return [...snapPoints];
+      }
+      if (!enableDynamicSizing) {
+        return [240, computedMaxDynamicContentSize];
+      }
+      return undefined;
+    }, [computedMaxDynamicContentSize, enableDynamicSizing, snapPoints]);
+
+    const initialIndex = 0;
 
     if (__DEV__) {
       console.log('[BS:SHEET_CONFIG]', {
         sheetKey: sheetKey ?? null,
         enableDynamicSizing,
-        snapPoints: activeSnapPoints,
+        snapPoints: activeSnapPoints ?? 'DYNAMIC_UNSET',
         maxDynamicContentSize: maxDynamicContentSize ?? computedMaxDynamicContentSize,
         topInset: HEADER_HEIGHT,
         bottomInset: NAVBAR_HEIGHT,
@@ -66,12 +74,13 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       (index: number) => {
         if (__DEV__) {
           const position = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
+          const currentSnap = activeSnapPoints ? activeSnapPoints[index] : 'DYNAMIC';
           console.log('[BS:SHEET_CHANGE]', {
             index,
             animatedTop: position ?? null,
             estimatedSheetBottom:
-              typeof position === 'number'
-                ? position + HANDLE_CHROME_ESTIMATE + (activeSnapPoints[index] as number)
+              typeof position === 'number' && typeof currentSnap === 'number'
+                ? position + HANDLE_CHROME_ESTIMATE + currentSnap
                 : null,
           });
         }
@@ -136,19 +145,19 @@ Sheet.displayName = 'Sheet';
 const styles = StyleSheet.create({
   background: {
     backgroundColor: TOKENS.colors.white,
-    borderTopLeftRadius: TOKENS.geometry.radiusModal,
-    borderTopRightRadius: TOKENS.geometry.radiusModal,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     shadowColor: TOKENS.colors.dark900,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 10,
   },
   indicator: {
-    backgroundColor: TOKENS.colors.surface300,
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+    backgroundColor: TOKENS.colors.surface200,
+    width: 48,
+    height: 4.5,
+    borderRadius: 999,
     marginTop: TOKENS.spacing.xs,
   },
 });

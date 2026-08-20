@@ -7,6 +7,7 @@ import {
   TextInput,
   Image,
   Pressable,
+  TouchableOpacity,
   BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +42,7 @@ export const RatingScreen: React.FC = () => {
 
   const [selectedRating, setSelectedRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const backAction = () => {
@@ -51,6 +53,8 @@ export const RatingScreen: React.FC = () => {
   }, []);
 
   const handleSubmit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (role === 'client' && orderRealtimeId && providerId) {
         await createProviderReview({
@@ -76,6 +80,8 @@ export const RatingScreen: React.FC = () => {
       }
     } catch (_err) {
       // Review submission is best-effort, don't block the flow
+    } finally {
+      setSubmitting(false);
     }
     if (jobId) {
       navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
@@ -85,101 +91,99 @@ export const RatingScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Title */}
-        <Text style={styles.mainTitle}>¡Trabajo Terminado y Verificado!</Text>
-
-        {/* Card 1: Resumen de Trabajo */}
-        <Card style={styles.card} padded={true}>
-          <Text style={styles.cardTitle}>Resumen del Trabajo</Text>
-          <View style={styles.profileRow}>
-            {targetUser.avatar ? (
-              <Image source={{ uri: targetUser.avatar }} style={styles.avatar} />
-            ) : null}
-            <View style={styles.profileInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName}>{targetUser.name}</Text>
-              </View>
-              <View style={styles.ratingRow}>
-                <Rating rating={targetUser.rating} size={11} showText />
-              </View>
-              <Text style={styles.profileSubtext}>{targetUser.subtext}</Text>
-            </View>
+        {/* Top Success Hero */}
+        <View style={styles.heroBox}>
+          <View style={styles.heroIconCircle}>
+            <Icon name="CheckCircle" size={32} color={TOKENS.colors.brand500} />
           </View>
-          <Text style={styles.serviceText}>
-            <Text style={styles.boldText}>Detalles del servicio completado: </Text>
-            {serviceDetails}
-          </Text>
-        </Card>
+          <Text style={styles.heroTitle}>¡Trabajo Terminado!</Text>
+          <Text style={styles.heroSub}>Servicio completado con éxito</Text>
+        </View>
 
-        {/* Card 2: Calificación y Reseña */}
-        <Card style={styles.card} padded={true}>
-          <Text style={styles.cardTitle}>Calificación y Reseña</Text>
-          <Text style={styles.cardSubtitle}>
-            ¿Cómo calificarías a {targetUser.name}?
-          </Text>
+        {/* Rating & Review Card */}
+        <View style={styles.reviewCard}>
+          {targetUser.avatar ? (
+            <View style={styles.targetUserRow}>
+              <Image source={{ uri: targetUser.avatar }} style={styles.targetAvatar} />
+              <View style={styles.targetUserInfo}>
+                <Text style={styles.targetUserName}>{targetUser.name}</Text>
+                {targetUser.subtext ? (
+                  <Text style={styles.targetUserSub}>{targetUser.subtext}</Text>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.reviewCardTitle}>
+              Califica a {targetUser.name || 'Profesional'}
+            </Text>
+          )}
 
-          <View style={styles.ratingContainer}>
+          <View style={styles.starRatingGroup}>
             <Rating
               rating={selectedRating}
               onRatingChange={setSelectedRating}
-              size={36}
+              size={38}
             />
           </View>
 
           <TextInput
-            placeholder="Escribe tu reseña..."
+            placeholder="Cuéntanos tu experiencia..."
             placeholderTextColor={TOKENS.colors.textMuted}
             value={reviewComment}
             onChangeText={setReviewComment}
             multiline
-            numberOfLines={4}
-            style={styles.textarea}
+            numberOfLines={3}
+            style={styles.reviewTextarea}
           />
-        </Card>
+        </View>
 
-        {/* Card 3: Detalles de Cobro */}
-        <View style={styles.billingCard}>
-          <View style={styles.billingRow}>
-            <View style={styles.billingInfoLeft}>
-              <Text style={styles.billingTitle}>Dirección de servicio</Text>
-              <Text style={styles.billingVal} numberOfLines={1}>
-                {address}
+        {/* Service & Payment Summary Card */}
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryHeader}>
+            <View style={styles.summaryHeaderLeft}>
+              <Text style={styles.summaryAddress} numberOfLines={1}>
+                {address || 'Dirección acordada'}
               </Text>
+              {serviceDetails ? (
+                <Text style={styles.summaryService} numberOfLines={2}>
+                  {serviceDetails}
+                </Text>
+              ) : null}
             </View>
-            <Pressable>
-              <Text style={styles.mapLink}>Ver en mapa &gt;</Text>
-            </Pressable>
+            <View style={styles.summaryIconWrap}>
+              <Icon name="MapPin" size={18} color={TOKENS.colors.brand500} />
+            </View>
           </View>
 
-          <View style={[styles.billingRow, styles.billingRowLast]}>
+          <View style={styles.summaryFooter}>
             <View>
-              <View style={styles.totalLabelRow}>
-                <Text style={styles.billingTitle}>Total del servicio</Text>
-                <Icon name="Info" size={14} color={TOKENS.colors.textMuted} />
-              </View>
-              <Text style={styles.billingSub}>Pagado mediante {paymentMethod}</Text>
-            </View>
-            <View style={styles.totalInfoRight}>
-              <Text style={styles.totalPrice}>
-                ${amount.toLocaleString('es-CL')}
+              <Text style={styles.summaryTotalLabel}>Total pagado</Text>
+              <Text style={styles.summaryPaymentMethod}>
+                {paymentMethod !== '-' ? `Método: ${paymentMethod}` : 'En efectivo / acordado'}
               </Text>
-              <Text style={styles.paymentMethodText}>Método: {paymentMethod}</Text>
             </View>
+            <Text style={styles.summaryTotalPrice}>
+              ${amount > 0 ? amount.toLocaleString('es-CL') : '0'}
+            </Text>
           </View>
         </View>
 
-        {/* Action Buttons */}
-        <View style={styles.btnRow}>
-          <Pressable style={styles.supportBtn}>
-            <Icon name="LifeBuoy" size={16} color={TOKENS.colors.brand500} />
-            <Text style={styles.supportBtnText}>Necesito soporte</Text>
-          </Pressable>
+        {/* Action Buttons Row */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.supportSquareBtn}
+            onPress={() => navigation.navigate('Support')}
+            activeOpacity={0.8}
+          >
+            <Icon name="HelpCircle" size={22} color={TOKENS.colors.dark900} />
+          </TouchableOpacity>
 
           <Button
-            title="Enviar calificación y finalizar"
+            title={submitting ? 'Enviando...' : 'Enviar calificación'}
             onPress={handleSubmit}
+            disabled={submitting}
             style={styles.submitBtn}
           />
         </View>
@@ -193,206 +197,183 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
   },
-
   scrollContent: {
     padding: TOKENS.spacing.md,
-    paddingBottom: 40,
+    gap: TOKENS.spacing.md,
   },
-  mainTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.brand600,
-    textAlign: 'center',
-    marginVertical: TOKENS.spacing.md,
+
+  // Hero
+  heroBox: {
+    alignItems: 'center',
+    paddingVertical: TOKENS.spacing.md,
   },
-  card: {
+  heroIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: TOKENS.colors.brand100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  heroTitle: {
+    fontSize: 22,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.dark900,
+    letterSpacing: -0.5,
+  },
+  heroSub: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+  },
+
+  // Review Card
+  reviewCard: {
     backgroundColor: TOKENS.colors.white,
-    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: TOKENS.spacing.md,
     borderWidth: 1,
-    marginBottom: TOKENS.spacing.md,
+    borderColor: TOKENS.colors.surface200,
+    ...TOKENS.shadows.soft,
   },
-  cardTitle: {
-    fontSize: TOKENS.typography.sizes.md,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    marginBottom: TOKENS.spacing.md,
-  },
-  profileRow: {
+  targetUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: TOKENS.spacing.md,
+    marginBottom: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: TOKENS.colors.surface100,
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+  targetAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: TOKENS.colors.surface100,
   },
-  profileInfo: {
+  targetUserInfo: {
     flex: 1,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  profileName: {
-    fontSize: TOKENS.typography.sizes.md,
+  targetUserName: {
+    fontSize: 15,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
+    color: TOKENS.colors.dark900,
   },
-  ratingRow: {
-    flexDirection: 'row',
-    marginTop: 2,
-  },
-  profileSubtext: {
-    fontSize: TOKENS.typography.sizes.xs,
+  targetUserSub: {
+    fontSize: 12,
     color: TOKENS.colors.textSubtle,
-    marginTop: 2,
+    marginTop: 1,
   },
-  serviceText: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textMain,
-    lineHeight: 18,
+  reviewCardTitle: {
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  boldText: {
-    fontWeight: 'bold',
-  },
-  cardSubtitle: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    marginBottom: TOKENS.spacing.sm,
-  },
-  ratingContainer: {
+  starRatingGroup: {
     alignSelf: 'center',
-    marginVertical: TOKENS.spacing.md,
+    marginVertical: 12,
   },
-  textarea: {
-    width: '100%',
-    height: 100,
+  reviewTextarea: {
     backgroundColor: TOKENS.colors.surface50,
-    borderColor: TOKENS.colors.surface200,
+    borderRadius: 14,
     borderWidth: 1,
-    borderRadius: 16,
+    borderColor: TOKENS.colors.surface200,
     padding: 12,
-    fontSize: TOKENS.typography.sizes.xs,
+    fontSize: 13,
     color: TOKENS.colors.textMain,
+    height: 84,
     textAlignVertical: 'top',
-    marginBottom: TOKENS.spacing.md,
   },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface300,
-    backgroundColor: TOKENS.colors.surface50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: TOKENS.colors.brand500,
-    borderColor: TOKENS.colors.brand500,
-  },
-  checkboxLabel: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textMain,
-  },
-  billingCard: {
+
+  // Summary Card
+  summaryCard: {
     backgroundColor: TOKENS.colors.white,
-    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
     borderWidth: 1,
-    borderRadius: 16,
+    borderColor: TOKENS.colors.surface200,
     overflow: 'hidden',
-    marginBottom: TOKENS.spacing.lg,
     ...TOKENS.shadows.soft,
   },
-  billingRow: {
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: TOKENS.colors.surface100,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  billingRowLast: {
-    borderBottomWidth: 0,
-  },
-  billingInfoLeft: {
+  summaryHeaderLeft: {
     flex: 1,
+    paddingRight: 8,
   },
-  billingTitle: {
-    fontSize: TOKENS.typography.sizes.xs,
-    fontWeight: 'bold',
-    color: TOKENS.colors.textMain,
-    marginBottom: 4,
+  summaryAddress: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: TOKENS.colors.dark900,
   },
-  billingVal: {
-    fontSize: TOKENS.typography.sizes.xs,
+  summaryService: {
+    fontSize: 11,
     color: TOKENS.colors.textSubtle,
-  },
-  mapLink: {
-    fontSize: TOKENS.typography.sizes.xs,
-    fontWeight: '600',
-    color: TOKENS.colors.brand500,
-    marginLeft: 8,
-  },
-  totalLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  billingSub: {
-    fontSize: 10,
-    color: TOKENS.colors.textMuted,
     marginTop: 2,
   },
-  totalInfoRight: {
-    alignItems: 'flex-end',
-  },
-  totalPrice: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: TOKENS.colors.brand500,
-    letterSpacing: -0.5,
-  },
-  paymentMethodText: {
-    fontSize: 10,
-    color: TOKENS.colors.textMuted,
-    marginTop: 2,
-  },
-  btnRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  supportBtn: {
-    flexDirection: 'row',
+  summaryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.brand50,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    height: 48,
-    paddingHorizontal: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.brand500,
-    backgroundColor: TOKENS.colors.white,
   },
-  supportBtnText: {
-    fontSize: TOKENS.typography.sizes.xs,
-    fontWeight: 'bold',
-    color: TOKENS.colors.brand500,
+  summaryFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: TOKENS.colors.surface50,
+  },
+  summaryTotalLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: TOKENS.colors.dark900,
+  },
+  summaryPaymentMethod: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+  },
+  summaryTotalPrice: {
+    fontSize: 22,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand600,
+    letterSpacing: -0.5,
+  },
+
+  // Action Row
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  supportSquareBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface300,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   submitBtn: {
     flex: 1,
-    height: 48,
-    borderRadius: 24,
+    height: 52,
+    borderRadius: 14,
   },
 });

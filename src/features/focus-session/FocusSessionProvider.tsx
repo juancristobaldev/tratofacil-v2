@@ -229,17 +229,38 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     console.log(`[MAP:ROUTE_ORDER] orderId=${providerOrder?.id ?? 'null'} status=${providerOrder?.status ?? 'null'} orderState=${orderState} routeActive=${orderState === 'EN_CAMINO' || orderState === 'ARRIVED'} hasProviderCoords=${!!liveProviderCoords} hasClientCoords=${!!providerClientCoords}`);
   }, [providerOrder?.id, providerOrder?.status, orderState, liveProviderCoords, providerClientCoords]);
 
-  useEffect(() => {
-    if (!liveProviderCoords || !providerClientCoords) return;
-    const m = getMetersBetween(
-      liveProviderCoords.latitude,
-      liveProviderCoords.longitude,
-      providerClientCoords.latitude,
-      providerClientCoords.longitude,
+  const providerDistanceLabel = useMemo(() => {
+    const routeDistance = providerRoute.routeDistance;
+    if (routeDistance != null && routeDistance > 0) return formatDistance(routeDistance);
+    if (!liveProviderCoords || !providerClientCoords) return '...';
+    return formatDistance(
+      getMetersBetween(
+        liveProviderCoords.latitude,
+        liveProviderCoords.longitude,
+        providerClientCoords.latitude,
+        providerClientCoords.longitude,
+      ),
     );
-    setDistanceRemaining(formatDistance(m));
-    setEtaRemaining(formatEta(m));
-  }, [liveProviderCoords?.latitude, liveProviderCoords?.longitude, providerClientCoords?.latitude, providerClientCoords?.longitude, orderState]);
+  }, [providerRoute.routeDistance, liveProviderCoords, providerClientCoords]);
+
+  const providerEtaLabel = useMemo(() => {
+    const routeDuration = providerRoute.routeDuration;
+    if (routeDuration != null && routeDuration > 0) {
+      const minutes = Math.ceil(routeDuration / 60);
+      if (minutes <= 0) return 'Llegó';
+      if (minutes === 1) return '1 min';
+      return `${minutes} min`;
+    }
+    if (!liveProviderCoords || !providerClientCoords) return '...';
+    return formatEta(
+      getMetersBetween(
+        liveProviderCoords.latitude,
+        liveProviderCoords.longitude,
+        providerClientCoords.latitude,
+        providerClientCoords.longitude,
+      ),
+    );
+  }, [providerRoute.routeDuration, liveProviderCoords, providerClientCoords]);
 
   // Mapeo de status realtime -> estado de sesión de proveedor.
   useEffect(() => {
@@ -308,8 +329,8 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       activeOrder: providerOrder,
       orderState,
       setOrderState,
-      distanceLabel: distanceRemaining,
-      etaLabel: etaRemaining,
+      distanceLabel: providerDistanceLabel,
+      etaLabel: providerEtaLabel,
       providerCoords: liveProviderCoords,
       clientCoords: providerClientCoords,
       routeCoords: providerRoute.routeCoords,
@@ -318,7 +339,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setShowChat,
       handleFinish,
     }),
-    [providerOrderId, providerOrder, orderState, distanceRemaining, etaRemaining, liveProviderCoords, providerClientCoords, providerRoute.routeCoords, realtime, showChat, handleFinish],
+    [providerOrderId, providerOrder, orderState, providerDistanceLabel, providerEtaLabel, liveProviderCoords, providerClientCoords, providerRoute.routeCoords, realtime, showChat, handleFinish],
   );
 
   const value = useMemo<FocusSessionValue>(() => ({ client: clientSession, provider: providerSession }), [clientSession, providerSession]);

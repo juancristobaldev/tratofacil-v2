@@ -200,13 +200,14 @@ export const MyProfileScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
       >
+        {/* Profile Hero Card */}
         <View style={styles.heroBox}>
           <View style={styles.heroContent}>
             <View style={styles.avatarWrapper}>
-              <Avatar uri={getImageUrl(providerData?.logoImage?.cdnUrl || null)} name={role === 'provider' ? (providerData?.name || name) : name} size={100} />
+              <Avatar uri={getImageUrl(providerData?.logoImage?.cdnUrl || null)} name={role === 'provider' ? (providerData?.name || name) : name} size={88} />
               {role === 'provider' && (
-                <TouchableOpacity style={styles.avatarEditBtn} onPress={handlePickLogo} disabled={uploadingLogo}>
-                  <Icon name="Camera" size={16} color={TOKENS.colors.brand500} />
+                <TouchableOpacity style={styles.avatarEditBtn} onPress={handlePickLogo} disabled={uploadingLogo} activeOpacity={0.8}>
+                  <Icon name="Camera" size={14} color={TOKENS.colors.brand500} />
                 </TouchableOpacity>
               )}
             </View>
@@ -214,9 +215,10 @@ export const MyProfileScreen: React.FC = () => {
               <Text style={styles.heroTitle} numberOfLines={1}>{role === 'provider' ? (providerName || name) : name}</Text>
               <View style={styles.heroBadges}>
                 {statusBadge}
-                {role === 'provider' && (
+                {role === 'provider' && !!providerLocation && (
                   <View style={styles.locationPill}>
-                    <Text style={styles.locationText}>{providerLocation || 'Ubicación pendiente'}</Text>
+                    <Icon name="MapPin" size={12} color={TOKENS.colors.textSubtle} />
+                    <Text style={styles.locationText}>{providerLocation}</Text>
                   </View>
                 )}
               </View>
@@ -224,41 +226,77 @@ export const MyProfileScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Client View */}
         {role === 'client' && (
-          <View style={styles.cardBox}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardIconBox}>
-                <Icon name="User" size={24} color={TOKENS.colors.brand500} />
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Información de Contacto</Text>
-                <Text style={styles.cardSubtitle}>Tus datos personales básicos.</Text>
-              </View>
+          <>
+            {/* Quick Navigation Card matching ui-kit.html */}
+            <View style={styles.menuCard}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('VerificationCenter')} activeOpacity={0.7}>
+                <View style={[styles.menuIconCircle, { backgroundColor: '#eff6ff' }]}>
+                  <Icon name="ShieldCheck" size={18} color="#2563eb" />
+                </View>
+                <Text style={styles.menuItemText}>Centro de verificación</Text>
+                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Wallet')} activeOpacity={0.7}>
+                <View style={[styles.menuIconCircle, { backgroundColor: '#f0fdf4' }]}>
+                  <Icon name="Wallet" size={18} color="#16a34a" />
+                </View>
+                <Text style={styles.menuItemText}>Mi Billetera</Text>
+                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
+              </TouchableOpacity>
+
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Support')} activeOpacity={0.7}>
+                <View style={[styles.menuIconCircle, { backgroundColor: '#fef2f2' }]}>
+                  <Icon name="Headphones" size={18} color="#dc2626" />
+                </View>
+                <Text style={styles.menuItemText}>Centro de Ayuda y Soporte</Text>
+                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
+              </TouchableOpacity>
             </View>
-            <View style={styles.formSection}>
-              <Input label="Nombre completo" value={name} onChangeText={setName} />
-              <Input label="Correo electrónico" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-              <Input label="Número móvil" value={phone} onChangeText={setPhone} mask="phone" />
+
+            {/* Contact Form Card */}
+            <View style={styles.cardBox}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardIconBox}>
+                  <Icon name="User" size={20} color={TOKENS.colors.brand500} />
+                </View>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardTitle}>Datos Personales</Text>
+                  <Text style={styles.cardSubtitle}>Información de contacto de tu cuenta.</Text>
+                </View>
+              </View>
+              <View style={styles.formSection}>
+                <Input label="Nombre completo" value={name} onChangeText={setName} />
+                <Input label="Correo electrónico" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+                <Input label="Número móvil" value={phone} onChangeText={setPhone} mask="phone" />
+              </View>
+              <Button title="Guardar Cambios" onPress={handleContactSave} loading={saving} style={styles.saveBtn} />
             </View>
-            <Button title="Guardar Cambios" onPress={handleContactSave} loading={saving} style={styles.saveBtn} />
-          </View>
+          </>
         )}
 
+        {/* Provider View with Segmented Tabs */}
         {role === 'provider' && (
           <>
-            <View style={styles.tabsWrapper}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsContainer}>
-                {tabs.map((tab) => (
-                  <TouchableOpacity
-                    key={tab.id}
-                    style={[styles.providerTab, providerTab === tab.id && styles.providerTabActive]}
-                    onPress={() => setProviderTab(tab.id)}
-                  >
-                    <Icon name={tab.icon as any} size={16} color={providerTab === tab.id ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle} />
-                    <Text style={[styles.providerTabText, providerTab === tab.id && styles.providerTabTextActive]}>{tab.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+            <View style={styles.tabsSegmented}>
+              {tabs.map((tab) => (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[styles.segmentedTabBtn, providerTab === tab.id && styles.segmentedTabBtnActive]}
+                  onPress={() => setProviderTab(tab.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.segmentedTabText, providerTab === tab.id && styles.segmentedTabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             <View style={styles.cardBox}>
@@ -266,17 +304,17 @@ export const MyProfileScreen: React.FC = () => {
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
-                      <Icon name="Store" size={24} color={TOKENS.colors.brand500} />
+                      <Icon name="Store" size={20} color={TOKENS.colors.brand500} />
                     </View>
-                    <View>
+                    <View style={styles.cardHeaderText}>
                       <Text style={styles.cardTitle}>Información de la Empresa</Text>
-                      <Text style={styles.cardSubtitle}>Visible para tus clientes.</Text>
+                      <Text style={styles.cardSubtitle}>Visible para tus clientes en la plataforma.</Text>
                     </View>
                   </View>
                   <View style={styles.formSection}>
                     <Input label="Nombre Comercial" value={providerName} onChangeText={setProviderName} />
                     <Input label="RUT de Empresa (o Personal)" value={providerRut} onChangeText={setProviderRut} mask="rut" />
-                    <Input label="Ciudad (Base)" value={providerLocation} onChangeText={setProviderLocation} />
+                    <Input label="Ciudad / Comuna (Base)" value={providerLocation} onChangeText={setProviderLocation} />
                   </View>
                   <Button title="Guardar Perfil Comercial" onPress={handleProviderSave} loading={saving} style={styles.saveBtn} />
                 </>
@@ -286,11 +324,11 @@ export const MyProfileScreen: React.FC = () => {
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
-                      <Icon name="Landmark" size={24} color={TOKENS.colors.brand500} />
+                      <Icon name="Landmark" size={20} color={TOKENS.colors.brand500} />
                     </View>
-                    <View>
-                      <Text style={styles.cardTitle}>Detalles de Facturación</Text>
-                      <Text style={styles.cardSubtitle}>Dónde recibirás tus pagos por servicios.</Text>
+                    <View style={styles.cardHeaderText}>
+                      <Text style={styles.cardTitle}>Detalles Bancarios</Text>
+                      <Text style={styles.cardSubtitle}>Cuenta donde recibirás transferencias y retiros.</Text>
                     </View>
                   </View>
                   <View style={styles.formSection}>
@@ -307,23 +345,25 @@ export const MyProfileScreen: React.FC = () => {
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
-                      <Icon name="FileText" size={24} color={TOKENS.colors.brand500} />
+                      <Icon name="FileText" size={20} color={TOKENS.colors.brand500} />
                     </View>
-                    <View>
+                    <View style={styles.cardHeaderText}>
                       <Text style={styles.cardTitle}>Mis Certificados</Text>
-                      <Text style={styles.cardSubtitle}>Documentos validados por TratoFácil.</Text>
+                      <Text style={styles.cardSubtitle}>Acreditaciones y certificaciones registradas.</Text>
                     </View>
                   </View>
                   <View style={styles.formSection}>
                     {(!providerData?.certificates || providerData.certificates.length === 0) && (
-                      <Text style={styles.emptyText}>No tienes certificados subidos.</Text>
+                      <Text style={styles.emptyText}>No tienes certificados subidos actualmente.</Text>
                     )}
                     {providerData?.certificates?.map((cert) => (
                       <View key={cert.id} style={styles.certCard}>
-                        <Icon name="FileText" size={24} color={TOKENS.colors.brand500} />
+                        <View style={styles.certIconCircle}>
+                          <Icon name="FileCheck" size={18} color={TOKENS.colors.brand500} />
+                        </View>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.certTitle}>{cert.title}</Text>
-                          <Text style={styles.certStatus}>{cert.verified ? 'Validado' : 'Pendiente'}</Text>
+                          <Text style={styles.certStatus}>{cert.verified ? 'Validado por TratoFácil' : 'Pendiente de validación'}</Text>
                         </View>
                         <Badge label={cert.verified ? 'ACTIVO' : 'PENDIENTE'} tone={cert.verified ? 'success' : 'neutral'} />
                       </View>
@@ -336,11 +376,11 @@ export const MyProfileScreen: React.FC = () => {
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
-                      <Icon name="Phone" size={24} color={TOKENS.colors.brand500} />
+                      <Icon name="Phone" size={20} color={TOKENS.colors.brand500} />
                     </View>
-                    <View>
-                      <Text style={styles.cardTitle}>Información de Contacto</Text>
-                      <Text style={styles.cardSubtitle}>Datos para la comunicación directa.</Text>
+                    <View style={styles.cardHeaderText}>
+                      <Text style={styles.cardTitle}>Datos de Contacto</Text>
+                      <Text style={styles.cardSubtitle}>Datos directos para avisos y soporte.</Text>
                     </View>
                   </View>
                   <View style={styles.formSection}>
@@ -364,15 +404,15 @@ export const MyProfileScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  scrollBody: { padding: TOKENS.spacing.lg },
+  scrollBody: { padding: TOKENS.spacing.md },
   
   // Guest
   guestContainer: { flex: 1, padding: TOKENS.spacing.xl },
   guestHeader: { alignItems: 'center', marginBottom: TOKENS.spacing.xl, marginTop: TOKENS.spacing.xl },
-  guestIconBox: { width: 96, height: 96, borderRadius: 48, backgroundColor: TOKENS.colors.brand50, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.md },
-  guestTitle: { fontSize: TOKENS.typography.sizes.xxxl, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 8 },
+  guestIconBox: { width: 88, height: 88, borderRadius: 44, backgroundColor: TOKENS.colors.brand50, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.md },
+  guestTitle: { fontSize: TOKENS.typography.sizes.xxl, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 8 },
   guestSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', lineHeight: 22 },
-  guestFeatures: { gap: TOKENS.spacing.lg, marginBottom: TOKENS.spacing.xxl, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.xl, borderRadius: 24, borderWidth: 1, borderColor: TOKENS.colors.surface200, ...TOKENS.shadows.soft },
+  guestFeatures: { gap: TOKENS.spacing.md, marginBottom: TOKENS.spacing.xl, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.lg, borderRadius: 20, borderWidth: 1, borderColor: TOKENS.colors.surface200, ...TOKENS.shadows.soft },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   featureText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.semibold, color: TOKENS.colors.textMain },
   guestActions: { gap: 12, marginTop: 'auto' },
@@ -380,9 +420,9 @@ const styles = StyleSheet.create({
   // Hero Section
   heroBox: {
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 24,
-    padding: TOKENS.spacing.xl,
-    marginBottom: TOKENS.spacing.lg,
+    borderRadius: 20,
+    padding: TOKENS.spacing.lg,
+    marginBottom: TOKENS.spacing.md,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     ...TOKENS.shadows.soft,
@@ -390,20 +430,20 @@ const styles = StyleSheet.create({
   heroContent: {
     flexDirection: 'column',
     alignItems: 'center',
-    gap: TOKENS.spacing.lg,
+    gap: 12,
   },
   avatarWrapper: {
     position: 'relative',
-    width: 100,
-    height: 100,
+    width: 88,
+    height: 88,
   },
   avatarEditBtn: {
     position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: -2,
+    right: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
@@ -415,11 +455,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heroTitle: {
-    fontSize: TOKENS.typography.sizes.xxl,
-    fontWeight: TOKENS.typography.weights.black,
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.textMain,
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   heroBadges: {
     flexDirection: 'row',
@@ -431,113 +472,146 @@ const styles = StyleSheet.create({
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
+    gap: 5,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
   },
-  statusApproved: { backgroundColor: '#d1fae5', borderColor: '#a7f3d0' }, // emerald-100/200
-  statusApprovedText: { fontSize: 12, fontWeight: '700', color: '#047857' }, // emerald-700
-  statusFailed: { backgroundColor: '#fee2e2', borderColor: '#fecaca' }, // red-100/200
-  statusFailedText: { fontSize: 12, fontWeight: '700', color: '#b91c1c' }, // red-700
-  statusPending: { backgroundColor: '#fef3c7', borderColor: '#fde68a' }, // amber-100/200
-  statusPendingText: { fontSize: 12, fontWeight: '700', color: '#b45309' }, // amber-700
+  statusApproved: { backgroundColor: '#ecfdf5', borderColor: '#a7f3d0' },
+  statusApprovedText: { fontSize: 11, fontWeight: '700', color: '#047857' },
+  statusFailed: { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+  statusFailedText: { fontSize: 11, fontWeight: '700', color: '#b91c1c' },
+  statusPending: { backgroundColor: '#fffbeb', borderColor: '#fde68a' },
+  statusPendingText: { fontSize: 11, fontWeight: '700', color: '#b45309' },
   statusNeutral: { backgroundColor: TOKENS.colors.surface100, borderColor: TOKENS.colors.surface200 },
-  statusNeutralText: { fontSize: 12, fontWeight: '700', color: TOKENS.colors.textSubtle },
+  statusNeutralText: { fontSize: 11, fontWeight: '700', color: TOKENS.colors.textSubtle },
 
   locationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   locationText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     color: TOKENS.colors.textSubtle,
   },
 
-  // Tabs
-  tabsWrapper: {
-    marginHorizontal: -TOKENS.spacing.lg,
-    marginBottom: TOKENS.spacing.lg,
-  },
-  tabsContainer: {
-    paddingHorizontal: TOKENS.spacing.lg,
-    gap: 8,
-  },
-  providerTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  providerTabActive: {
+  // Quick Menu Card
+  menuCard: {
     backgroundColor: TOKENS.colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
+    marginBottom: TOKENS.spacing.md,
+    overflow: 'hidden',
     ...TOKENS.shadows.soft,
   },
-  providerTabText: {
-    fontSize: TOKENS.typography.sizes.sm,
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  menuIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: TOKENS.colors.surface100,
+    marginLeft: 64,
+  },
+
+  // Segmented Tabs
+  tabsSegmented: {
+    flexDirection: 'row',
+    backgroundColor: TOKENS.colors.surface200,
+    padding: 4,
+    borderRadius: 14,
+    marginBottom: TOKENS.spacing.md,
+    gap: 4,
+  },
+  segmentedTabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  segmentedTabBtnActive: {
+    backgroundColor: TOKENS.colors.white,
+    ...TOKENS.shadows.soft,
+  },
+  segmentedTabText: {
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.textSubtle,
   },
-  providerTabTextActive: {
-    color: TOKENS.colors.brand500,
+  segmentedTabTextActive: {
+    color: TOKENS.colors.dark900,
   },
 
   // Card & Forms
   cardBox: {
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 24,
-    padding: TOKENS.spacing.xl,
+    borderRadius: 20,
+    padding: TOKENS.spacing.lg,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     ...TOKENS.shadows.soft,
-    marginBottom: TOKENS.spacing.lg,
+    marginBottom: TOKENS.spacing.md,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: TOKENS.spacing.md,
-    marginBottom: TOKENS.spacing.xl,
-    paddingBottom: TOKENS.spacing.md,
+    gap: 12,
+    marginBottom: TOKENS.spacing.lg,
+    paddingBottom: TOKENS.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: TOKENS.colors.surface100,
   },
   cardIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: TOKENS.colors.brand50,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardHeaderText: {
+    flex: 1,
+  },
   cardTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.black,
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.textMain,
   },
   cardSubtitle: {
-    fontSize: TOKENS.typography.sizes.sm,
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.medium,
     color: TOKENS.colors.textSubtle,
+    marginTop: 1,
   },
   formSection: {
-    gap: TOKENS.spacing.lg,
-    marginBottom: TOKENS.spacing.xl,
+    gap: TOKENS.spacing.md,
+    marginBottom: TOKENS.spacing.lg,
   },
   saveBtn: {
     width: '100%',
-    borderRadius: 12,
-    shadowColor: TOKENS.colors.brand500,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
   },
   fullWidthBtn: {
     width: '100%',
@@ -545,22 +619,32 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: TOKENS.colors.surface200,
-    marginVertical: TOKENS.spacing.lg,
+    marginVertical: TOKENS.spacing.md,
   },
   
   emptyText: {
     color: TOKENS.colors.textSubtle,
     fontStyle: 'italic',
     textAlign: 'center',
-    marginVertical: TOKENS.spacing.lg,
+    marginVertical: TOKENS.spacing.md,
   },
   certCard: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: TOKENS.spacing.md,
     backgroundColor: TOKENS.colors.surface50,
-    borderRadius: 12,
+    borderRadius: 14,
     gap: 12,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  certIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
   },
@@ -570,7 +654,7 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textMain,
   },
   certStatus: {
-    fontSize: TOKENS.typography.sizes.xs,
+    fontSize: 11,
     color: TOKENS.colors.textSubtle,
     marginTop: 2,
   },

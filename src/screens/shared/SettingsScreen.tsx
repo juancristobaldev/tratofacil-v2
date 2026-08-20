@@ -1,10 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Switch, RefreshControl, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Switch, RefreshControl, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TOKENS } from '../../theme';
-import { Card, Button } from '../../components';
+import { Card, Button, Icon } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
@@ -16,7 +16,7 @@ export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { setIsRefreshing } = useRefresh();
-  const { logout, refetch: refetchAuth } = useAuth();
+  const { user, logout, refetch: refetchAuth } = useAuth();
   const { role } = useRole();
   const isProvider = role === 'provider';
   const { isRealtimeActive, toggleAvailability } = useRealtime();
@@ -89,65 +89,203 @@ export const SettingsScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[
+          styles.scrollBody,
+          { paddingBottom: insets.bottom + 40 },
+        ]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={TOKENS.colors.brand500}
+          />
+        }
       >
-        <Card style={styles.sectionCard} padded={false}>
-          <View style={styles.sectionHeader}><Text style={styles.sectionLabel}>NOTIFICACIONES</Text></View>
+        {/* Account Info & Preferences Card */}
+        <View style={styles.settingsCard}>
+          {user?.email && (
+            <View style={styles.accountHeader}>
+              <Text style={styles.accountHeaderLabel}>Cuenta</Text>
+              <Text style={styles.accountHeaderEmail}>{user.email}</Text>
+            </View>
+          )}
+
           <View style={styles.settingRow}>
             <View style={styles.settingTextCol}>
-              <Text style={styles.settingLabel}>Notificaciones Push</Text>
-              <Text style={styles.settingDesc}>Recibir alertas de solicitudes y mensajes</Text>
+              <Text style={styles.settingRowLabel}>Notificaciones Push</Text>
+              <Text style={styles.settingDesc}>
+                Alertas de solicitudes y mensajes
+              </Text>
             </View>
             <Switch
               value={notifications}
               onValueChange={handleTogglePush}
               disabled={!settingsLoaded}
-              trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
-              thumbColor={notifications ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
+              trackColor={{
+                false: TOKENS.colors.surface300,
+                true: TOKENS.colors.brand500,
+              }}
+              thumbColor={TOKENS.colors.white}
             />
           </View>
-        </Card>
 
-        {isProvider && (
-          <Card style={styles.sectionCard} padded={false}>
-            <View style={styles.sectionHeader}><Text style={styles.sectionLabel}>PRIVACIDAD</Text></View>
-            <View style={styles.settingRow}>
+          {isProvider && (
+            <View style={[styles.settingRow, styles.settingRowLast]}>
               <View style={styles.settingTextCol}>
-                <Text style={styles.settingLabel}>Disponible en el mapa</Text>
+                <Text style={styles.settingRowLabel}>Disponible en el mapa</Text>
                 <Text style={styles.settingDesc}>
-                  {isRealtimeActive ? 'Visible para clientes cercanos' : 'Oculto para clientes'}
+                  {isRealtimeActive
+                    ? 'Visible para clientes cercanos'
+                    : 'Oculto para clientes'}
                 </Text>
               </View>
               <Switch
                 value={isRealtimeActive}
                 onValueChange={handleToggleAvailability}
-                trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
-                thumbColor={isRealtimeActive ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
+                trackColor={{
+                  false: TOKENS.colors.surface300,
+                  true: TOKENS.colors.brand500,
+                }}
+                thumbColor={TOKENS.colors.white}
               />
             </View>
-          </Card>
-        )}
-
-        <View style={styles.actionsBox}>
-          <Button title="Cerrar Sesión" variant="outline" icon="LogOut" onPress={handleLogout} style={styles.logoutBtn} />
+          )}
         </View>
+
+        {/* App Info Banner */}
+        <View style={styles.infoBanner}>
+          <Icon name="Info" size={20} color="#2563eb" />
+          <View style={styles.infoBannerContent}>
+            <Text style={styles.infoBannerTitle}>TratoFacil.cl v1.0.0</Text>
+            <Text style={styles.infoBannerDesc}>
+              La plataforma que conecta clientes con profesionales verificados.
+            </Text>
+          </View>
+        </View>
+
+        {/* Logout Button matching ui-kit.html */}
+        <TouchableOpacity
+          style={styles.logoutDangerBtn}
+          onPress={handleLogout}
+          activeOpacity={0.8}
+        >
+          <Icon name="LogOut" size={18} color="#dc2626" />
+          <Text style={styles.logoutDangerText}>Cerrar sesión</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
-  sectionCard: { backgroundColor: TOKENS.colors.white },
-  sectionHeader: { paddingHorizontal: TOKENS.spacing.md, paddingTop: TOKENS.spacing.md },
-  sectionLabel: { fontSize: TOKENS.typography.sizes.xxs, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: TOKENS.spacing.md },
-  settingTextCol: { flex: 1, marginRight: TOKENS.spacing.md },
-  settingLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  settingDesc: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.textSubtle, marginTop: 2 },
-  actionsBox: { marginTop: TOKENS.spacing.sm },
-  logoutBtn: { width: '100%' },
+  container: {
+    flex: 1,
+    backgroundColor: TOKENS.colors.surface50,
+  },
+  scrollBody: {
+    padding: TOKENS.spacing.md,
+    gap: TOKENS.spacing.md,
+  },
+
+  // Settings Card
+  settingsCard: {
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    overflow: 'hidden',
+    ...TOKENS.shadows.soft,
+  },
+  accountHeader: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: TOKENS.colors.surface100,
+  },
+  accountHeaderLabel: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  accountHeaderEmail: {
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: TOKENS.colors.surface100,
+  },
+  settingRowLast: {
+    borderBottomWidth: 0,
+  },
+  settingRowLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: TOKENS.colors.dark900,
+  },
+  settingRowValue: {
+    fontSize: 13,
+    color: TOKENS.colors.textSubtle,
+  },
+  settingTextCol: {
+    flex: 1,
+    marginRight: TOKENS.spacing.md,
+  },
+  settingDesc: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+  },
+
+  // Info Banner
+  infoBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#eff6ff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    gap: 12,
+  },
+  infoBannerContent: {
+    flex: 1,
+  },
+  infoBannerTitle: {
+    fontSize: 13,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#1e3a8a',
+  },
+  infoBannerDesc: {
+    fontSize: 12,
+    color: '#1d4ed8',
+    marginTop: 2,
+    lineHeight: 18,
+  },
+
+  // Logout Danger Button
+  logoutDangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fef2f2',
+    borderRadius: 16,
+    height: 52,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+    gap: 8,
+  },
+  logoutDangerText: {
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#dc2626',
+  },
 });

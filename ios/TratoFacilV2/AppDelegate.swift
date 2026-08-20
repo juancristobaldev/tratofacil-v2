@@ -2,7 +2,6 @@ import UIKit
 import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
-import GoogleMaps
 import UserNotifications
 
 @main
@@ -19,8 +18,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
-
-    GMSServices.provideAPIKey("AIzaSyD7ErAxf6bmJ2Xl4st4pPL_yWp4tUHTqFc")
 
     UNUserNotificationCenter.current().delegate = self
     registerNotificationCategories()
@@ -44,7 +41,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
     let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
-    PushTokenModule.setToken(token)
+    NotificationCenter.default.post(name: NSNotification.Name("PushTokenRefreshed"), object: token)
     UserDefaults.standard.set(token, forKey: "apns_device_token")
   }
 
@@ -101,7 +98,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         "title": response.notification.request.content.title,
         "body": response.notification.request.content.body,
       ]
-      PushTokenModule.handlePushAction(actionId, userInfo: payload)
+      NotificationCenter.default.post(name: NSNotification.Name("PushActionReceived"), object: [
+        "action": actionId,
+        "data": payload,
+      ])
     } else if actionId == UNNotificationDefaultActionIdentifier {
       let payload: [String: Any] = [
         "type": userInfo["type"] as? String ?? "",

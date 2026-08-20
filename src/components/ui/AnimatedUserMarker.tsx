@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import { Marker, Circle } from 'react-native-maps';
+import { useIsFocused } from '@react-navigation/native';
 import { TOKENS, MOTION } from '../../theme';
 
 const AnimatedMapCircle = Animated.createAnimatedComponent(Circle);
@@ -14,6 +15,7 @@ interface AnimatedUserMarkerProps {
 }
 
 export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordinate, onPress }) => {
+  const isFocused = useIsFocused();
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const progress1 = useRef(new Animated.Value(0)).current;
   const progress2 = useRef(new Animated.Value(0)).current;
@@ -26,7 +28,7 @@ export const AnimatedUserMarker: React.FC<AnimatedUserMarkerProps> = ({ coordina
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [coordinate.latitude, coordinate.longitude]);
+  }, [isFocused, coordinate.latitude, coordinate.longitude]);
 
   useEffect(() => {
     const createAnimation = (value: Animated.Value) =>

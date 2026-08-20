@@ -1,9 +1,9 @@
 import React from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Linking, Animated, Dimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin } from '../../components/ui';
+import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin, AnimatedPolyline } from '../../components/ui';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
@@ -16,7 +16,7 @@ export const FocusModeProviderScreen: React.FC = () => {
   const session = useFocusSession('provider');
   const { activeOrder, orderState, providerCoords, clientCoords, routeCoords, showChat, setShowChat, realtime } = session;
 
-  const polylineCoords = routeCoords.length > 0 ? routeCoords : (clientCoords && providerCoords ? [providerCoords, clientCoords] : []);
+  const polylineCoords = routeCoords;
 
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
 
@@ -45,12 +45,11 @@ export const FocusModeProviderScreen: React.FC = () => {
 
           {providerCoords && <AnimatedUserMarker coordinate={providerCoords} />}
 
-          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && polylineCoords.length > 0 && (
-            <Polyline
+          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && polylineCoords.length >= 2 && (
+            <AnimatedPolyline
               coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
               strokeWidth={4}
-              lineDashPattern={[6, 3]}
             />
           )}
         </MapView>

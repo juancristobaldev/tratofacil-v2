@@ -149,58 +149,119 @@ export const PlansScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
         >
-          <Text style={styles.intro}>Elige el plan que mejor se adapte a tu negocio y comienza a recibir más solicitudes.</Text>
+          <Text style={styles.intro}>Elige el plan que mejor se adapte a tu negocio</Text>
 
-          <View style={styles.intervalRow}>
-            {(['MONTHLY', 'YEARLY'] as const).map((it) => (
+          {/* Segmented Pill selector matching ui-kit.html */}
+          <View style={styles.intervalCenterWrapper}>
+            <View style={styles.intervalPillContainer}>
               <TouchableOpacity
-                key={it}
-                style={[styles.intervalBtn, interval === it && styles.intervalBtnActive]}
-                onPress={() => setInterval(it)}
+                style={[
+                  styles.intervalPillBtn,
+                  interval === 'MONTHLY' && styles.intervalPillBtnActive,
+                ]}
+                onPress={() => setInterval('MONTHLY')}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.intervalText, interval === it && styles.intervalTextActive]}>
-                  {it === 'MONTHLY' ? 'Mensual' : 'Anual'}
+                <Text
+                  style={[
+                    styles.intervalPillText,
+                    interval === 'MONTHLY' && styles.intervalPillTextActive,
+                  ]}
+                >
+                  Mensual
                 </Text>
               </TouchableOpacity>
-            ))}
+              <TouchableOpacity
+                style={[
+                  styles.intervalPillBtn,
+                  interval === 'YEARLY' && styles.intervalPillBtnActive,
+                ]}
+                onPress={() => setInterval('YEARLY')}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    styles.intervalPillText,
+                    interval === 'YEARLY' && styles.intervalPillTextActive,
+                  ]}
+                >
+                  Anual{' '}
+                  <Text style={styles.discountBadgeText}>-20%</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {PLANS.map((plan) => {
-            const isCurrent = plan.planEnum === currentPlan;
-            const price = interval === 'MONTHLY' ? plan.monthly : plan.yearly;
-            return (
-              <Card key={plan.id} style={[styles.planCard, plan.recommended && styles.planCardRecommended]} padded={true}>
-                {plan.recommended && <Badge label="RECOMENDADO" tone="brand" size="sm" style={{ alignSelf: 'flex-start', marginBottom: 8 }} />}
-                <View style={styles.planHeader}>
-                  <Text style={styles.planName}>{plan.name}</Text>
-                </View>
-                <Text style={styles.planPrice}>
-                  {price === 0 ? 'Gratis' : `$${fmt(price)} / ${interval === 'MONTHLY' ? 'mes' : 'año'}`}
-                </Text>
-                <Text style={styles.planCommission}>Comisión: {plan.commission}</Text>
-                <View style={styles.planDivider} />
-                {plan.features.map((feat, idx) => (
-                  <View key={idx} style={styles.featureRow}>
-                    <Icon name="Check" size={14} color={TOKENS.colors.statusSuccess} />
-                    <Text style={styles.featureText}>{feat}</Text>
-                  </View>
-                ))}
-                {isCurrent && currentPlanActive ? (
-                  <Button title="Plan Actual" variant="white" disabled onPress={() => {}} style={styles.subscribeBtn} />
-                ) : (
-                  <Button
-                    title={loading ? 'Procesando...' : 'Suscribirse'}
-                    onPress={() => handleSubscribe(plan)}
-                    variant={plan.recommended ? 'primary' : 'outline'}
-                    style={styles.subscribeBtn}
-                    disabled={loading}
-                  />
-                )}
-              </Card>
-            );
-          })}
+          {/* Plan Cards */}
+          <View style={styles.plansList}>
+            {PLANS.map((plan) => {
+              const isCurrent = plan.planEnum === currentPlan;
+              const price = interval === 'MONTHLY' ? plan.monthly : plan.yearly;
+              const isPro = plan.recommended;
 
+              return (
+                <View
+                  key={plan.id}
+                  style={[
+                    styles.planCard,
+                    isPro && styles.planCardPro,
+                  ]}
+                >
+                  {isPro && (
+                    <View style={styles.popularBadge}>
+                      <Text style={styles.popularBadgeText}>MÁS POPULAR</Text>
+                    </View>
+                  )}
+
+                  <Text style={styles.planName}>{plan.name}</Text>
+
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceAmount}>
+                      {price === 0 ? '$0' : `$${fmt(price)}`}
+                    </Text>
+                    <Text style={styles.pricePeriod}>
+                      {interval === 'MONTHLY' ? '/mes' : '/año'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.featuresBox}>
+                    <View style={styles.featureRow}>
+                      <Icon name="Check" size={14} color="#16A34A" />
+                      <Text style={styles.featureTextCommission}>
+                        Comisión {plan.commission}
+                      </Text>
+                    </View>
+                    {plan.features.map((feat, idx) => (
+                      <View key={idx} style={styles.featureRow}>
+                        <Icon name="Check" size={14} color="#16A34A" />
+                        <Text style={styles.featureText}>{feat}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {isCurrent && currentPlanActive ? (
+                    <TouchableOpacity
+                      style={styles.currentPlanBtn}
+                      disabled
+                      activeOpacity={1}
+                    >
+                      <Text style={styles.currentPlanBtnText}>Plan actual</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Button
+                      title={loading ? 'Procesando...' : 'Suscribirse'}
+                      onPress={() => handleSubscribe(plan)}
+                      variant={isPro ? 'primary' : 'outline'}
+                      style={styles.subscribeBtn}
+                      disabled={loading}
+                    />
+                  )}
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Active Subscription Management Card */}
           {subscriptionFlowId && (
             <View style={styles.subscriptionCard}>
               <View style={styles.subsHeader}>
@@ -217,10 +278,20 @@ export const PlansScreen: React.FC = () => {
                 </Text>
               )}
               {currentPlanActive ? (
-                <Button title="Cancelar Suscripción" variant="outline" onPress={handleCancel} style={styles.subsBtn} />
+                <Button
+                  title="Cancelar Suscripción"
+                  variant="outline"
+                  onPress={handleCancel}
+                  style={styles.subsBtn}
+                />
               ) : (
                 !isPlanEnded && (
-                  <Button title="Reactivar Suscripción" variant="outline" onPress={handleReactivate} style={styles.subsBtn} />
+                  <Button
+                    title="Reactivar Suscripción"
+                    variant="outline"
+                    onPress={handleReactivate}
+                    style={styles.subsBtn}
+                  />
                 )
               )}
             </View>
@@ -232,28 +303,186 @@ export const PlansScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
-  scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
-  intro: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, lineHeight: 18, marginBottom: 4 },
-  intervalRow: { flexDirection: 'row', backgroundColor: TOKENS.colors.surface50, borderRadius: 12, padding: 4, marginBottom: TOKENS.spacing.sm, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
-  intervalBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  intervalBtnActive: { backgroundColor: TOKENS.colors.brand500 },
-  intervalText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
-  intervalTextActive: { color: TOKENS.colors.white },
-  planCard: { backgroundColor: TOKENS.colors.white },
-  planCardRecommended: { borderColor: TOKENS.colors.brand500, borderWidth: 2 },
-  planHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  planName: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
-  planPrice: { fontSize: TOKENS.typography.sizes.xl, fontWeight: TOKENS.typography.weights.black, color: TOKENS.colors.brand600, marginTop: 8 },
-  planCommission: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.brand500, fontWeight: 'bold', marginTop: 6 },
-  planDivider: { height: 1, backgroundColor: TOKENS.colors.surface100, marginVertical: 10 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  featureText: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textMain, fontWeight: '500' },
-  subscribeBtn: { marginTop: 12 },
-  subscriptionCard: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.lg, borderWidth: 1, borderColor: TOKENS.colors.surface200, marginTop: TOKENS.spacing.sm },
-  subsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  subsTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
-  subsStatus: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.semibold },
-  subsEnds: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, marginTop: 4 },
-  subsBtn: { marginTop: TOKENS.spacing.md },
+  container: {
+    flex: 1,
+    backgroundColor: TOKENS.colors.surface50,
+  },
+  scrollBody: {
+    padding: TOKENS.spacing.md,
+    gap: TOKENS.spacing.md,
+  },
+  intro: {
+    fontSize: 13,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+
+  // Segmented Pill
+  intervalCenterWrapper: {
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  intervalPillContainer: {
+    flexDirection: 'row',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 24,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    ...TOKENS.shadows.soft,
+  },
+  intervalPillBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  intervalPillBtnActive: {
+    backgroundColor: TOKENS.colors.dark900,
+  },
+  intervalPillText: {
+    fontSize: 12,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+  },
+  intervalPillTextActive: {
+    color: TOKENS.colors.white,
+  },
+  discountBadgeText: {
+    color: '#16A34A',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  // Plan Cards
+  plansList: {
+    gap: TOKENS.spacing.md,
+  },
+  planCard: {
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    ...TOKENS.shadows.soft,
+    position: 'relative',
+  },
+  planCardPro: {
+    borderColor: TOKENS.colors.brand500,
+    borderWidth: 2,
+  },
+  popularBadge: {
+    position: 'absolute',
+    top: -12,
+    alignSelf: 'center',
+    backgroundColor: TOKENS.colors.brand500,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  popularBadgeText: {
+    color: TOKENS.colors.white,
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    letterSpacing: 0.5,
+  },
+  planName: {
+    fontSize: 16,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.dark900,
+    marginBottom: 4,
+    marginTop: 2,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginBottom: 14,
+  },
+  priceAmount: {
+    fontSize: 28,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.dark900,
+    letterSpacing: -0.5,
+  },
+  pricePeriod: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: '500',
+  },
+  featuresBox: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featureText: {
+    fontSize: 13,
+    color: TOKENS.colors.textMain,
+    fontWeight: '500',
+  },
+  featureTextCommission: {
+    fontSize: 13,
+    color: TOKENS.colors.textMain,
+    fontWeight: '700',
+  },
+  subscribeBtn: {
+    borderRadius: 14,
+    height: 48,
+  },
+  currentPlanBtn: {
+    height: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    backgroundColor: TOKENS.colors.surface50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentPlanBtnText: {
+    fontSize: 13,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+  },
+
+  // Subscription Card
+  subscriptionCard: {
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginTop: 4,
+    ...TOKENS.shadows.soft,
+  },
+  subsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  subsTitle: {
+    fontSize: 15,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.dark900,
+  },
+  subsStatus: {
+    fontSize: 13,
+    color: TOKENS.colors.textMain,
+    fontWeight: TOKENS.typography.weights.semibold,
+  },
+  subsEnds: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 4,
+  },
+  subsBtn: {
+    marginTop: 12,
+    borderRadius: 14,
+  },
 });

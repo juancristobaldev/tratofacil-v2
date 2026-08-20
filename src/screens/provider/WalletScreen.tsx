@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, FlatList, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { StyleSheet, View, Text, FlatList, ActivityIndicator, Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Modal, EmptyState } from '../../components';
+import { Icon, Button, Modal, EmptyState } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
@@ -55,13 +55,17 @@ export const WalletScreen: React.FC = () => {
   const renderItem = ({ item }: { item: any }) => {
     const isIncome = item.type === 'EARNING';
     return (
-      <View style={styles.transactionRow}>
+      <View style={styles.transactionCard}>
         <View style={[styles.txIconCircle, isIncome ? styles.txIconIncome : styles.txIconWithdraw]}>
-          <Icon name={isIncome ? 'Plus' : 'Minus'} size={14} color={isIncome ? TOKENS.colors.statusSuccess : TOKENS.colors.statusError} />
+          <Icon
+            name={isIncome ? 'ArrowDownLeft' : 'ArrowUpRight'}
+            size={16}
+            color={isIncome ? TOKENS.colors.statusSuccess : TOKENS.colors.statusError}
+          />
         </View>
         <View style={styles.txInfo}>
-          <Text style={styles.txTitle}>{item.description || 'Transacción'}</Text>
-          <Text style={styles.txDate}>{new Date(item.createdAt).toLocaleDateString('es-CL')}</Text>
+          <Text style={styles.txTitle} numberOfLines={1}>{item.description || 'Transacción'}</Text>
+          <Text style={styles.txDate}>{new Date(item.createdAt).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
         </View>
         <Text style={[styles.txAmount, isIncome ? styles.txAmtIncome : styles.txAmtWithdraw]}>
           {isIncome ? '+' : '-'}${Math.abs(item.amount).toLocaleString('es-CL')}
@@ -77,24 +81,38 @@ export const WalletScreen: React.FC = () => {
           data={transactions}
           renderItem={renderItem}
           keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}
+          contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + TOKENS.spacing.xl }]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
           ListHeaderComponent={
             <>
-              <Card style={styles.balanceCard} padded={true}>
-                <Text style={styles.balanceLabel}>Saldo disponible</Text>
-                <Text style={styles.balanceVal}>${balance.toLocaleString('es-CL')}</Text>
-                <Button
-                  title="Retirar dinero"
-                  onPress={() => setModalVisible(true)}
-                  variant="secondary"
-                  icon="ArrowDownCircle"
-                  style={styles.withdrawBtn}
-                  disabled={balance <= 0}
-                />
-              </Card>
-              <Text style={styles.sectionTitle}>Historial de transacciones</Text>
+              {/* Dark Hero Balance Card */}
+              <View style={styles.heroBalanceCard}>
+                <View style={styles.glowDecor} pointerEvents="none" />
+                <Text style={styles.heroLabel}>Saldo disponible</Text>
+                <Text style={styles.heroAmount}>${balance.toLocaleString('es-CL')}</Text>
+                <View style={styles.heroActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.heroWithdrawBtn, balance <= 0 && styles.heroBtnDisabled]}
+                    onPress={() => setModalVisible(true)}
+                    activeOpacity={0.9}
+                    disabled={balance <= 0}
+                  >
+                    <Icon name="ArrowDownCircle" size={16} color={TOKENS.colors.white} />
+                    <Text style={styles.heroWithdrawBtnText}>Retirar dinero</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.heroRefreshBtn}
+                    onPress={onRefresh}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="RotateCcw" size={16} color={TOKENS.colors.white} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <Text style={styles.sectionTitle}>Historial de Movimientos</Text>
             </>
           }
           ListEmptyComponent={
@@ -104,7 +122,7 @@ export const WalletScreen: React.FC = () => {
 
         <Modal visible={modalVisible} onClose={() => setModalVisible(false)}>
           <Text style={styles.modalTitle}>Retirar Fondos</Text>
-          <Text style={styles.modalSub}>Se transferirá el saldo total disponible a tu cuenta bancaria registrada.</Text>
+          <Text style={styles.modalSub}>Se transferirá el saldo disponible a tu cuenta bancaria registrada.</Text>
           <View style={styles.modalForm}>
             <View style={styles.balanceBox}>
               <Text style={styles.balanceBoxLabel}>Saldo a retirar</Text>
@@ -135,33 +153,214 @@ export const WalletScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white, gap: 12 },
-  loadingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle },
+  loadingText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, fontWeight: TOKENS.typography.weights.medium },
   listContent: { padding: TOKENS.spacing.md },
-  balanceCard: { backgroundColor: TOKENS.colors.brand50, borderColor: TOKENS.colors.brand100, alignItems: 'center', paddingVertical: 24, marginBottom: TOKENS.spacing.lg },
-  balanceLabel: { fontSize: 10, color: TOKENS.colors.brand600, fontWeight: 'bold', textTransform: 'uppercase' },
-  balanceVal: { fontSize: 36, fontWeight: TOKENS.typography.weights.black, color: TOKENS.colors.textMain, marginTop: 6 },
-  withdrawBtn: { width: 180, height: 44, marginTop: 16 },
-  sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
-  transactionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
-  txIconCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  txIconIncome: { backgroundColor: 'rgba(16, 185, 129, 0.08)' },
-  txIconWithdraw: { backgroundColor: 'rgba(239, 68, 68, 0.08)' },
-  txInfo: { flex: 1, marginLeft: 12 },
-  txTitle: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  txDate: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.textMuted, marginTop: 2 },
-  txAmount: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.black },
-  txAmtIncome: { color: TOKENS.colors.statusSuccess },
-  txAmtWithdraw: { color: TOKENS.colors.statusError },
-  modalTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, textAlign: 'center', marginBottom: 4 },
-  modalSub: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.textSubtle, textAlign: 'center', lineHeight: 14, marginBottom: TOKENS.spacing.md },
-  modalForm: { gap: TOKENS.spacing.sm, marginBottom: TOKENS.spacing.md },
-  balanceBox: { backgroundColor: TOKENS.colors.surface50, borderRadius: 12, padding: TOKENS.spacing.md, alignItems: 'center', borderWidth: 1, borderColor: TOKENS.colors.surface200 },
-  balanceBoxLabel: { fontSize: TOKENS.typography.sizes.xxs, color: TOKENS.colors.textSubtle, marginBottom: 4 },
-  balanceBoxValue: { fontSize: TOKENS.typography.sizes.xxl, fontWeight: TOKENS.typography.weights.black, color: TOKENS.colors.brand500 },
-  modalConfirmBtn: { width: '100%' },
-  successContainer: { alignItems: 'center', paddingVertical: 12 },
-  successIconCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: TOKENS.colors.statusSuccess, alignItems: 'center', justifyContent: 'center', marginBottom: 12, ...TOKENS.shadows.soft },
-  successTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: 4 },
-  successSub: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, textAlign: 'center', lineHeight: 18, marginBottom: TOKENS.spacing.lg },
-  successBtn: { width: '100%' },
+
+  // Dark Hero Card
+  heroBalanceCard: {
+    backgroundColor: TOKENS.colors.dark900,
+    borderRadius: 24,
+    padding: TOKENS.spacing.xl,
+    marginBottom: TOKENS.spacing.xl,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    ...TOKENS.shadows.floating,
+  },
+  glowDecor: {
+    position: 'absolute',
+    top: -40,
+    right: -20,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(230, 0, 126, 0.25)',
+  },
+  heroLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: TOKENS.typography.weights.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 6,
+  },
+  heroAmount: {
+    fontSize: 38,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.white,
+    letterSpacing: -1,
+    marginBottom: 20,
+  },
+  heroActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroWithdrawBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: TOKENS.colors.brand500,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    ...TOKENS.shadows.soft,
+  },
+  heroBtnDisabled: {
+    opacity: 0.5,
+  },
+  heroWithdrawBtnText: {
+    color: TOKENS.colors.white,
+    fontSize: 13,
+    fontWeight: TOKENS.typography.weights.bold,
+  },
+  heroRefreshBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+
+  // Section Header
+  sectionTitle: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.textMain,
+    marginBottom: TOKENS.spacing.md,
+    letterSpacing: -0.2,
+  },
+
+  // Transaction Cards
+  transactionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
+    padding: TOKENS.spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginBottom: TOKENS.spacing.sm,
+    ...TOKENS.shadows.soft,
+  },
+  txIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  txIconIncome: {
+    backgroundColor: '#ecfdf5',
+  },
+  txIconWithdraw: {
+    backgroundColor: '#fef2f2',
+  },
+  txInfo: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  txTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+  },
+  txDate: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 2,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  txAmount: {
+    fontSize: 15,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    letterSpacing: -0.3,
+  },
+  txAmtIncome: {
+    color: TOKENS.colors.statusSuccess,
+  },
+  txAmtWithdraw: {
+    color: TOKENS.colors.dark900,
+  },
+
+  // Modals
+  modalTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.textMain,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: TOKENS.spacing.md,
+  },
+  modalForm: {
+    gap: TOKENS.spacing.sm,
+    marginBottom: TOKENS.spacing.md,
+  },
+  balanceBox: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderRadius: 16,
+    padding: TOKENS.spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  balanceBoxLabel: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  balanceBoxValue: {
+    fontSize: 28,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand500,
+    letterSpacing: -0.5,
+  },
+  modalConfirmBtn: {
+    width: '100%',
+  },
+  successContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  successIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: TOKENS.colors.statusSuccess,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    ...TOKENS.shadows.soft,
+  },
+  successTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.textMain,
+    marginBottom: 6,
+  },
+  successSub: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: TOKENS.spacing.lg,
+  },
+  successBtn: {
+    width: '100%',
+  },
 });

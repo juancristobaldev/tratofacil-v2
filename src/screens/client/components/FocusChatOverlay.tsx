@@ -38,8 +38,10 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
     return () => { socket.off('chat:received', handler); };
   }, [activeOrder?.id, realtime.clientId]);
 
+  const isTerminal = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(activeOrder?.status);
+
   const handleSendMessage = () => {
-    if (!typedMessage.trim() || !activeOrder?.id) return;
+    if (isTerminal || !typedMessage.trim() || !activeOrder?.id) return;
     const text = typedMessage;
     setTypedMessage('');
     setChatMessages((prev) => [...prev, {
@@ -97,18 +99,25 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
           })}
         </ScrollView>
 
-        <View style={styles.chatInputBar}>
-          <TextInput
-            placeholder="Escribe un mensaje aquí..."
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={typedMessage}
-            onChangeText={setTypedMessage}
-            style={styles.chatInput}
-          />
-          <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn} accessibilityLabel="Enviar mensaje" accessibilityRole="button">
-            <Icon name="Send" size={18} color={TOKENS.colors.white} />
-          </TouchableOpacity>
-        </View>
+        {isTerminal ? (
+          <View style={styles.chatClosedBar}>
+            <Icon name="Lock" size={16} color={TOKENS.colors.textSubtle} />
+            <Text style={styles.chatClosedText}>Servicio finalizado • Chat cerrado</Text>
+          </View>
+        ) : (
+          <View style={styles.chatInputBar}>
+            <TextInput
+              placeholder="Escribe un mensaje aquí..."
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={typedMessage}
+              onChangeText={setTypedMessage}
+              style={styles.chatInput}
+            />
+            <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn} accessibilityLabel="Enviar mensaje" accessibilityRole="button">
+              <Icon name="Send" size={18} color={TOKENS.colors.white} />
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -215,5 +224,21 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.brand700,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  chatClosedBar: {
+    height: 56,
+    borderTopWidth: 1,
+    borderTopColor: TOKENS.colors.surface200,
+    backgroundColor: TOKENS.colors.surface50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: TOKENS.spacing.md,
+  },
+  chatClosedText: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.bold,
   },
 });

@@ -86,6 +86,36 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
     };
   }, [requestPermission]);
 
+  useEffect(() => {
+    if (permissionStatus !== 'granted') return;
+
+    let watchId: number | null = null;
+    try {
+      watchId = Geolocation.watchPosition(
+        (position) => {
+          setLocation(position);
+        },
+        (error) => {
+          console.warn('[LocationContext] Watch error:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          distanceFilter: 10,
+          interval: 5000,
+          fastestInterval: 2000,
+        }
+      );
+    } catch (err) {
+      console.warn('[LocationContext] Watch start error:', err);
+    }
+
+    return () => {
+      if (watchId != null) {
+        Geolocation.clearWatch(watchId);
+      }
+    };
+  }, [permissionStatus]);
+
   const value = useMemo(() => ({
     location,
     permissionStatus,

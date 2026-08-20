@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   innerCircle: {
     width: '100%',
     height: '100%',
-    backgroundColor: TOKENS.colors.brand500,
+    backgroundColor: '#0284C7',
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',

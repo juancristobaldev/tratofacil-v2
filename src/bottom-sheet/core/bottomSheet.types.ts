@@ -28,6 +28,10 @@ export interface ProviderPreviewItem {
   rating?: number;
   reviewsCount?: number;
   serviceName?: string;
+  lat?: number;
+  lng?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface CategoriesPayload {

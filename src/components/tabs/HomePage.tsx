@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
-import MapView, { Polyline } from 'react-native-maps';
+import MapView from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, LoadingScreen, ErrorState } from '../ui';
+import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import { isSheetAllowedForRole } from '../../bottom-sheet/core/bottomSheet.registry';
@@ -470,24 +470,42 @@ export const HomePage: React.FC = () => {
   useEffect(() => {
     const provider = selectedProvider;
     const user = location?.coords;
-    if (!provider || provider.lat == null || provider.lng == null || !user) {
+    const pLat = provider?.lat ?? provider?.latitude;
+    const pLng = provider?.lng ?? provider?.longitude;
+    if (!provider || pLat == null || pLng == null || !user) {
       setRouteCoords([]);
       return;
     }
-    let cancelled = false;
+
+    const controller = new AbortController();
+
     getDirections(
       { latitude: user.latitude, longitude: user.longitude },
-      { latitude: provider.lat, longitude: provider.lng },
+      { latitude: pLat, longitude: pLng },
+      controller.signal,
     )
       .then((result) => {
-        if (cancelled || !result) return;
-        setRouteCoords(result.coordinates);
+        if (controller.signal.aborted) return;
+        if (result && result.coordinates.length >= 2) {
+          setRouteCoords(result.coordinates);
+        } else {
+          setRouteCoords([
+            { latitude: user.latitude, longitude: user.longitude },
+            { latitude: pLat, longitude: pLng },
+          ]);
+        }
       })
       .catch(() => {
-        if (!cancelled) setRouteCoords([]);
+        if (!controller.signal.aborted) {
+          setRouteCoords([
+            { latitude: user.latitude, longitude: user.longitude },
+            { latitude: pLat, longitude: pLng },
+          ]);
+        }
       });
+
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [selectedProvider, location?.coords?.latitude, location?.coords?.longitude]);
 
@@ -883,12 +901,11 @@ export const HomePage: React.FC = () => {
             />
           );
         })}
-        {routeCoords.length > 0 && (
-          <Polyline
+        {routeCoords.length >= 2 && (
+          <AnimatedPolyline
             coordinates={routeCoords}
             strokeColor={TOKENS.colors.brand500}
             strokeWidth={4}
-            lineDashPattern={[0]}
           />
         )}
       </MapView>

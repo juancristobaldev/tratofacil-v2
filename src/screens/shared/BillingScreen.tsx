@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, ErrorState } from '../../components';
@@ -127,126 +127,224 @@ export const BillingScreen: React.FC = () => {
     );
   };
 
+  const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
+
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
       <ScrollView
         contentContainerStyle={styles.scrollBody}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
-      >
-        <Text style={styles.subtitle}>Administra tus métodos de pago y revisa tus transacciones.</Text>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Método de Pago Actual</Text>
-          {hasCard ? (
-            <View style={styles.cardBox}>
-              <View style={styles.cardHeader}>
-                <Icon name="CreditCard" size={24} color={TOKENS.colors.white} />
-                <Text style={styles.cardBrand}>{cardBrand}</Text>
-              </View>
-              <Text style={styles.cardNumber}>**** **** **** {cardLast4}</Text>
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardName}>{user?.displayName?.toUpperCase() || 'TITULAR'}</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.emptyCardBox}>
-              <Icon name="CreditCard" size={32} color={TOKENS.colors.textSubtle} />
-              <Text style={styles.emptyCardText}>No tienes tarjetas vinculadas</Text>
-            </View>
-          )}
-          <Button
-            title={hasCard ? 'Cambiar Tarjeta' : 'Vincular Tarjeta'}
-            icon="CreditCard"
-            variant={hasCard ? 'outline' : 'primary'}
-            loading={registering}
-            disabled={registering}
-            onPress={handleRegisterCard}
-            style={styles.cardBtn}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={TOKENS.colors.brand500}
           />
+        }
+      >
+        {/* Segmented Tabs matching ui-kit.html */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 0 && styles.tabBtnActive]}
+            onPress={() => setActiveTab(0)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, activeTab === 0 && styles.tabTextActive]}>
+              Tarjetas
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 1 && styles.tabBtnActive]}
+            onPress={() => setActiveTab(1)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, activeTab === 1 && styles.tabTextActive]}>
+              Suscripciones
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabBtn, activeTab === 2 && styles.tabBtnActive]}
+            onPress={() => setActiveTab(2)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, activeTab === 2 && styles.tabTextActive]}>
+              Historial
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Suscripciones</Text>
-          {renderSubscription(providerPlan, 'PROVIDER')}
-          {renderSubscription(marketplacePlan, 'MARKETPLACE')}
-          {(!providerPlan?.subscriptionFlowId && !marketplacePlan?.subscriptionFlowId) && (
-            <Text style={styles.emptyText}>Sin suscripciones activas</Text>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Últimas Transacciones</Text>
-          {payments.length === 0 ? (
-            <Text style={styles.emptyText}>Sin transacciones recientes</Text>
-          ) : (
-            <View style={styles.transactionsList}>
-              {payments.slice(0, 10).map((tx) => (
-                <View key={tx.id} style={styles.txRow}>
-                  <View style={styles.txLeft}>
-                    <View style={styles.txIcon}>
-                      <Icon name="CreditCard" size={16} color={TOKENS.colors.brand500} />
-                    </View>
-                    <View>
-                      <Text style={styles.txTitle}>{tx.description}</Text>
-                      <Text style={styles.txCategory}>{tx.type} • {new Date(tx.createdAt).toLocaleDateString('es-CL')}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.txAmount}>${Math.abs(tx.amount).toLocaleString('es-CL')}</Text>
+        {/* Tab 0: Tarjetas */}
+        {activeTab === 0 && (
+          <View style={styles.tabContent}>
+            {hasCard ? (
+              <View style={styles.creditCardBox}>
+                <View style={styles.cardHeader}>
+                  <Icon name="CreditCard" size={26} color="#CBD5E1" />
+                  <Text style={styles.cardBrand}>{cardBrand}</Text>
                 </View>
-              ))}
-            </View>
-          )}
-        </View>
+                <Text style={styles.cardNumber}>•••• •••• •••• {cardLast4}</Text>
+                <View style={styles.cardFooter}>
+                  <Text style={styles.cardName}>
+                    {user?.displayName?.toUpperCase() || 'TITULAR'}
+                  </Text>
+                  <Text style={styles.cardSecText}>VINCULADA</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.emptyCardBox}>
+                <Icon name="CreditCard" size={36} color={TOKENS.colors.textSubtle} />
+                <Text style={styles.emptyCardTitle}>No tienes tarjetas vinculadas</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Agrega una tarjeta para suscribirte o pagar servicios fácilmente.
+                </Text>
+              </View>
+            )}
+
+            <Button
+              title={hasCard ? 'Cambiar tarjeta' : 'Agregar nueva tarjeta'}
+              icon="Plus"
+              variant="primary"
+              loading={registering}
+              disabled={registering}
+              onPress={handleRegisterCard}
+              style={styles.actionBtn}
+            />
+          </View>
+        )}
+
+        {/* Tab 1: Suscripciones */}
+        {activeTab === 1 && (
+          <View style={styles.tabContent}>
+            {renderSubscription(providerPlan, 'PROVIDER')}
+            {renderSubscription(marketplacePlan, 'MARKETPLACE')}
+            {!providerPlan?.subscriptionFlowId && !marketplacePlan?.subscriptionFlowId && (
+              <View style={styles.emptyCardBox}>
+                <Icon name="Crown" size={36} color={TOKENS.colors.textSubtle} />
+                <Text style={styles.emptyCardTitle}>Sin suscripciones activas</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Explora los planes para profesionales y potencia tu visibilidad.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Tab 2: Historial */}
+        {activeTab === 2 && (
+          <View style={styles.tabContent}>
+            {payments.length === 0 ? (
+              <View style={styles.emptyCardBox}>
+                <Icon name="Clock" size={36} color={TOKENS.colors.textSubtle} />
+                <Text style={styles.emptyCardTitle}>Sin transacciones recientes</Text>
+                <Text style={styles.emptyCardSubtitle}>
+                  Tus pagos y renovaciones aparecerán aquí.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.transactionsList}>
+                {payments.map((tx) => (
+                  <View key={tx.id} style={styles.txRow}>
+                    <View style={styles.txLeft}>
+                      <View style={styles.txIcon}>
+                        <Icon name="CreditCard" size={16} color={TOKENS.colors.brand500} />
+                      </View>
+                      <View style={styles.txDetails}>
+                        <Text style={styles.txTitle}>{tx.description}</Text>
+                        <Text style={styles.txCategory}>
+                          {tx.type} • {new Date(tx.createdAt).toLocaleDateString('es-CL')}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.txAmount}>
+                      ${Math.abs(tx.amount).toLocaleString('es-CL')}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: TOKENS.colors.white },
-  scrollBody: { padding: TOKENS.spacing.lg },
-  subtitle: {
-    fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.textSubtle,
-    marginBottom: TOKENS.spacing.xl,
-    lineHeight: 20,
+  container: {
+    flex: 1,
+    backgroundColor: TOKENS.colors.surface50,
   },
-  section: {
-    marginBottom: TOKENS.spacing.xl,
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
   },
-  sectionTitle: {
-    fontSize: TOKENS.typography.sizes.md,
+  scrollBody: {
+    padding: TOKENS.spacing.md,
+    gap: TOKENS.spacing.md,
+  },
+
+  // Segmented Tabs
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    ...TOKENS.shadows.soft,
+    marginBottom: 4,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBtnActive: {
+    backgroundColor: TOKENS.colors.dark900,
+  },
+  tabText: {
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    marginBottom: TOKENS.spacing.md,
+    color: TOKENS.colors.textSubtle,
   },
-  cardBox: {
-    backgroundColor: '#1E293B', // Slate 800
-    borderRadius: 24,
-    padding: TOKENS.spacing.xl,
-    position: 'relative',
-    overflow: 'hidden',
+  tabTextActive: {
+    color: TOKENS.colors.white,
+  },
+  tabContent: {
+    gap: TOKENS.spacing.md,
+  },
+
+  // Credit Card Box matching ui-kit.html
+  creditCardBox: {
+    backgroundColor: TOKENS.colors.dark900,
+    borderRadius: 20,
+    padding: 20,
+    height: 160,
+    justifyContent: 'space-between',
     ...TOKENS.shadows.medium,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
   },
   cardBrand: {
     color: TOKENS.colors.white,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    fontSize: TOKENS.typography.sizes.lg,
-    letterSpacing: 2,
+    fontWeight: TOKENS.typography.weights.black,
+    fontSize: 18,
+    fontStyle: 'italic',
+    letterSpacing: 1,
   },
   cardNumber: {
     color: TOKENS.colors.white,
-    fontSize: TOKENS.typography.sizes.xl,
-    letterSpacing: 4,
+    fontSize: 18,
+    letterSpacing: 3,
+    fontWeight: '700',
     fontFamily: 'monospace',
-    marginBottom: 24,
   },
   cardFooter: {
     flexDirection: 'row',
@@ -254,81 +352,105 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardName: {
-    color: TOKENS.colors.surface100,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
-    letterSpacing: 1,
-  },
-  cardExp: {
-    color: TOKENS.colors.surface100,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
-  },
-  unlinkBtn: {
-    position: 'absolute',
-    top: TOKENS.spacing.lg,
-    right: TOKENS.spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,0,0,0.2)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  unlinkBtnText: {
-    color: TOKENS.colors.white,
-    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.surface300,
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
+    letterSpacing: 0.5,
   },
+  cardSecText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  // Empty Box
   emptyCardBox: {
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 24,
-    padding: TOKENS.spacing.xl,
+    borderRadius: 20,
+    padding: 28,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    borderStyle: 'dashed',
+    ...TOKENS.shadows.soft,
+    gap: 6,
   },
-  emptyCardText: {
-    marginTop: TOKENS.spacing.sm,
+  emptyCardTitle: {
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+    marginTop: 4,
+  },
+  emptyCardSubtitle: {
+    fontSize: 12,
     color: TOKENS.colors.textSubtle,
-    fontSize: TOKENS.typography.sizes.sm,
+    textAlign: 'center',
+    lineHeight: 18,
   },
-  cardBtn: { marginTop: TOKENS.spacing.md },
+  actionBtn: {
+    borderRadius: 14,
+    height: 52,
+  },
+
+  // Subscription Box
   subscriptionBox: {
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 16,
-    padding: TOKENS.spacing.lg,
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    marginBottom: TOKENS.spacing.md,
+    ...TOKENS.shadows.soft,
   },
-  subsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  subsPlan: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
-  subsStatus: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textMain, fontWeight: TOKENS.typography.weights.semibold },
-  subsEnds: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, marginTop: 4 },
-  subsBtn: { marginTop: TOKENS.spacing.md },
+  subsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  subsPlan: {
+    fontSize: 15,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.dark900,
+  },
+  subsStatus: {
+    fontSize: 13,
+    color: TOKENS.colors.textMain,
+    fontWeight: TOKENS.typography.weights.semibold,
+  },
+  subsEnds: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 4,
+  },
+  subsBtn: {
+    marginTop: 12,
+    borderRadius: 14,
+  },
+
+  // Transactions List
   transactionsList: {
     backgroundColor: TOKENS.colors.white,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     overflow: 'hidden',
+    ...TOKENS.shadows.soft,
   },
   txRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: TOKENS.spacing.md,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: TOKENS.colors.surface100,
   },
   txLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: TOKENS.spacing.md,
+    gap: 12,
+    flex: 1,
+    marginRight: 8,
   },
   txIcon: {
     width: 40,
@@ -338,20 +460,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  txDetails: {
+    flex: 1,
+  },
   txTitle: {
-    fontSize: TOKENS.typography.sizes.sm,
+    fontSize: 13.5,
     fontWeight: TOKENS.typography.weights.semibold,
-    color: TOKENS.colors.textMain,
+    color: TOKENS.colors.dark900,
   },
   txCategory: {
-    fontSize: TOKENS.typography.sizes.xs,
+    fontSize: 11,
     color: TOKENS.colors.textSubtle,
     marginTop: 2,
   },
   txAmount: {
-    fontSize: TOKENS.typography.sizes.md,
+    fontSize: 15,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
+    color: TOKENS.colors.brand600,
   },
-  emptyText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', paddingVertical: 24 },
 });

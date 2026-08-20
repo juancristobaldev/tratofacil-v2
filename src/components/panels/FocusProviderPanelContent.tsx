@@ -211,28 +211,28 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
         {orderState === 'VIEW_REQUEST' && (
           <View style={styles.viewRequestContainer}>
             <View style={styles.clientCard}>
-              <Avatar uri={null} name={clientName} size={48} />
+              <Avatar uri={null} name={clientName} size={50} />
               <View style={styles.clientCardInfo}>
                 <Text style={styles.clientName}>{clientName}</Text>
                 <View style={styles.ratingRow}>
-                  <Rating rating={clientAvgRating} size={14} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
+                  <Rating rating={clientAvgRating} size={13} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
                 </View>
               </View>
             </View>
 
             <View style={styles.detailSection}>
               <Text style={styles.detailTitle}>Detalles del problema</Text>
-              <Text style={styles.detailText}>{clientDescription || 'Sin descripción'}</Text>
+              <Text style={styles.detailText}>{clientDescription || 'Sin descripción adicional'}</Text>
             </View>
 
             {order?.counterOfferPrice != null && (
               <View style={styles.counterOfferCard}>
-                <Badge label="CONTRAOFERTA" tone="warning" />
+                <Badge label="CONTRAOFERTA DEL CLIENTE" tone="warning" />
                 <Text style={styles.counterOfferPrice}>
                   ${order.counterOfferPrice.toLocaleString('es-CL')}
                 </Text>
                 <Text style={styles.counterOfferDetail}>
-                  {order.counterOfferHours}h / {order.counterOfferTransport}km
+                  Propuesta: {order.counterOfferHours}h / {order.counterOfferTransport}km
                 </Text>
                 <View style={styles.actionRow}>
                   <Button
@@ -264,7 +264,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Disminuir horas de cotización"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
+                          <Icon name="Minus" size={18} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteHours}</Text>
                         <TouchableOpacity
@@ -273,12 +273,12 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Aumentar horas de cotización"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
+                          <Icon name="Plus" size={18} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                       </View>
                     </View>
                     <View style={styles.quoteField}>
-                      <Text style={styles.quoteFieldLabel}>Km</Text>
+                      <Text style={styles.quoteFieldLabel}>Km Transporte</Text>
                       <View style={styles.priceAdjusterRow}>
                         <TouchableOpacity
                           onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
@@ -286,7 +286,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Disminuir transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={18} color={TOKENS.colors.textMain} />
+                          <Icon name="Minus" size={18} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteTransport}</Text>
                         <TouchableOpacity
@@ -295,7 +295,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Aumentar transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={18} color={TOKENS.colors.textMain} />
+                          <Icon name="Plus" size={18} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -333,7 +333,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                     style={styles.actionBtn}
                   />
                   <Button
-                    title="Rechazar"
+                    title="Rechazar solicitud"
                     variant="outline"
                     onPress={handleReject}
                     style={styles.actionBtn}
@@ -363,7 +363,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             )}
             <Icon name="Clock" size={48} color={TOKENS.colors.brand500} />
             <Text style={styles.waitingTitle}>Cotización enviada</Text>
-            <Text style={styles.waitingDesc}>Esperando respuesta del cliente...</Text>
+            <Text style={styles.waitingDesc}>Esperando confirmación o respuesta del cliente...</Text>
             <Button
               title="Actualizar Cotización"
               variant="outline"
@@ -390,7 +390,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               <Avatar uri={null} name={clientName} size={48} />
               <View style={styles.clientCardInfo}>
                 <Text style={styles.clientName}>{clientName}</Text>
-                <Text style={styles.clientAddress} numberOfLines={1}>{clientAddress || 'Ubicación'}</Text>
+                <Text style={styles.clientAddress} numberOfLines={1}>{clientAddress || 'Ubicación del cliente'}</Text>
               </View>
               <TouchableOpacity onPress={handleOpenChat} style={styles.chatIconBtnSmall}>
                 <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />
@@ -419,7 +419,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               <Avatar uri={null} name={clientName} size={48} />
               <View style={styles.clientCardInfo}>
                 <Text style={styles.clientName}>{clientName}</Text>
-                <Text style={styles.clientAddress}>Se encuentra esperando tu llegada</Text>
+                <Text style={styles.clientAddress}>El cliente está esperando en el domicilio</Text>
               </View>
               <TouchableOpacity onPress={handleOpenChat} style={styles.chatIconBtnSmall}>
                 <Icon name="MessageCircle" size={20} color={TOKENS.colors.brand600} />

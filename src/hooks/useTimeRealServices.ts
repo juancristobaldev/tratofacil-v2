@@ -474,11 +474,18 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       refetch();
     });
 
-    socket.on('provider:location-updated', (payload) => {
+    socket.on('provider:location-updated', (payload: { providerId: number; lat: number; lng: number; timestamp?: number }) => {
       logSocketIn('provider:location-updated', payload);
-      // No refetch: la ubicación del proveedor llega vía `order-realtime:location-updated`
-      // para la orden activa. Un refetch aquí amplifica el tráfico con cada movimiento
-      // de CUALQUIER proveedor (evento broadcast a find:public).
+      if (!payload?.providerId) return;
+      try {
+        apolloClient.cache.modify({
+          id: `Provider:${payload.providerId}`,
+          fields: {
+            lat: () => payload.lat,
+            lng: () => payload.lng,
+          },
+        });
+      } catch {}
     });
 
     socket.on('provider:disconnected', (payload: { orderRealtimeId: number }) => {

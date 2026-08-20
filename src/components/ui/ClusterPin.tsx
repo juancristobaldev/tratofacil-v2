@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
+import { useIsFocused } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 
 interface ClusterPinProps {
@@ -14,16 +15,17 @@ export const ClusterPin: React.FC<ClusterPinProps> = ({
   pointCount,
   onPress,
 }) => {
+  const isFocused = useIsFocused();
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
 
   useEffect(() => {
     setTracksViewChanges(true);
     const timer = setTimeout(() => {
       setTracksViewChanges(false);
-    }, 300);
+    }, 350);
 
     return () => clearTimeout(timer);
-  }, [pointCount, coordinate.latitude, coordinate.longitude]);
+  }, [isFocused, pointCount, coordinate.latitude, coordinate.longitude]);
 
   // Dynamic size based on point count
   const size = Math.min(54, 38 + Math.min(pointCount, 15) * 1.2);

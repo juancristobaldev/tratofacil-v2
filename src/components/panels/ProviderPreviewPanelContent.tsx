@@ -1,18 +1,38 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { StyleSheet, View, Text, Dimensions, NativeSyntheticEvent, NativeScrollEvent, Pressable } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, NativeSyntheticEvent, NativeScrollEvent, TouchableOpacity } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Avatar, Button, Rating, EmptyState } from '../ui';
+import { Avatar, Rating, EmptyState, Icon } from '../ui';
 import { BottomSheetFlatList } from '../../bottom-sheet/primitives';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug } from '../../bottom-sheet/core/bottomSheet.debug';
+import { useLocation } from '../../context/LocationContext';
+import { useNotification } from '../../context/NotificationContext';
 import type { ProviderPreviewItem } from '../../bottom-sheet/core/bottomSheet.types';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_H_PADDING = TOKENS.spacing.lg;
 
+function getMetersBetween(la1: number, lo1: number, la2: number, lo2: number): number {
+  const R = 6371e3;
+  const dLat = ((la2 - la1) * Math.PI) / 180;
+  const dLon = ((lo2 - lo1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((la1 * Math.PI) / 180) * Math.cos((la2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatEtaFromMeters(meters: number): string {
+  // Estimación urbana promedio (~25 km/h)
+  const minutes = Math.max(2, Math.round(meters / 350));
+  return `${minutes} min`;
+}
+
 export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider_preview'>> = ({ sheetKey, requestId, payload }) => {
   const { dispatchBottomSheetAction } = useBottomSheet();
+  const { location } = useLocation();
+  const { showNotification } = useNotification();
   const selectedIndex = payload.selectedIndex ?? 0;
 
   const listRef = useRef<any>(null);
@@ -72,71 +92,102 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
   }
   const showDots = clampedProviders.length > 1;
 
-  const renderItem = ({ item }: { item: ProviderPreviewItem }) => (
-    <View
-      style={styles.card}
-      onTouchStart={() => {
-        if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=CARD requestId=${requestId ?? 'null'}`);
-      }}
-    >
-      <View style={styles.providerRow}>
-        <Avatar uri={item.avatar} name={item.name || item.providerName || ''} size={56} />
-        <View style={styles.providerInfo}>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.name || item.providerName}
-          </Text>
-          <Rating
-            rating={item.rating || 0}
-            size={13}
-            showText
-            textSuffix="reseñas"
-            reviewsCount={item.reviewsCount}
-          />
-          {item.serviceName ? (
-            <Text style={styles.service} numberOfLines={1}>
-              {item.serviceName}
-            </Text>
-          ) : null}
-        </View>
-      </View>
+  const renderItem = ({ item }: { item: ProviderPreviewItem }) => {
+    const userCoords = location?.coords;
+    const pLat = item.lat ?? item.latitude;
+    const pLng = item.lng ?? item.longitude;
 
-      <View onTouchStart={() => { if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=VIEW_PROFILE requestId=${requestId ?? 'null'} target=wrapper`); }}>
-        <Button
-          title="Ver Profesional"
-          icon="User"
-          debugId="provider_preview:view_profile"
+    let etaText = '12 min';
+    let distanceKmText = '';
+    if (userCoords && pLat != null && pLng != null) {
+      const distMeters = getMetersBetween(userCoords.latitude, userCoords.longitude, pLat, pLng);
+      etaText = formatEtaFromMeters(distMeters);
+      distanceKmText = distMeters < 1000 ? `${Math.round(distMeters)}m` : `${(distMeters / 1000).toFixed(1)} km`;
+    }
+
+    const subtitleText = distanceKmText 
+      ? `A ${distanceKmText} de tu ubicación actual`
+      : 'A tu domicilio en Av. Providencia';
+
+    return (
+      <View
+        style={styles.card}
+        onTouchStart={() => {
+          if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=CARD requestId=${requestId ?? 'null'}`);
+        }}
+      >
+        {/* 1. LLEGADA ESTIMADA CARD */}
+        <View style={styles.etaCard}>
+          <View style={styles.etaInfoCol}>
+            <Text style={styles.etaHeaderLabel}>LLEGADA ESTIMADA</Text>
+            <Text style={styles.etaValueText}>{etaText}</Text>
+            <Text style={styles.etaSubtitleText} numberOfLines={1}>
+              {subtitleText}
+            </Text>
+          </View>
+
+          <View style={styles.etaIconCircle}>
+            <Icon name="MapPin" size={22} color={TOKENS.colors.brand500} />
+          </View>
+        </View>
+
+        {/* 2. PROFILE CARD */}
+        <TouchableOpacity
+          style={styles.profileCard}
           onPress={() => {
             bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
             dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
           }}
-          style={styles.button}
-        />
-      </View>
-      <View onTouchStart={() => { if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=DESELECT requestId=${requestId ?? 'null'} target=wrapper`); }}>
-        <Button
-          title="Cancelar"
-          variant="outline"
-          debugId="provider_preview:deselect"
+          activeOpacity={0.85}
+          accessibilityLabel="Ver perfil del profesional"
+          accessibilityRole="button"
+        >
+          <Avatar uri={item.avatar} name={item.name || item.providerName || ''} size={52} />
+          
+          <View style={styles.providerInfo}>
+            <Text style={styles.name} numberOfLines={1}>
+              {item.name || item.providerName || 'Mario R.'}
+            </Text>
+            <View style={styles.ratingRow}>
+              <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
+              <Text style={styles.ratingScoreText}>
+                {(item.rating || 4.9).toFixed(1)}
+              </Text>
+            </View>
+          </View>
+
+          {/* Action button on right: Ver -> ProviderProfileScreen */}
+          <TouchableOpacity
+            style={styles.viewBtn}
+            onPress={() => {
+              bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
+              dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
+            }}
+            activeOpacity={0.85}
+            accessibilityLabel="Ver perfil del profesional"
+            accessibilityRole="button"
+          >
+            <Text style={styles.viewBtnText}>Ver</Text>
+            <Icon name="ChevronRight" size={14} color={TOKENS.colors.white} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* 3. CANCELAR BUTTON */}
+        <TouchableOpacity
+          style={styles.cancelBtn}
           onPress={() => {
             bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
             dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
           }}
-          style={[styles.button, styles.cancelButton]}
-        />
-      </View>
-      {__DEV__ ? (
-        <Pressable
-          onTouchStart={() => console.log(`[TEST:NATIVE_TOUCH] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
-          onPressIn={() => console.log(`[TEST:NATIVE_PRESS_IN] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
-          onPressOut={() => console.log(`[TEST:NATIVE_PRESS_OUT] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
-          onPress={() => console.log(`[TEST:NATIVE_PRESS] sheet=provider_preview requestId=${requestId ?? 'null'}`)}
-          style={styles.nativePressProbe}
+          activeOpacity={0.85}
+          accessibilityLabel="Cancelar selección de servicio"
+          accessibilityRole="button"
         >
-          <Text style={styles.nativePressProbeText}>TEST PRESS</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
+          <Text style={styles.cancelBtnText}>Cancelar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -171,6 +222,7 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
 const styles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
+    paddingTop: TOKENS.spacing.xs,
   },
   emptyContainer: {
     width: SCREEN_WIDTH,
@@ -180,43 +232,122 @@ const styles = StyleSheet.create({
   card: {
     width: SCREEN_WIDTH,
     paddingHorizontal: CARD_H_PADDING,
-    paddingBottom: TOKENS.spacing.lg,
+    paddingBottom: TOKENS.spacing.md,
+    gap: 12,
   },
-  providerRow: {
+
+  // 1. ETA CARD
+  etaCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: TOKENS.spacing.md,
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    ...TOKENS.shadows.soft,
+  },
+  etaInfoCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  etaHeaderLabel: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  etaValueText: {
+    fontSize: 28,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand500,
+    marginTop: 2,
+    marginBottom: 2,
+    letterSpacing: -0.5,
+  },
+  etaSubtitleText: {
+    fontSize: 13,
+    fontWeight: TOKENS.typography.weights.medium,
+    color: TOKENS.colors.textSubtle,
+  },
+  etaIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // 2. PROFILE CARD
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    ...TOKENS.shadows.soft,
   },
   providerInfo: {
     flex: 1,
-    marginLeft: TOKENS.spacing.md,
+    marginLeft: 12,
+    marginRight: 8,
   },
   name: {
-    fontSize: TOKENS.typography.sizes.md,
+    fontSize: 16,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
+    color: TOKENS.colors.dark900,
   },
-  service: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 2,
   },
-  button: {
-    width: SCREEN_WIDTH - CARD_H_PADDING * 2,
+  ratingScoreText: {
+    fontSize: 13,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
   },
-  cancelButton: {
-    marginTop: TOKENS.spacing.sm,
-  },
-  nativePressProbe: {
-    marginTop: TOKENS.spacing.sm,
-    paddingVertical: 10,
+  viewBtn: {
+    backgroundColor: TOKENS.colors.brand700,
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: TOKENS.colors.surface100,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
+    gap: 4,
+    ...TOKENS.shadows.soft,
   },
-  nativePressProbeText: {
-    color: TOKENS.colors.textSubtle,
-    fontSize: 12,
+  viewBtnText: {
+    color: TOKENS.colors.white,
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+  },
+
+  // 3. CANCEL BUTTON
+  cancelBtn: {
+    width: '100%',
+    height: 52,
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelBtnText: {
+    color: TOKENS.colors.brand700,
+    fontSize: 15,
     fontWeight: TOKENS.typography.weights.bold,
   },
   dotsRow: {
@@ -224,7 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    paddingBottom: TOKENS.spacing.md,
+    paddingBottom: TOKENS.spacing.sm,
   },
   dot: {
     width: 8,
@@ -234,6 +365,8 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     backgroundColor: TOKENS.colors.brand500,
-    width: 18,
+    width: 20,
   },
 });
+
+

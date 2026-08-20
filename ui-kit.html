@@ -214,6 +214,7 @@
             <a href="#screen-ads" class="ds-nav-link">13. Trato Directo</a>
             <a href="#screen-subscriptions" class="ds-nav-link">14. Suscripciones</a>
             <a href="#screen-service-tab" class="ds-nav-link">15. Mis Servicios</a>
+            <a href="#screen-pro-profile-public" class="ds-nav-link">16. Perfil Profesional (Público)</a>
         </nav>
     </aside>
 
@@ -993,6 +994,255 @@
             <div class="code-box"><button class="copy-btn">Copiar</button><pre><code></code></pre></div>
         </section>
 
+        <!-- SCREEN 16: PERFIL PROFESIONAL (VISTA CLIENTE) -->
+        <section id="screen-pro-profile-public" class="ds-section">
+            <h2 class="ds-h2">16. Perfil Profesional (Vista Cliente)</h2>
+            <p class="ds-desc">Vista pública del perfil del profesional orientada a contratación. Incluye portada con avatar e indicador en línea, insignias de verificación, métricas de desempeño, tabs interactivas (Servicios, Sobre Mí con sellos de confianza, y Reseñas con desglose de estrellas), botón de favoritos interactivo y barra fija inferior con CTA para solicitud directa y chat.</p>
+            <div class="preview-box bg-gray">
+                <div class="auto-html mobile-simulator bg-surface-50">
+               
+
+                    <!-- CONTENIDO SCROLLABLE -->
+                    <main class="flex-1 overflow-y-auto no-scrollbar pb-[120px]">
+                        <!-- HERO COVER & AVATAR -->
+                        <div class="relative">
+                            <div class="h-44 w-full bg-cover bg-center" style="">
+                                <div class="absolute inset-0 bg-gray-100"></div>
+                            </div>
+                            
+                            <div class="px-5 relative -mt-16 text-center">
+                                <div class="relative inline-block">
+                                    <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&h=150&fit=crop" class="w-32 h-32 rounded-full object-cover border-4 border-surface-50 shadow-md bg-white" alt="Mario Romero">
+                                    <!-- Indicador En Línea -->
+                                    <div class="absolute bottom-2 right-4 w-5 h-5 bg-green-500 border-4 border-surface-50 rounded-full"></div>
+                                </div>
+                                
+                                <div class="mt-2 flex items-center justify-center gap-2">
+                                    <h1 class="text-[22px] font-black text-gray-900 tracking-tight">Mario Romero</h1>
+                                    <i class="ph-fill ph-seal-check text-brand-500 text-xl" title="Cuenta Verificada"></i>
+                                </div>
+                                <p class="text-[13px] font-medium text-gray-500 mt-0.5">Gasfitero Profesional • Providencia</p>
+                                
+                                <!-- Badges -->
+                                <div class="flex justify-center gap-2 mt-3">
+                                    <span class="bg-brand-500 text-white text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider shadow-sm">Top Pro</span>
+                                    <span class="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-wider">Verificado</span>
+                                </div>
+                                
+                                <!-- Stats Resumen -->
+                                <div class="flex items-center justify-center gap-6 mt-5 bg-white border border-surface-200 py-3 rounded-2xl shadow-soft">
+                                    <div class="text-center">
+                                        <div class="flex items-center gap-1 text-gray-900 font-black text-[16px]">
+                                            4.9 <i class="ph-fill ph-star text-yellow-400"></i>
+                                        </div>
+                                        <p class="text-[11px] text-gray-500 font-medium">128 reseñas</p>
+                                    </div>
+                                    <div class="w-px h-8 bg-surface-200"></div>
+                                    <div class="text-center">
+                                        <div class="text-gray-900 font-black text-[16px]">340+</div>
+                                        <p class="text-[11px] text-gray-500 font-medium">Trabajos</p>
+                                    </div>
+                                    <div class="w-px h-8 bg-surface-200"></div>
+                                    <div class="text-center">
+                                        <div class="text-gray-900 font-black text-[16px]">98%</div>
+                                        <p class="text-[11px] text-gray-500 font-medium">Puntualidad</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TABS SEGMENTADAS -->
+                        <div class="px-4 mt-6 sticky top-0 z-30 bg-surface-50 pt-2 pb-2">
+                            <div class="bg-surface-200/70 p-1 rounded-xl flex" id="pro-public-tabs">
+                                <button class="flex-1 py-2 text-[13px] font-bold text-gray-900 bg-white shadow-sm rounded-lg transition-all tab-pro-public-btn active" data-protab="servicios">Servicios</button>
+                                <button class="flex-1 py-2 text-[13px] font-bold text-gray-500 rounded-lg transition-all tab-pro-public-btn" data-protab="perfil">Sobre Mí</button>
+                                <button class="flex-1 py-2 text-[13px] font-bold text-gray-500 rounded-lg transition-all tab-pro-public-btn" data-protab="resenas">Reseñas</button>
+                            </div>
+                        </div>
+
+                        <!-- CONTENEDOR DE TABS -->
+                        <div class="px-4 mt-4" id="pro-public-contents">
+                            
+                            <!-- TAB 1: SERVICIOS -->
+                            <div class="tab-content active space-y-4" data-procontent="servicios">
+                                <!-- Servicio Seleccionado (Destacado) -->
+                                <div>
+                                    <h3 class="text-[13px] font-bold text-gray-400 uppercase tracking-widest mb-3">Servicio de interés</h3>
+                                    <div class="bg-brand-50 border-2 border-brand-500 rounded-2xl p-4 shadow-md relative overflow-hidden">
+                                        <div class="absolute top-0 right-0 bg-brand-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg uppercase">Seleccionado</div>
+                                        <div class="flex justify-between items-start mb-2 pr-16">
+                                            <h4 class="font-bold text-[16px] text-gray-900 leading-tight">Reparación de fuga de agua o cañería</h4>
+                                        </div>
+                                        <p class="text-[12px] text-gray-600 mb-4 line-clamp-2">Atención de emergencias 24/7. Detección de filtraciones, reparación de cañerías de cobre, PPR y PVC. Incluye materiales básicos.</p>
+                                        <div class="flex items-center justify-between mt-2 pt-3 border-t border-brand-200/50">
+                                            <div class="flex flex-col">
+                                                <span class="text-[11px] text-brand-600 font-bold uppercase">Precio Estimado</span>
+                                                <span class="text-[20px] font-black text-brand-800 tracking-tight">$22.000 <span class="text-[12px] font-medium text-gray-500">/visita</span></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Otros Servicios -->
+                                <div class="pt-4">
+                                    <h3 class="text-[13px] font-bold text-gray-400 uppercase tracking-widest mb-3">Otros servicios ofrecidos</h3>
+                                    <div class="space-y-3">
+                                        <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft">
+                                            <div class="flex justify-between items-start mb-1">
+                                                <h4 class="font-bold text-[14px] text-gray-900">Instalación de Calefont</h4>
+                                            </div>
+                                            <p class="text-[12px] text-gray-500 mb-3">Instalación certificada SEC, regulación de gases y prueba de hermeticidad.</p>
+                                            <span class="text-[16px] font-black text-dark-900">$45.000</span>
+                                        </div>
+                                        
+                                        <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft">
+                                            <div class="flex justify-between items-start mb-1">
+                                                <h4 class="font-bold text-[14px] text-gray-900">Destape de alcantarillado</h4>
+                                            </div>
+                                            <p class="text-[12px] text-gray-500 mb-3">Destape con máquina de varillas, limpieza de cámaras y sifones.</p>
+                                            <span class="text-[16px] font-black text-dark-900">$35.000</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 2: SOBRE MÍ (PERFIL Y CERTIFICADOS) -->
+                            <div class="tab-content space-y-6" data-procontent="perfil">
+                                <!-- Biografía -->
+                                <div class="bg-white border border-surface-200 rounded-2xl p-5 shadow-soft">
+                                    <h3 class="font-bold text-[15px] text-gray-900 mb-2">Acerca del profesional</h3>
+                                    <p class="text-[13px] text-gray-600 leading-relaxed">
+                                        Soy gasfíter certificado por la SEC con más de 15 años de experiencia en el rubro. Me especializo en instalaciones residenciales y atención de emergencias. Mi objetivo es entregar un trabajo limpio, rápido y garantizado. No cobro visita si el trabajo se realiza.
+                                    </p>
+                                </div>
+
+                                <!-- Certificados y Validaciones -->
+                                <div>
+                                    <h3 class="text-[13px] font-bold text-gray-400 uppercase tracking-widest mb-3">Validaciones de Confianza</h3>
+                                    <div class="space-y-3">
+                                        <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft flex items-center gap-4">
+                                            <div class="w-10 h-10 bg-green-50 rounded-full flex items-center justify-center shrink-0">
+                                                <i class="ph-bold ph-fingerprint text-green-600 text-lg"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <h4 class="font-bold text-[14px] text-gray-900">Identidad Verificada</h4>
+                                                <p class="text-[12px] text-gray-500 mt-0.5">RUT validado por TratoFacil</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft flex items-center gap-4">
+                                            <div class="w-10 h-10 bg-blue-50 rounded-full flex items-center justify-center shrink-0">
+                                                <i class="ph-bold ph-shield-check text-blue-600 text-lg"></i>
+                                            </div>
+                                            <div class="flex-1">
+                                                <h4 class="font-bold text-[14px] text-gray-900">Antecedentes Limpios</h4>
+                                                <p class="text-[12px] text-gray-500 mt-0.5">Certificado actualizado 2026</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="bg-gradient-to-r from-brand-50 to-white border border-brand-100 rounded-2xl p-4 shadow-soft flex items-center gap-4 relative overflow-hidden">
+                                            <div class="absolute right-[-10px] opacity-10">
+                                                <i class="ph-fill ph-certificate text-8xl text-brand-500"></i>
+                                            </div>
+                                            <div class="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center shrink-0 relative z-10">
+                                                <i class="ph-bold ph-certificate text-brand-600 text-lg"></i>
+                                            </div>
+                                            <div class="flex-1 relative z-10">
+                                                <h4 class="font-bold text-[14px] text-brand-800">Certificación SEC</h4>
+                                                <p class="text-[12px] text-brand-600 mt-0.5">Clase 3 - Instalaciones de Gas</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- TAB 3: RESEÑAS -->
+                            <div class="tab-content" data-procontent="resenas">
+                                <!-- Resumen de Ratings -->
+                                <div class="bg-white border border-surface-200 rounded-2xl p-5 shadow-soft mb-6 flex items-center gap-6">
+                                    <div class="text-center">
+                                        <span class="text-4xl font-black text-gray-900 tracking-tighter">4.9</span>
+                                        <div class="flex items-center justify-center gap-0.5 text-yellow-400 text-sm mt-1 mb-1">
+                                            <i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star-half"></i>
+                                        </div>
+                                        <span class="text-[11px] text-gray-400 font-medium">128 opiniones</span>
+                                    </div>
+                                    
+                                    <div class="flex-1 space-y-1.5">
+                                        <div class="flex items-center text-[10px] text-gray-500 gap-2">
+                                            <span>5</span>
+                                            <div class="flex-1 h-1.5 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-yellow-400 w-[90%]"></div></div>
+                                        </div>
+                                        <div class="flex items-center text-[10px] text-gray-500 gap-2">
+                                            <span>4</span>
+                                            <div class="flex-1 h-1.5 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-yellow-400 w-[8%]"></div></div>
+                                        </div>
+                                        <div class="flex items-center text-[10px] text-gray-500 gap-2">
+                                            <span>3</span>
+                                            <div class="flex-1 h-1.5 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-yellow-400 w-[2%]"></div></div>
+                                        </div>
+                                        <div class="flex items-center text-[10px] text-gray-500 gap-2">
+                                            <span>2</span>
+                                            <div class="flex-1 h-1.5 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-yellow-400 w-[0%]"></div></div>
+                                        </div>
+                                        <div class="flex items-center text-[10px] text-gray-500 gap-2">
+                                            <span>1</span>
+                                            <div class="flex-1 h-1.5 bg-surface-100 rounded-full overflow-hidden"><div class="h-full bg-yellow-400 w-[0%]"></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Lista de Reseñas -->
+                                <div class="space-y-4">
+                                    <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-8 h-8 bg-purple-100 text-purple-700 rounded-full flex items-center justify-center font-bold text-sm">C</div>
+                                                <div>
+                                                    <h4 class="font-bold text-[13px] text-gray-900">Camila Fuentes</h4>
+                                                    <div class="flex items-center text-yellow-400 text-[10px]"><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i> <span class="text-gray-400 ml-1">Hace 2 días</span></div>
+                                                </div>
+                                            </div>
+                                            <span class="bg-brand-50 text-brand-600 text-[9px] font-bold px-1.5 py-0.5 rounded border border-brand-100">Trabajo verificado</span>
+                                        </div>
+                                        <p class="text-[12px] text-gray-600 mt-2">"Excelente servicio, llegó a la hora acordada y reparó la fuga rápidamente. Muy ordenado para trabajar y explicó todo con detalle. Recomendado 100%."</p>
+                                    </div>
+
+                                    <div class="bg-white border border-surface-200 rounded-2xl p-4 shadow-soft">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold text-sm">P</div>
+                                                <div>
+                                                    <h4 class="font-bold text-[13px] text-gray-900">Pedro Alarcón</h4>
+                                                    <div class="flex items-center text-yellow-400 text-[10px]"><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i><i class="ph-fill ph-star"></i> <span class="text-gray-400 ml-1">Hace 1 semana</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <p class="text-[12px] text-gray-600 mt-2">"Me salvó de una inundación en la cocina un domingo por la tarde. Tarifa justa para ser emergencia. Gran profesional."</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </main>
+
+                    <!-- CTA INFERIOR (FOOTER BAR FIXED) -->
+                    <div class="absolute bottom-0 w-full bg-white border-t border-surface-200 p-4 shadow-floating z-50">
+                        <div class="flex gap-3">
+                            <button class="w-14 h-[52px] rounded-xl border border-surface-200 text-gray-700 bg-white flex items-center justify-center active:scale-95 transition-transform hover:bg-surface-50">
+                                <i class="ph-bold ph-chat-teardrop-dots text-2xl"></i>
+                            </button>
+                            <button class="flex-1 bg-brand-700 hover:bg-brand-800 text-white rounded-xl h-[52px] font-bold text-[15px] flex items-center justify-center gap-2 active:scale-95 transition-transform shadow-md shadow-brand-500/30">
+                                Solicitar Servicio
+                                <i class="ph-bold ph-arrow-right text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="code-box"><button class="copy-btn">Copiar</button><pre><code></code></pre></div>
+        </section>
+
     </main>
 </div>
 
@@ -1162,6 +1412,42 @@ document.addEventListener('DOMContentLoaded', () => {
             if (active) active.classList.add('active');
         });
     });
+
+    // Public Provider Profile Tabs
+    document.querySelectorAll('#pro-public-tabs .tab-pro-public-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#pro-public-tabs .tab-pro-public-btn').forEach(b => {
+                b.classList.remove('active', 'bg-white', 'shadow-sm', 'text-gray-900');
+                b.classList.add('text-gray-500');
+            });
+            this.classList.add('active', 'bg-white', 'shadow-sm', 'text-gray-900');
+            this.classList.remove('text-gray-500');
+            const target = this.dataset.protab;
+            document.querySelectorAll('#pro-public-contents .tab-content').forEach(c => c.classList.remove('active'));
+            const active = document.querySelector('#pro-public-contents [data-procontent="' + target + '"]');
+            if (active) active.classList.add('active');
+        });
+    });
+
+    // Public Provider Favorite Button Toggle
+    const btnPublicFav = document.getElementById('btn-public-favorite');
+    const iconPublicFav = document.getElementById('icon-public-favorite');
+    let isPublicFav = false;
+    if (btnPublicFav && iconPublicFav) {
+        btnPublicFav.addEventListener('click', () => {
+            isPublicFav = !isPublicFav;
+            if (isPublicFav) {
+                iconPublicFav.classList.remove('ph-bold');
+                iconPublicFav.classList.add('ph-fill', 'text-brand-500');
+                btnPublicFav.classList.add('border-brand-500');
+                if (window.openToast) window.openToast('success', 'Profesional guardado en favoritos');
+            } else {
+                iconPublicFav.classList.remove('ph-fill', 'text-brand-500');
+                iconPublicFav.classList.add('ph-bold');
+                btnPublicFav.classList.remove('border-brand-500');
+            }
+        });
+    }
 
     // ==================== BOTTOM NAV ROLE SWITCH ====================
     const providerNavHTML = `
