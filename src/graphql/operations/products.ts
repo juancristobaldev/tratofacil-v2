@@ -15,7 +15,6 @@ export const GET_PRODUCTS = gql`
       subCategorySlug
       images {
         id
-        url
         image {
           id
           cdnUrl
@@ -60,7 +59,6 @@ export const GET_PRODUCT = gql`
       }
       images {
         id
-        url
         image {
           id
           cdnUrl
@@ -217,7 +215,6 @@ export const GET_MARKETPLACE_DATA = gql`
         }
         images {
           id
-          url
           image { id cdnUrl }
         }
         deliveryCondition {
@@ -260,6 +257,16 @@ export const CONFIRM_FLOW_PRODUCT = gql`
   }
 `;
 
+export const PAY_PRODUCT_WITH_SAVED_CARD = gql`
+  mutation PayProductOrderWithSavedCard($orderProductId: Int!) {
+    payProductOrderWithSavedCard(orderProductId: $orderProductId) {
+      id
+      status
+      total
+    }
+  }
+`;
+
 export const CONFIRM_ORDER_PRODUCT_RECEIPT = gql`
   mutation ConfirmOrderProductReceipt($orderId: Int!) {
     confirmOrderProductReceipt(orderId: $orderId) {
@@ -268,3 +275,4 @@ export const CONFIRM_ORDER_PRODUCT_RECEIPT = gql`
     }
   }
 `;
+

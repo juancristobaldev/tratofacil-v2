@@ -11,7 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Input, Icon } from '../../components/ui';
+import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/ui/Icon';
+import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
 import { Role } from '../../types/graphql';
 
@@ -122,7 +124,7 @@ export const RegisterScreen: React.FC = () => {
       <View style={[styles.blob, styles.blobBottomRight]} />
 
       <KeyboardAvoidingView
-        style={{ flex: 1 }}
+        style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
@@ -258,6 +260,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9FAFB', // gray-50
+  },
+  keyboardView: {
+    flex: 1,
   },
   blob: {
     position: 'absolute',

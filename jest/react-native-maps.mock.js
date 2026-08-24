@@ -1,9 +1,12 @@
 const React = require('react');
 const { View } = require('react-native');
 
-const MockComponent = (props) => {
-  return React.createElement(View, props, props.children);
-};
+class MockComponent extends React.Component {
+  render() {
+    return React.createElement(View, this.props, this.props.children);
+  }
+}
+MockComponent.displayName = 'MockComponent';
 
 class AnimatedRegion {
   constructor(value) {

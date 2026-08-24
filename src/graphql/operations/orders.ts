@@ -29,7 +29,7 @@ export const MY_ORDERS = gql`
       product {
         id
         name
-        images { id image { id cdnUrl } url }
+        images { id image { id cdnUrl } }
         user { id displayName provider { id name } }
         shippingDisabled
       }
@@ -69,7 +69,7 @@ export const GET_MY_SALES = gql`
       product {
         id
         name
-        images { id image { id cdnUrl } url }
+        images { id image { id cdnUrl } }
         shippingDisabled
       }
       client {

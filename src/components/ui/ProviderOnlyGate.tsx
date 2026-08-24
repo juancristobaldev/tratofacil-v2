@@ -2,7 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button } from './index';
+import { Button } from './Button';
+import { Icon } from './Icon';
 
 interface ProviderOnlyGateProps {
   /** Si el usuario es provider o tiene perfil de provider. */

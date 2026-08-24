@@ -11,7 +11,6 @@ export const GET_ADS = gql`
           link
           favicon
           info
-          image
           imageRelation { id cdnUrl compressedKey key extension }
           city
           service {
@@ -32,17 +31,14 @@ export const GET_ADS = gql`
       }
       marketingHero {
         id
-        key
         image { id cdnUrl compressedKey key extension }
       }
       marketingHorizontal {
         id
-        key
         image { id cdnUrl compressedKey key extension }
       }
       marketingVertical {
         id
-        key
         image { id cdnUrl compressedKey key extension }
       }
     }

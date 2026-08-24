@@ -11,12 +11,14 @@ import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge } from '../ui';
 import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
 export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client'>> = () => {
   const { showNotification } = useNotification();
+  const { user } = useAuth();
   const session = useFocusSession('client');
   const {
     activeOrder,
@@ -28,6 +30,10 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     setShowChat,
   } = session;
 
+  const hasCard = Boolean((user?.cardActive ?? true) && user?.last4CardDigits && user?.creditCardType);
+  const cardBrand = user?.creditCardType || 'Tarjeta';
+  const cardLast4 = user?.last4CardDigits || '****';
+
   const status = activeOrder?.status || 'PENDING';
   const etaRemaining = etaLabel || '...';
   const distanceRemaining = distanceLabel || '...';
@@ -35,6 +41,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
   const [serviceElapsed, setServiceElapsed] = useState('00:00');
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(activeOrder?.quotedPrice || 0);
   const [counterOfferSent, setCounterOfferSent] = useState(false);
+  const [isPayingCard, setIsPayingCard] = useState(false);
   const prevCounterOfferRef = useRef<number | null | undefined>(undefined);
   const prevNegotiatedPriceRef = useRef<number>(activeOrder?.quotedPrice || 0);
 
@@ -89,6 +96,34 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       }
     } catch {}
   };
+
+  const handlePaySavedCard = async () => {
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'PAY_SAVED_CARD', origin: 'FOCUS_CLIENT' });
+    if (!activeOrder?.id || !realtime?.payWithSavedCard) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'PAY_SAVED_CARD', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'PAY_SAVED_CARD', target: 'direct_charge' });
+    setIsPayingCard(true);
+    try {
+      await realtime.payWithSavedCard(activeOrder.id);
+      showNotification({
+        title: 'Pago exitoso',
+        message: 'Tu pago ha sido procesado con tu tarjeta vinculada.',
+        type: 'success',
+      });
+    } catch (err: any) {
+      showNotification({
+        title: 'Error de pago',
+        message: err?.message || 'No se pudo cobrar a tu tarjeta. Puedes intentar con Webpay.',
+        type: 'error',
+      });
+    } finally {
+      setIsPayingCard(false);
+    }
+  };
+
 
   const handleCancel = async () => {
     const actionId = nextBottomSheetActionId();
@@ -269,11 +304,37 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                     }}
                     style={styles.payBtn}
                   />
+                ) : hasCard ? (
+                  <>
+                    <View style={styles.savedCardBox}>
+                      <View style={styles.savedCardLeft}>
+                        <Icon name="CreditCard" size={18} color={TOKENS.colors.brand600} />
+                        <Text style={styles.savedCardText}>
+                          {cardBrand} •••• {cardLast4}
+                        </Text>
+                      </View>
+                      <Badge label="VINCULADA" tone="success" size="sm" />
+                    </View>
+                    <Button
+                      title={`Pagar con •••• ${cardLast4}`}
+                      icon="CreditCard"
+                      loading={isPayingCard}
+                      disabled={isPayingCard}
+                      onPress={handlePaySavedCard}
+                      style={styles.payBtn}
+                    />
+                    <Button
+                      title="Pagar con Flow / Webpay"
+                      variant="outline"
+                      disabled={isPayingCard}
+                      onPress={handlePay}
+                    />
+                  </>
                 ) : (
                   <Button title="Pagar ahora" onPress={handlePay} style={styles.payBtn} />
                 )}
-                <Button title="Rechazar cotización" variant="outline" onPress={handleRejectQuote} />
-                <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85}>
+                <Button title="Rechazar cotización" variant="outline" disabled={isPayingCard} onPress={handleRejectQuote} />
+                <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85} disabled={isPayingCard}>
                   <Text style={styles.cancelActionBtnText}>Cancelar orden</Text>
                 </TouchableOpacity>
               </View>
@@ -688,4 +749,27 @@ const styles = StyleSheet.create({
     minWidth: 140,
     textAlign: 'center',
   },
+  savedCardBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: TOKENS.geometry.radiusCard,
+    paddingHorizontal: TOKENS.spacing.md,
+    paddingVertical: TOKENS.spacing.sm,
+    marginBottom: 2,
+  },
+  savedCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: TOKENS.spacing.xs,
+  },
+  savedCardText: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
 });
+

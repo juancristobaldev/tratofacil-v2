@@ -55,4 +55,11 @@ class PushTokenModule(reactContext: ReactApplicationContext) :
   fun removeListeners(count: Int) {
     // Keep: Required for RN built in Event Emitter Calls.
   }
+
+  override fun invalidate() {
+    super.invalidate()
+    if (ReactContextHolder.reactContext == reactApplicationContext) {
+      ReactContextHolder.reactContext = null
+    }
+  }
 }

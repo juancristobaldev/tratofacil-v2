@@ -1,16 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, FlatList, ActivityIndicator, Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Modal, EmptyState } from '../../components';
+import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Icon } from '../../components/ui/Icon';
+import { Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
 import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
 
 export const WalletScreen: React.FC = () => {
-  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { user, role } = useAuth();
   const hasProvider = !!user?.provider;
@@ -97,6 +98,9 @@ export const WalletScreen: React.FC = () => {
                     onPress={() => setModalVisible(true)}
                     activeOpacity={0.9}
                     disabled={balance <= 0}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retirar dinero"
+                    accessibilityState={{ disabled: balance <= 0 }}
                   >
                     <Icon name="ArrowDownCircle" size={16} color={TOKENS.colors.white} />
                     <Text style={styles.heroWithdrawBtnText}>Retirar dinero</Text>
@@ -106,6 +110,8 @@ export const WalletScreen: React.FC = () => {
                     style={styles.heroRefreshBtn}
                     onPress={onRefresh}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Actualizar billetera"
                   >
                     <Icon name="RotateCcw" size={16} color={TOKENS.colors.white} />
                   </TouchableOpacity>

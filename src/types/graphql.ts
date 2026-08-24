@@ -76,6 +76,7 @@ export interface User {
   phone: string;
   displayName: string | null;
   flowCustomerId: string;
+  cardActive?: boolean | null;
   creditCardType: string;
   last4CardDigits: string;
   username: string;

@@ -39,12 +39,16 @@ class PushNotificationService : FirebaseMessagingService() {
     ensureChannel(type)
 
     val reactContext = getReactContext()
-    if (reactContext != null) {
-      val writableMap = Arguments.createMap()
-      data.forEach { (k, v) -> writableMap.putString(k, v) }
-      reactContext
-        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-        .emit("onPushReceived", writableMap)
+    if (reactContext != null && reactContext.hasActiveReactInstance()) {
+      try {
+        val writableMap = Arguments.createMap()
+        data.forEach { (k, v) -> writableMap.putString(k, v) }
+        reactContext
+          .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+          .emit("onPushReceived", writableMap)
+      } catch (e: Exception) {
+        Log.w("Push", "No se pudo emitir evento a JS", e)
+      }
     }
 
     val jsonData = JSONObject(data.toMap())

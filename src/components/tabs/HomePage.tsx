@@ -24,18 +24,13 @@ import { EMPTY_ARRAY } from '../../utils/emptyArray';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 let homePageRuntimeOwnerGeneration = 0;
-const TERMINAL_REALTIME_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-const PROVIDER_FOCUS_STATUSES = ['PENDING', 'QUOTED', 'ACCEPTED', 'IN_PROGRESS'];
-
-type DesiredMapSurface =
-  | { kind: 'SHEET'; key: SheetKey; reason: string }
-  | { kind: 'NO_SHEET_BY_DESIGN'; reason: 'WAITING_PROVIDER_QUOTE' };
-
-function selectClientRealtimeOrder(localOrder: any, domainOrder: any) {
-  if (domainOrder?.status && !TERMINAL_REALTIME_STATUSES.includes(domainOrder.status)) return domainOrder;
-  if (localOrder?.status && !TERMINAL_REALTIME_STATUSES.includes(localOrder.status)) return localOrder;
-  return domainOrder || localOrder;
-}
+import {
+  TERMINAL_REALTIME_STATUSES,
+  PROVIDER_FOCUS_STATUSES,
+  DesiredMapSurface,
+  selectClientRealtimeOrder,
+  deriveDesiredMapSurface,
+} from '../../bottom-sheet/core/sheetPolicy';
 
 interface Category {
   id: string;
@@ -91,22 +86,12 @@ export const HomePage: React.FC = () => {
   }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
 
   const desiredMapSurface = useMemo<DesiredMapSurface>(() => {
-    if (role === 'provider') {
-      const order = realtime.providerActiveOrder;
-      if (order?.status && PROVIDER_FOCUS_STATUSES.includes(order.status)) {
-        return { kind: 'SHEET', key: 'focus_provider', reason: 'provider_domain_order' };
-      }
-      return { kind: 'SHEET', key: 'provider_dashboard', reason: 'provider_default' };
-    }
-
-    const order = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
-    if (order?.id && order.status === 'PENDING') {
-      return { kind: 'NO_SHEET_BY_DESIGN', reason: 'WAITING_PROVIDER_QUOTE' };
-    }
-    if (order?.id && order.status && !TERMINAL_REALTIME_STATUSES.includes(order.status)) {
-      return { kind: 'SHEET', key: 'focus_client', reason: order.provider ? 'client_domain_order_with_provider' : 'client_domain_order_missing_provider' };
-    }
-    return { kind: 'SHEET', key: 'categories', reason: 'client_default' };
+    const clientOrder = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    return deriveDesiredMapSurface({
+      role,
+      clientActiveOrder: clientOrder,
+      providerActiveOrder: realtime.providerActiveOrder,
+    });
   }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
 
   useEffect(() => {

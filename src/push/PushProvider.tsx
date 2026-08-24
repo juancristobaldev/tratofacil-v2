@@ -3,8 +3,7 @@ import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
 import { usePushToken } from './usePushToken';
 import { handlePushAction } from './PushActions';
 
-const { PushTokenModule } = NativeModules;
-const actionEmitter = new NativeEventEmitter(PushTokenModule);
+const PushTokenModule = NativeModules.PushTokenModule;
 
 export function PushProvider({ children }: { children: React.ReactNode }) {
   usePushToken();
@@ -12,7 +11,7 @@ export function PushProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let sub: any;
 
-    if (Platform.OS === 'android') {
+    if (Platform.OS === 'android' && PushTokenModule) {
       const androidEmitter = new NativeEventEmitter(PushTokenModule);
       sub = androidEmitter.addListener(
         'onPushReceived',
@@ -26,6 +25,7 @@ export function PushProvider({ children }: { children: React.ReactNode }) {
       sub?.remove();
     };
   }, []);
+
 
   return <>{children}</>;
 }

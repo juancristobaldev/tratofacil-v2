@@ -1,19 +1,18 @@
 import { NativeModules, NativeEventEmitter, Platform, PermissionsAndroid, AppState } from 'react-native';
 import { useEffect, useRef } from 'react';
-import { gql } from '@apollo/client';
 import { useMutation } from '@apollo/client/react';
-
-const { PushTokenModule } = NativeModules;
-const tokenEmitter = new NativeEventEmitter(PushTokenModule);
-
-const REGISTER_PUSH_TOKEN = gql`
-  mutation RegisterPushToken($token: String!, $platform: String!) {
-    registerPushToken(token: $token, platform: $platform)
-  }
-`;
+import { REGISTER_PUSH_TOKEN_MUTATION } from '../graphql/operations/auth';
+import type {
+  RegisterPushTokenMutation,
+  RegisterPushTokenMutationVariables,
+} from '../graphql/generated-operations';
 
 export function usePushToken() {
-  const [registerToken] = useMutation(REGISTER_PUSH_TOKEN);
+  const [registerToken] = useMutation<
+    RegisterPushTokenMutation,
+    RegisterPushTokenMutationVariables
+  >(REGISTER_PUSH_TOKEN_MUTATION);
+
   const registeredRef = useRef(false);
 
   const sendTokenToBackend = (token: string) => {
@@ -21,12 +20,15 @@ export function usePushToken() {
   };
 
   useEffect(() => {
+    const pushModule = NativeModules.PushTokenModule;
+    if (!pushModule) return;
+
     const initToken = async () => {
       try {
-        const granted = await requestPermission();
+        const granted = await requestPermission(pushModule);
         if (!granted) return;
 
-        const token: string | null = await PushTokenModule.getToken();
+        const token: string | null = await pushModule.getToken();
         if (token && !registeredRef.current) {
           registeredRef.current = true;
           sendTokenToBackend(token);
@@ -36,10 +38,14 @@ export function usePushToken() {
 
     initToken();
 
-    const sub = tokenEmitter.addListener('onPushTokenRefresh', (token: string) => {
-      registeredRef.current = true;
-      sendTokenToBackend(token);
-    });
+    let sub: any;
+    try {
+      const emitter = new NativeEventEmitter(pushModule);
+      sub = emitter.addListener('onPushTokenRefresh', (token: string) => {
+        registeredRef.current = true;
+        sendTokenToBackend(token);
+      });
+    } catch (_) {}
 
     // Si el usuario negó el permiso al inicio y luego lo habilita a mano desde
     // Ajustes, reintentamos al volver a foreground (mismo patrón que LocationContext).
@@ -50,17 +56,17 @@ export function usePushToken() {
     });
 
     return () => {
-      sub.remove();
+      sub?.remove();
       appStateSub.remove();
     };
   }, []);
 }
 
-async function requestPermission(): Promise<boolean> {
+async function requestPermission(pushModule: any): Promise<boolean> {
   try {
     if (Platform.OS === 'ios') {
-      const granted: boolean = await PushTokenModule.requestPermission();
-      return granted;
+      const granted: boolean = await pushModule?.requestPermission();
+      return Boolean(granted);
     }
     if (Platform.OS === 'android') {
       // No-op en Android <13 (el permiso no existe ahí; RN resuelve `granted` directo).
@@ -87,3 +93,4 @@ async function requestPermission(): Promise<boolean> {
     return false;
   }
 }
+

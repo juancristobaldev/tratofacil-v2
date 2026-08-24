@@ -7,7 +7,10 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "start": "react-native start",
-    "test": "jest",
+    "test": "jest --watchman=false",
+    "typecheck": "tsc --noEmit",
+
+    "graphql:codegen": "npm run --prefix ../tratofacil-api graphql:codegen",
     "clean:nm": "node -e \"const fs=require('fs');const dirs=['node_modules/react-native-reanimated/android/build','node_modules/react-native-reanimated/android/.cxx','android/app/build','android/app/.cxx','android/.gradle'];dirs.forEach(d=>fs.rmSync(d,{recursive:true,force:true}));\"",
     "prebuild": "npm run clean:nm",
     "fresh": "npm run clean:nm && npm ci"
@@ -52,6 +55,7 @@
     "@react-native/jest-preset": "0.86.0",
     "@react-native/metro-config": "0.86.0",
     "@react-native/typescript-config": "0.86.0",
+    "@testing-library/react-native": "14.0.1",
     "@types/jest": "^29.5.13",
     "@types/node": "26.1.1",
     "@types/react": "^19.2.0",

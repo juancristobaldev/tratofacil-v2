@@ -4,9 +4,6 @@ import { useNavigation } from '@react-navigation/native';
 import { handlePushAction } from './PushActions';
 import { useRealtime } from '../realtime/RealtimeContext';
 
-const { PushTokenModule } = NativeModules;
-const actionEmitter = new NativeEventEmitter(PushTokenModule);
-
 export function usePushNavigation() {
   const navigation = useNavigation<any>();
   const navRef = useRef(navigation);
@@ -26,7 +23,10 @@ export function usePushNavigation() {
   );
 
   const consumePendingAction = useCallback(() => {
-    PushTokenModule.getPendingPushAction().then((pending: string | null) => {
+    const pushModule = NativeModules.PushTokenModule;
+    if (!pushModule?.getPendingPushAction) return;
+
+    pushModule.getPendingPushAction().then((pending: string | null) => {
       if (pending) {
         try {
           const parsed = JSON.parse(pending);
@@ -34,19 +34,26 @@ export function usePushNavigation() {
           handlePushAction(parsed.action, parsed.data);
         } catch {}
       }
-    });
+    }).catch(() => {});
   }, [navigateToOrder]);
 
   useEffect(() => {
+    const pushModule = NativeModules.PushTokenModule;
+    if (!pushModule) return;
+
     consumePendingAction();
 
-    const sub = actionEmitter.addListener(
-      'onPushAction',
-      (event: { action: string; data: Record<string, any> }) => {
-        navigateToOrder(event.data);
-        handlePushAction(event.action, event.data);
-      },
-    );
+    let sub: any;
+    try {
+      const actionEmitter = new NativeEventEmitter(pushModule);
+      sub = actionEmitter.addListener(
+        'onPushAction',
+        (event: { action: string; data: Record<string, any> }) => {
+          navigateToOrder(event.data);
+          handlePushAction(event.action, event.data);
+        },
+      );
+    } catch (_) {}
 
     // Warm-tap Android: re-leer la acción pendiente al volver al primer plano
     // (una notificación tocada en background no remonta el tracker).
@@ -57,8 +64,9 @@ export function usePushNavigation() {
     });
 
     return () => {
-      sub.remove();
+      sub?.remove();
       appStateSub.remove();
     };
   }, [consumePendingAction, navigateToOrder]);
 }
+

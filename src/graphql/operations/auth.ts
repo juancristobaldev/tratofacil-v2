@@ -9,6 +9,7 @@ export const ME_QUERY = gql`
       displayName
       flowCustomerId
       role
+      cardActive
       creditCardType
       last4CardDigits
       kycStatus
@@ -204,3 +205,10 @@ export const SET_GUEST_PASSWORD = gql`
     setGuestPassword(newPassword: $newPassword)
   }
 `;
+
+export const REGISTER_PUSH_TOKEN_MUTATION = gql`
+  mutation RegisterPushToken($token: String!, $platform: String!) {
+    registerPushToken(token: $token, platform: $platform)
+  }
+`;
+

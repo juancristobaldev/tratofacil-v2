@@ -19,7 +19,6 @@ export const GET_CATEGORIES = gql`
       description
       position
       parentId
-      imageUrl
       image {
         id
         cdnUrl
@@ -61,6 +60,7 @@ export const GET_SERVICES_BY_CATEGORY = gql`
     $includeProvidersOnly: Boolean
     $skip: Int
     $take: Int
+    $subCategorySlug: String
   ) {
     servicesByCategory(
       categorySlug: $slug
@@ -68,6 +68,7 @@ export const GET_SERVICES_BY_CATEGORY = gql`
       includeProvidersOnly: $includeProvidersOnly
       skip: $skip
       take: $take
+      subCategorySlug: $subCategorySlug
     ) {
       id
       name

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Button, Icon } from '../../components/ui';
+import { Button } from '../../components/ui/Button';
+import { Icon } from '../../components/ui/Icon';
+import { Badge } from '../../components/ui/Badge';
+import { useAuth } from '../../context/AuthContext';
 import { useRole } from '../../context/RoleContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
-import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
+import { DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useFlow } from '../../hooks/useFlow';
 import { getProductCommission } from '../../utils/comission';
 
@@ -16,12 +19,20 @@ export const PurchaseScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { product, shippingData } = route.params || {};
+  const { user } = useAuth();
   const { role } = useRole();
   const { showNotification } = useNotification();
 
   const { createOrder } = useMarketplace();
-  const { pay } = useFlow();
+  const { pay, payWithSavedCard } = useFlow();
 
+  const hasSavedCard = Boolean((user?.cardActive ?? true) && user?.last4CardDigits && user?.creditCardType);
+  const cardBrand = user?.creditCardType || 'Tarjeta';
+  const cardLast4 = user?.last4CardDigits || '****';
+
+  const [paymentMethod, setPaymentMethod] = useState<'saved_card' | 'webpay'>(
+    hasSavedCard ? 'saved_card' : 'webpay',
+  );
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (!product) {
@@ -54,24 +65,40 @@ export const PurchaseScreen: React.FC = () => {
           street: '', number: '', commune: '', region: '', phone: '',
         },
       );
-      const orderProductId = orderResult.id;
-      if (orderProductId) {
-        const flowResult = await pay({
-          type: 'product',
-          orderId: orderProductId,
-          returnUrl: `${DEEP_LINK_CALLBACK}?type=product`,
-        });
-        if (flowResult.url) {
-          setIsProcessing(false);
-          return;
-        }
+      const orderProductId = orderResult?.id;
+      if (!orderProductId) {
+        throw new Error('No se pudo generar la orden de compra.');
       }
+
+      if (paymentMethod === 'saved_card' && hasSavedCard) {
+        await payWithSavedCard('product', orderProductId);
+        showNotification({
+          title: '¡Compra exitosa!',
+          message: 'Tu pago fue procesado con tu tarjeta guardada.',
+          type: 'success',
+        });
+        navigation.navigate('PurchasesList');
+        return;
+      }
+
+      const flowResult = await pay({
+        type: 'product',
+        orderId: orderProductId,
+        returnUrl: `${DEEP_LINK_CALLBACK}?type=product`,
+      });
+      if (flowResult.url) {
+        setIsProcessing(false);
+        return;
+      }
+
       showNotification({ title: 'Error', message: 'No se pudo iniciar el pago. Intenta de nuevo.', type: 'error' });
     } catch (err: any) {
       showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
+    } finally {
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
+
 
   const handleConfirm = () => {
     if (role === 'guest') {
@@ -98,7 +125,7 @@ export const PurchaseScreen: React.FC = () => {
             </View>
             <View style={styles.productInfo}>
               <Text style={styles.productName}>{product.name}</Text>
-              <Text style={styles.productVendor}>Vendedor: <Text style={{ fontWeight: 'bold' }}>{product.provider.name}</Text></Text>
+              <Text style={styles.productVendor}>Vendedor: <Text style={styles.productVendorName}>{product.provider.name}</Text></Text>
             </View>
           </View>
         </View>
@@ -151,13 +178,70 @@ export const PurchaseScreen: React.FC = () => {
             <Text style={styles.totalValue}>${product.price.toLocaleString('es-CL')}</Text>
           </View>
 
-          <View style={styles.paymentMethod}>
-            <Icon name="CreditCard" size={24} color={TOKENS.colors.brand600} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.paymentMethodTitle}>Flow / Webpay</Text>
-              <Text style={styles.paymentMethodSub}>Pago seguro online</Text>
+          <Text style={styles.paymentSectionTitle}>Método de Pago</Text>
+
+          {hasSavedCard ? (
+            <View style={styles.paymentOptionsList}>
+              <TouchableOpacity
+                style={[
+                  styles.paymentOption,
+                  paymentMethod === 'saved_card' && styles.paymentOptionSelected,
+                ]}
+                onPress={() => setPaymentMethod('saved_card')}
+                activeOpacity={0.8}
+              >
+                <View style={styles.paymentOptionRadio}>
+                  <View
+                    style={[
+                      styles.radioCircle,
+                      paymentMethod === 'saved_card' && styles.radioCircleSelected,
+                    ]}
+                  />
+                </View>
+                <Icon name="CreditCard" size={22} color={TOKENS.colors.brand600} />
+                <View style={styles.paymentMethodText}>
+                  <View style={styles.cardHeaderInline}>
+                    <Text style={styles.paymentMethodTitle}>
+                      {cardBrand} •••• {cardLast4}
+                    </Text>
+                    <Badge label="VINCULADA" tone="success" size="sm" />
+                  </View>
+                  <Text style={styles.paymentMethodSub}>Pago rápido directo con Flow</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.paymentOption,
+                  paymentMethod === 'webpay' && styles.paymentOptionSelected,
+                ]}
+                onPress={() => setPaymentMethod('webpay')}
+                activeOpacity={0.8}
+              >
+                <View style={styles.paymentOptionRadio}>
+                  <View
+                    style={[
+                      styles.radioCircle,
+                      paymentMethod === 'webpay' && styles.radioCircleSelected,
+                    ]}
+                  />
+                </View>
+                <Icon name="Globe" size={22} color={TOKENS.colors.brand600} />
+                <View style={styles.paymentMethodText}>
+                  <Text style={styles.paymentMethodTitle}>Webpay / Otro medio</Text>
+                  <Text style={styles.paymentMethodSub}>Webpay Plus, Mach, Servipag</Text>
+                </View>
+              </TouchableOpacity>
             </View>
-          </View>
+          ) : (
+            <View style={styles.paymentOption}>
+              <Icon name="CreditCard" size={24} color={TOKENS.colors.brand600} />
+              <View style={styles.paymentMethodText}>
+                <Text style={styles.paymentMethodTitle}>Flow / Webpay</Text>
+                <Text style={styles.paymentMethodSub}>Pago seguro online (Webpay, Tarjetas)</Text>
+              </View>
+            </View>
+          )}
         </View>
 
       </ScrollView>
@@ -165,8 +249,14 @@ export const PurchaseScreen: React.FC = () => {
       {/* FIXED FOOTER */}
       <View style={styles.footer}>
         <Button 
-          title={isProcessing ? "Procesando..." : "Ir a Pagar"} 
-          icon="ArrowRight"
+          title={
+            isProcessing
+              ? 'Procesando...'
+              : paymentMethod === 'saved_card' && hasSavedCard
+              ? `Pagar con •••• ${cardLast4}`
+              : `Ir a Pagar $${product.price.toLocaleString('es-CL')}`
+          } 
+          icon={paymentMethod === 'saved_card' && hasSavedCard ? 'CreditCard' : 'ArrowRight'}
           onPress={handleConfirm}
           disabled={isProcessing}
         />
@@ -244,6 +334,9 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
   },
+  productVendorName: {
+    fontWeight: 'bold',
+  },
   shippingText: {
     fontSize: TOKENS.typography.sizes.sm,
     color: TOKENS.colors.textSubtle,
@@ -285,6 +378,51 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.extrabold,
     color: TOKENS.colors.brand600,
   },
+  paymentSectionTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    marginTop: TOKENS.spacing.md,
+    marginBottom: TOKENS.spacing.xs,
+  },
+  paymentOptionsList: {
+    gap: TOKENS.spacing.sm,
+  },
+  paymentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.surface50,
+    padding: TOKENS.spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  paymentOptionSelected: {
+    borderColor: TOKENS.colors.brand500,
+    backgroundColor: 'rgba(238, 77, 45, 0.04)',
+  },
+  paymentOptionRadio: {
+    marginRight: TOKENS.spacing.sm,
+  },
+  radioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: TOKENS.colors.surface300,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioCircleSelected: {
+    borderColor: TOKENS.colors.brand500,
+    borderWidth: 5,
+    backgroundColor: TOKENS.colors.white,
+  },
+  cardHeaderInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: TOKENS.spacing.xs,
+  },
   paymentMethod: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,6 +432,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     marginTop: TOKENS.spacing.lg,
+  },
+  paymentMethodText: {
+    flex: 1,
+    marginLeft: 12,
   },
   paymentMethodTitle: {
     fontSize: TOKENS.typography.sizes.sm,
@@ -322,3 +464,4 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
   },
 });
+

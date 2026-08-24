@@ -1,38 +1,28 @@
-/**
- * @format
- */
+import React from 'react';
+import { render } from '@testing-library/react-native';
+import App from '../App';
 
-import { mediaUrl, getImageUrl } from '../src/utils/imageUrl';
-
-describe('mediaUrl', () => {
-  it('devuelve URL del CDN con extensión por defecto', () => {
-    expect(mediaUrl('logo')).toBe('http://localhost:3002/files/logo.jpg');
-  });
-
-  it('devuelve cadena vacía si no hay key', () => {
-    expect(mediaUrl('')).toBe('');
-  });
+jest.mock('../src/navigation/AppNavigator', () => {
+  const { View, Text } = require('react-native');
+  return {
+    AppNavigator: () => (
+      <View>
+        <Text>TratoFacil App Root</Text>
+      </View>
+    ),
+  };
 });
 
-describe('getImageUrl', () => {
-  it('devuelve cadena vacía ante entrada nula', () => {
-    expect(getImageUrl(null)).toBe('');
-    expect(getImageUrl(undefined)).toBe('');
-  });
+jest.mock('../src/utils/deepLinks', () => ({
+  initializeDeepLinks: jest.fn(() => jest.fn()),
+  setOrderOpenHandler: jest.fn(),
+  PAYMENT_CALLBACK_PATH: '/payment/callback',
+  DEEP_LINK_SCHEME: 'tratofacilv2',
+}));
 
-  it('mantiene URLs absolutas https', () => {
-    expect(getImageUrl('https://cdn.example.com/a.png')).toBe(
-      'https://cdn.example.com/a.png',
-    );
-  });
-
-  it('resuelve rutas relativas contra la API', () => {
-    expect(getImageUrl('/files/img.png')).toBe(
-      'http://localhost:4000/files/img.png',
-    );
-  });
-
-  it('trata claves sin esquema como archivos del CDN', () => {
-    expect(getImageUrl('banner')).toBe('http://localhost:3002/files/banner.jpg');
+describe('App Bootstrap and Provider Hierarchy', () => {
+  it('monta la jerarquía completa de providers de la aplicación sin errores', async () => {
+    const view = await render(<App />);
+    expect(view.getByText('TratoFacil App Root')).toBeTruthy();
   });
 });

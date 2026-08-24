@@ -360,6 +360,29 @@ export const CONFIRM_REALTIME_FLOW_PAYMENT = gql`
   }
 `;
 
+export const PAY_REALTIME_ORDER_WITH_SAVED_CARD = gql`
+  mutation PayRealtimeOrderWithSavedCard($orderRealtimeId: Int!) {
+    payRealtimeOrderWithSavedCard(orderRealtimeId: $orderRealtimeId) {
+      id
+      status
+      quotedPrice
+      quotedHours
+      quotedTransport
+      respondedAt
+      provider {
+        id
+        name
+        lat
+        lng
+      }
+      payment {
+        amount
+      }
+    }
+  }
+`;
+
+
 export const SEND_MESSAGE = gql`
   mutation SendMessage($orderRealtimeId: Int!, $message: String!) {
     sendMessage(orderRealtimeId: $orderRealtimeId, message: $message) {

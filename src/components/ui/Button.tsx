@@ -120,6 +120,7 @@ export const Button: React.FC<ButtonProps> = ({
       disabled={isUnavailable}
       activeOpacity={1}
       accessibilityRole="button"
+      accessibilityLabel={title}
       accessibilityState={{ disabled: isUnavailable, busy: loading }}
       onLayout={(event) => {
         if (__DEV__ && debugId) {

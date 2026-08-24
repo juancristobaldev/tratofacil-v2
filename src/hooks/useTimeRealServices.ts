@@ -26,6 +26,7 @@ import {
   UPDATE_REALTIME_ORDER_LOCATION,
   INIT_REALTIME_FLOW_PAYMENT,
   CONFIRM_REALTIME_FLOW_PAYMENT,
+  PAY_REALTIME_ORDER_WITH_SAVED_CARD,
   SEND_MESSAGE,
   CREATE_REALTIME_PROVIDER_REVIEW,
   CREATE_CLIENT_REVIEW,
@@ -123,6 +124,7 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   updateLocation: (orderRealtimeId: number, lat: number, lng: number) => Promise<void>;
   initPayment: (orderRealtimeId: number, returnUrl: string) => Promise<RealtimePaymentInitResponse>;
   confirmPayment: (token: string) => Promise<{ id: number; status: string }>;
+  payWithSavedCard: (orderRealtimeId: number) => Promise<OrderRealTime>;
   sendMessage: (orderRealtimeId: number, message: string) => Promise<ChatMessageEntity>;
   createProviderReview: (input: ProviderReviewInput) => Promise<void>;
   createClientReview: (input: ClientReviewInput) => Promise<void>;
@@ -195,6 +197,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const [updateLocMut] = useMutation(UPDATE_REALTIME_ORDER_LOCATION);
   const [initPayMut] = useMutation<{ initRealtimeFlowPayment: RealtimePaymentInitResponse }>(INIT_REALTIME_FLOW_PAYMENT);
   const [confirmPayMut] = useMutation<{ confirmRealtimeFlowPayment: { id: number; status: string } }>(CONFIRM_REALTIME_FLOW_PAYMENT);
+  const [paySavedCardMut] = useMutation<{ payRealtimeOrderWithSavedCard: OrderRealTime }>(PAY_REALTIME_ORDER_WITH_SAVED_CARD);
   const [sendMsgMut] = useMutation<{ sendMessage: ChatMessageEntity }>(SEND_MESSAGE);
   const [guestCreateContactMut] = useMutation<{
     guestCreateRealtimeContactRequest: {
@@ -746,6 +749,18 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [confirmPayMut],
   );
 
+  const payWithSavedCard = useCallback(
+    async (orderRealtimeId: number) => {
+      const { data: result } = await paySavedCardMut({
+        variables: { orderRealtimeId },
+      });
+      await refetch();
+      await refetchClientOrders();
+      return result!.payRealtimeOrderWithSavedCard;
+    },
+    [paySavedCardMut, refetch, refetchClientOrders],
+  );
+
   const sendMessage = useCallback(
     async (orderRealtimeId: number, message: string) => {
       const { data: result } = await sendMsgMut({
@@ -839,6 +854,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       updateProviderLocation,
       initPayment,
       confirmPayment,
+      payWithSavedCard,
       sendMessage,
       createProviderReview,
       createClientReview,
@@ -873,6 +889,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       updateProviderLocation,
       initPayment,
       confirmPayment,
+      payWithSavedCard,
       sendMessage,
       createProviderReview,
       createClientReview,
@@ -884,3 +901,4 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     ],
   );
 }
+

@@ -66,6 +66,10 @@ export const GET_PUBLIC_PROFILE = gql`
           institution
           year
           verified
+          fileImage {
+            id
+            cdnUrl
+          }
         }
         hobbys {
           id
@@ -90,7 +94,6 @@ export const GET_SERVICE_DETAIL = gql`
         id
         name
         slug
-        imageUrl
         image {
           id
           cdnUrl
