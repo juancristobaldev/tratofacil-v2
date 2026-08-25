@@ -15,6 +15,8 @@ interface SheetProps {
   initialIndex?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
+  keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
+  keyboardBlurBehavior?: 'none' | 'restore';
   onDismiss?: () => void;
   onChange?: (index: number) => void;
   // DEV-only instrumentation key (no behavior change)
@@ -24,7 +26,18 @@ interface SheetProps {
 const HANDLE_CHROME_ESTIMATE = 24;
 
 export const Sheet = forwardRef<SheetModalRef, SheetProps>(
-  ({ children, snapPoints, initialIndex: providedInitialIndex, enableDynamicSizing = true, maxDynamicContentSize, onDismiss, onChange, sheetKey }, ref) => {
+  ({
+    children,
+    snapPoints,
+    initialIndex: providedInitialIndex,
+    enableDynamicSizing = true,
+    maxDynamicContentSize,
+    keyboardBehavior = 'interactive',
+    keyboardBlurBehavior = 'restore',
+    onDismiss,
+    onChange,
+    sheetKey,
+  }, ref) => {
     const insets = useSafeAreaInsets();
     const { height: windowHeight } = useWindowDimensions();
 
@@ -113,8 +126,8 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
         handleIndicatorStyle={styles.indicator}
         bottomInset={NAVBAR_HEIGHT}
         topInset={HEADER_HEIGHT}
-        keyboardBehavior="extend"
-        keyboardBlurBehavior="restore"
+        keyboardBehavior={keyboardBehavior}
+        keyboardBlurBehavior={keyboardBlurBehavior}
       >
         <BottomSheetView
           onLayout={(event) => {

@@ -155,6 +155,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
       initialIndex={descriptor.initialIndex}
       enableDynamicSizing={descriptor.enableDynamicSizing}
       maxDynamicContentSize={descriptor.maxDynamicContentSize}
+      keyboardBehavior={descriptor.keyboardBehavior}
+      keyboardBlurBehavior={descriptor.keyboardBlurBehavior}
       onChange={(index) => onChange(request, index)}
       onDismiss={() => onDismiss(request)}
     >

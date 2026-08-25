@@ -177,6 +177,8 @@ export interface SheetDescriptor<K extends SheetKey> {
   collapsedHeight?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
+  keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
+  keyboardBlurBehavior?: 'none' | 'restore';
   replaceFrom?: readonly SheetKey[];
   replaceSameKey?: boolean;
 }
