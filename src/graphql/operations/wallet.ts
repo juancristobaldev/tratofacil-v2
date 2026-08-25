@@ -254,3 +254,18 @@ export const CONFIRM_FLOW_AD = gql`
     }
   }
 `;
+
+export const PAY_AD_ORDER_WITH_SAVED_CARD = gql`
+  mutation PayAdOrderWithSavedCard($orderAdsId: Int!) {
+    payAdOrderWithSavedCard(orderAdsId: $orderAdsId) {
+      id
+      status
+    }
+  }
+`;
+
+export const DELETE_SAVED_CARD = gql`
+  mutation DeleteSavedCard {
+    deleteSavedCard
+  }
+`;

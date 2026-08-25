@@ -135,4 +135,33 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
       expect(mockRespondRequest).toHaveBeenCalledWith(201, 'reject');
     });
   });
+
+  it('WAITING_CLIENT_RESPONSE: muestra cotización enviada y opción de actualizar o cancelar', async () => {
+    mockSessionValue.orderState = 'WAITING_CLIENT_RESPONSE';
+    mockSessionValue.activeOrder.counterOfferPrice = null;
+
+    const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
+
+    expect(view.getByText('Cotización enviada')).toBeTruthy();
+    expect(view.getByText('Esperando confirmación o respuesta del cliente...')).toBeTruthy();
+    expect(view.getByText('Actualizar Cotización')).toBeTruthy();
+    expect(view.getByText('Cancelar orden')).toBeTruthy();
+  });
+
+  it('WAITING_CLIENT_RESPONSE con contraoferta: muestra tarjeta de contraoferta con Aceptar y Rechazar', async () => {
+    mockSessionValue.orderState = 'WAITING_CLIENT_RESPONSE';
+    mockSessionValue.activeOrder.counterOfferPrice = 15000;
+    mockSessionValue.activeOrder.counterOfferHours = 2;
+    mockSessionValue.activeOrder.counterOfferTransport = 3;
+
+    mockRespondToCounterOffer.mockResolvedValueOnce(undefined);
+
+    const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
+
+    expect(view.getByText('CONTRAOFERTA DEL CLIENTE')).toBeTruthy();
+    expect(view.getByText('$15.000')).toBeTruthy();
+    expect(view.getByText('Propuesta: 2h / 3km')).toBeTruthy();
+    expect(view.getByText('Aceptar')).toBeTruthy();
+    expect(view.getByText('Rechazar')).toBeTruthy();
+  });
 });

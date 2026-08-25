@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TOKENS } from '../../theme';
-import { Card, Button, Icon } from '../../components';
+import { Card, Button, Icon, ToggleSwitch, StatusBanner } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
@@ -118,15 +118,10 @@ export const SettingsScreen: React.FC = () => {
                 Alertas de solicitudes y mensajes
               </Text>
             </View>
-            <Switch
+            <ToggleSwitch
               value={notifications}
               onValueChange={handleTogglePush}
               disabled={!settingsLoaded}
-              trackColor={{
-                false: TOKENS.colors.surface300,
-                true: TOKENS.colors.brand500,
-              }}
-              thumbColor={TOKENS.colors.white}
             />
           </View>
 
@@ -140,29 +135,21 @@ export const SettingsScreen: React.FC = () => {
                     : 'Oculto para clientes'}
                 </Text>
               </View>
-              <Switch
+              <ToggleSwitch
                 value={isRealtimeActive}
                 onValueChange={handleToggleAvailability}
-                trackColor={{
-                  false: TOKENS.colors.surface300,
-                  true: TOKENS.colors.brand500,
-                }}
-                thumbColor={TOKENS.colors.white}
               />
             </View>
           )}
         </View>
 
         {/* App Info Banner */}
-        <View style={styles.infoBanner}>
-          <Icon name="Info" size={20} color="#2563eb" />
-          <View style={styles.infoBannerContent}>
-            <Text style={styles.infoBannerTitle}>TratoFacil.cl v1.0.0</Text>
-            <Text style={styles.infoBannerDesc}>
-              La plataforma que conecta clientes con profesionales verificados.
-            </Text>
-          </View>
-        </View>
+        <StatusBanner
+          title="TratoFacil.cl v1.0.0"
+          description="La plataforma que conecta clientes con profesionales verificados."
+          variant="info"
+          icon="Info"
+        />
 
         {/* Logout Button matching ui-kit.html */}
         <TouchableOpacity

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Input, Modal } from '../../components';
+import { Icon, Button, Input, Modal, StatusBanner, SelectPickerTrigger } from '../../components';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../hooks/useProfile';
@@ -147,48 +147,22 @@ export const VerificationCenterScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Top Progress Banner matching ui-kit.html */}
-        <View
-          style={[
-            styles.progressBanner,
+        <StatusBanner
+          title={
             isFullyComplete
-              ? styles.progressBannerSuccess
-              : styles.progressBannerBrand,
-          ]}
-        >
-          <Icon
-            name="Shield"
-            size={22}
-            color={
-              isFullyComplete
-                ? TOKENS.colors.success600
-                : TOKENS.colors.brand500
-            }
-          />
-          <View style={styles.progressContent}>
-            <Text
-              style={[
-                styles.progressTitle,
-                isFullyComplete && { color: TOKENS.colors.success800 },
-              ]}
-            >
-              {isFullyComplete
-                ? 'Perfil 100% Verificado'
-                : `Perfil verificado al ${completionPercent}%`}
-            </Text>
-            <Text
-              style={[
-                styles.progressDesc,
-                isFullyComplete && { color: TOKENS.colors.success700 },
-              ]}
-            >
-              {isFullyComplete
-                ? 'Has completado todos los requisitos. Ya puedes operar sin restricciones.'
-                : isProvider
-                ? 'Completa los siguientes pasos para activar tu cuenta profesional.'
-                : 'Completa tu información para operar de forma segura.'}
-            </Text>
-          </View>
-        </View>
+              ? 'Perfil 100% Verificado'
+              : `Perfil verificado al ${completionPercent}%`
+          }
+          description={
+            isFullyComplete
+              ? 'Has completado todos los requisitos. Ya puedes operar sin restricciones.'
+              : isProvider
+              ? 'Completa los siguientes pasos para activar tu cuenta profesional.'
+              : 'Completa tu información para operar de forma segura.'
+          }
+          variant={isFullyComplete ? 'success' : 'brand'}
+          icon="Shield"
+        />
 
         {/* 1. Datos Personales */}
         <View
@@ -508,7 +482,7 @@ export const VerificationCenterScreen: React.FC = () => {
               {openSections.bank && !completed.bank && (
                 <View style={styles.accordionBody}>
                   <View style={styles.inputGroup}>
-                    <SelectField
+                    <SelectPickerTrigger
                       label="Banco"
                       value={bankName}
                       placeholder="Selecciona tu banco"
@@ -516,14 +490,15 @@ export const VerificationCenterScreen: React.FC = () => {
                     />
                   </View>
                   <View style={styles.inputGroup}>
-                    <SelectField
+                    <SelectPickerTrigger
                       label="Tipo de Cuenta"
                       value={accountType}
                       placeholder={
                         bankName ? 'Selecciona el tipo' : 'Primero elige banco'
                       }
-                      disabled={!bankName}
-                      onPress={() => setActivePicker('account')}
+                      onPress={() => {
+                        if (bankName) setActivePicker('account');
+                      }}
                     />
                   </View>
                   <View style={styles.inputGroup}>
@@ -708,34 +683,6 @@ export const VerificationCenterScreen: React.FC = () => {
           ))}
         </ScrollView>
       </Modal>
-    </View>
-  );
-};
-
-interface SelectFieldProps {
-  label: string;
-  value: string;
-  placeholder?: string;
-  disabled?: boolean;
-  onPress: () => void;
-}
-
-const SelectField: React.FC<SelectFieldProps> = ({ label, value, placeholder, disabled, onPress }) => {
-  const isDisabled = !!disabled;
-  return (
-    <View>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TouchableOpacity
-        style={[styles.selectField, isDisabled && styles.selectFieldDisabled]}
-        onPress={onPress}
-        disabled={isDisabled}
-        activeOpacity={0.7}
-      >
-        <Text style={[styles.selectFieldText, !value && styles.selectFieldPlaceholder]}>
-          {value || placeholder || 'Seleccionar'}
-        </Text>
-        <Icon name="ChevronDown" size={18} color={TOKENS.colors.textSubtle} />
-      </TouchableOpacity>
     </View>
   );
 };

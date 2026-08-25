@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Input, Button, Badge } from '../../components';
+import { Icon, Avatar, Input, Button, Badge, SettingsMenuCard, SegmentedTabs } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../hooks/useProfile';
 import { useRefresh } from '../../context/RefreshContext';
@@ -230,35 +230,31 @@ export const MyProfileScreen: React.FC = () => {
         {role === 'client' && (
           <>
             {/* Quick Navigation Card matching ui-kit.html */}
-            <View style={styles.menuCard}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('VerificationCenter')} activeOpacity={0.7}>
-                <View style={[styles.menuIconCircle, { backgroundColor: '#eff6ff' }]}>
-                  <Icon name="ShieldCheck" size={18} color="#2563eb" />
-                </View>
-                <Text style={styles.menuItemText}>Centro de verificación</Text>
-                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
-              </TouchableOpacity>
-
-              <View style={styles.menuDivider} />
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Wallet')} activeOpacity={0.7}>
-                <View style={[styles.menuIconCircle, { backgroundColor: '#f0fdf4' }]}>
-                  <Icon name="Wallet" size={18} color="#16a34a" />
-                </View>
-                <Text style={styles.menuItemText}>Mi Billetera</Text>
-                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
-              </TouchableOpacity>
-
-              <View style={styles.menuDivider} />
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Support')} activeOpacity={0.7}>
-                <View style={[styles.menuIconCircle, { backgroundColor: '#fef2f2' }]}>
-                  <Icon name="Headphones" size={18} color="#dc2626" />
-                </View>
-                <Text style={styles.menuItemText}>Centro de Ayuda y Soporte</Text>
-                <Icon name="ChevronRight" size={18} color={TOKENS.colors.surface300} />
-              </TouchableOpacity>
-            </View>
+            <SettingsMenuCard
+              items={[
+                {
+                  icon: 'ShieldCheck',
+                  iconColor: '#2563eb',
+                  iconBgColor: '#eff6ff',
+                  title: 'Centro de verificación',
+                  onPress: () => navigation.navigate('VerificationCenter'),
+                },
+                {
+                  icon: 'Wallet',
+                  iconColor: '#16a34a',
+                  iconBgColor: '#f0fdf4',
+                  title: 'Mi Billetera',
+                  onPress: () => navigation.navigate('Wallet'),
+                },
+                {
+                  icon: 'Headphones',
+                  iconColor: '#dc2626',
+                  iconBgColor: '#fef2f2',
+                  title: 'Centro de Ayuda y Soporte',
+                  onPress: () => navigation.navigate('Support'),
+                },
+              ]}
+            />
 
             {/* Contact Form Card */}
             <View style={styles.cardBox}>
@@ -284,20 +280,12 @@ export const MyProfileScreen: React.FC = () => {
         {/* Provider View with Segmented Tabs */}
         {role === 'provider' && (
           <>
-            <View style={styles.tabsSegmented}>
-              {tabs.map((tab) => (
-                <TouchableOpacity
-                  key={tab.id}
-                  style={[styles.segmentedTabBtn, providerTab === tab.id && styles.segmentedTabBtnActive]}
-                  onPress={() => setProviderTab(tab.id)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.segmentedTabText, providerTab === tab.id && styles.segmentedTabTextActive]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <SegmentedTabs
+              tabs={tabs.map((t) => ({ key: t.id, label: t.label }))}
+              activeTab={providerTab}
+              onTabChange={setProviderTab}
+              style={{ marginBottom: TOKENS.spacing.md }}
+            />
 
             <View style={styles.cardBox}>
               {providerTab === 0 && (

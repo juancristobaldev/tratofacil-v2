@@ -1,9 +1,9 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ViewStyle, Image, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ViewStyle, Image, ActivityIndicator } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon } from '../ui/Icon';
+import { IconButton } from '../ui/IconButton';
 
 interface HeaderProps {
   title?: string;
@@ -40,23 +40,23 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <View style={[styles.container, { height: subtitle ? 76 + insets.top : 60 + insets.top, paddingTop: insets.top }, style]}>
       {showMenu && (
-        <TouchableOpacity
+        <IconButton
+          icon="Menu"
+          size="md"
+          variant="surface"
+          accessibilityLabel="Abrir menú de navegación"
           onPress={onMenuPress || (() => navigation.dispatch(DrawerActions.toggleDrawer()))}
-          style={styles.btn}
-          activeOpacity={0.7}
-        >
-          <Icon name="Menu" size={20} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
+        />
       )}
 
       {showBack && (
-        <TouchableOpacity
+        <IconButton
+          icon="ArrowLeft"
+          size="md"
+          variant="surface"
+          accessibilityLabel="Volver a la pantalla anterior"
           onPress={onBackPress || (() => navigation.goBack())}
-          style={styles.btn}
-          activeOpacity={0.7}
-        >
-          <Icon name="ArrowLeft" size={20} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
+        />
       )}
 
       <View style={styles.center}>
@@ -85,13 +85,13 @@ export const Header: React.FC<HeaderProps> = ({
       <View style={styles.rightSection}>
         {rightAction || (
           showHelp && (
-            <TouchableOpacity
-              style={styles.btn}
-              activeOpacity={0.7}
+            <IconButton
+              icon="HelpCircle"
+              size="md"
+              variant="surface"
+              accessibilityLabel="Centro de ayuda y soporte"
               onPress={onHelpPress || (() => navigation.navigate('Support'))}
-            >
-              <Icon name="HelpCircle" size={20} color={TOKENS.colors.textMain} />
-            </TouchableOpacity>
+            />
           )
         )}
       </View>
@@ -108,15 +108,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.md,
     zIndex: 50,
     ...TOKENS.shadows.soft,
-  },
-  btn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: TOKENS.colors.surface50,
-    position: 'relative',
   },
   center: {
     flex: 1,
@@ -150,3 +141,4 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
 });
+

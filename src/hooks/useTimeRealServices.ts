@@ -212,10 +212,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const [counterOfferMut] = useMutation<any>(CLIENT_COUNTER_OFFER);
   const [respondCounterOffMut] = useMutation<any>(RESPOND_TO_COUNTER_OFFER);
 
+  const [localActiveOrder, _setLocalActiveOrder] = useState<OrderRealTime | null>(null);
+  const [localProviderActiveOrder, _setLocalProviderActiveOrder] = useState<OrderRealTime | null>(null);
+
   const activeOrder = (data?.me?.activeRealtimeOrder as OrderRealTime) ?? null;
   const providerState = data?.me?.provider ?? null;
   const isRealtimeActive = providerState?.isRealtimeActive || false;
-  const providerActiveOrder = (providerState?.activeRealtimeOrder as OrderRealTime) ?? null;
+  const providerActiveOrder = localProviderActiveOrder ?? ((providerState?.activeRealtimeOrder as OrderRealTime) ?? null);
   const clientId = data?.me?.id ?? null;
 
   useEffect(() => {
@@ -269,8 +272,6 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [clientOrdersData],
   );
 
-  const [localActiveOrder, _setLocalActiveOrder] = useState<OrderRealTime | null>(null);
-
   useEffect(() => {
     const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
 
@@ -280,11 +281,12 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     if (localActiveOrder) {
       const pollOrder = activeOrder;
       if (pollOrder && pollOrder.id === localActiveOrder.id) {
-        const needsUpdate = 
-          pollOrder.status !== localActiveOrder.status || 
-          (!localActiveOrder.provider && pollOrder.provider) ||
-          (localActiveOrder.quotedPrice !== pollOrder.quotedPrice) ||
-          (localActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice);
+        const needsUpdate =
+          pollOrder.status !== localActiveOrder.status ||
+          localActiveOrder.quotedPrice !== pollOrder.quotedPrice ||
+          localActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice ||
+          localActiveOrder.counterOfferHours !== pollOrder.counterOfferHours ||
+          localActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport;
 
         if (needsUpdate) {
           _setLocalActiveOrder((prev: any) => {
@@ -299,12 +301,17 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
             };
           });
         }
+      } else if (pollOrder && pollOrder.id !== localActiveOrder.id) {
+        _setLocalActiveOrder(pollOrder);
       } else {
         // El poll dejó de reportar esta orden: si clientOrders la marca terminal, la
         // cerramos; en caso contrario la mantenemos viva (evita el null-clear de R2).
         const match = clientOrders.find((o: any) => o.id === localActiveOrder.id);
         if (match && TERMINAL.includes(match.status)) {
           _setLocalActiveOrder(match);
+        } else if (!pollOrder && !TERMINAL.includes(localActiveOrder.status)) {
+          // Si el poll ya no la reporta ni está en clientOrders activa, se asume cerrada/nula
+          _setLocalActiveOrder(null);
         }
       }
       return;
@@ -315,6 +322,46 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       _setLocalActiveOrder(activeOrder);
     }
   }, [activeOrder, clientOrders, localActiveOrder]);
+
+  useEffect(() => {
+    const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+    const pollOrder = providerState?.activeRealtimeOrder as OrderRealTime | null;
+
+    if (localProviderActiveOrder) {
+      if (pollOrder && pollOrder.id === localProviderActiveOrder.id) {
+        const needsUpdate =
+          pollOrder.status !== localProviderActiveOrder.status ||
+          localProviderActiveOrder.quotedPrice !== pollOrder.quotedPrice ||
+          localProviderActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice ||
+          localProviderActiveOrder.counterOfferHours !== pollOrder.counterOfferHours ||
+          localProviderActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport ||
+          localProviderActiveOrder.clientDescription !== pollOrder.clientDescription;
+
+        if (needsUpdate) {
+          _setLocalProviderActiveOrder((prev: any) => {
+            if (!prev) return pollOrder;
+            if (TERMINAL.includes(prev.status)) return prev;
+            return {
+              ...pollOrder,
+              clientLat: prev.clientLat ?? pollOrder.clientLat,
+              clientLng: prev.clientLng ?? pollOrder.clientLng,
+              providerLat: prev.providerLat ?? pollOrder.providerLat,
+              providerLng: prev.providerLng ?? pollOrder.providerLng,
+            };
+          });
+        }
+      } else if (pollOrder && pollOrder.id !== localProviderActiveOrder.id) {
+        _setLocalProviderActiveOrder(pollOrder);
+      } else if (!pollOrder && !TERMINAL.includes(localProviderActiveOrder.status)) {
+        _setLocalProviderActiveOrder(null);
+      }
+      return;
+    }
+
+    if (pollOrder) {
+      _setLocalProviderActiveOrder(pollOrder);
+    }
+  }, [providerState?.activeRealtimeOrder, localProviderActiveOrder]);
 
   const setLocalActiveOrder = useCallback<React.Dispatch<React.SetStateAction<OrderRealTime | null>>>(
     (value) => {
@@ -389,7 +436,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       } else if (payload.status === 'COMPLETED') {
         notifyRef.current({ title: 'Servicio Finalizado', message: 'El servicio ha sido completado exitosamente.', type: 'success' });
       } else if (payload.status === 'CANCELLED') {
-        notifyRef.current({ title: 'Servicio Cancelado', message: 'El servicio ha sido cancelado.', type: 'error' });
+        notifyRef.current({
+          title: 'Servicio Cancelado',
+          message: currentRole === 'provider' ? 'El cliente ha cancelado la orden.' : 'El servicio ha sido cancelado.',
+          type: 'error',
+        });
       } else if (payload.status === 'REJECTED' && currentRole === 'client') {
         notifyRef.current({ title: 'Oferta Rechazada', message: 'El profesional ha rechazado tu solicitud.', type: 'error' });
       } else if (payload.status === 'ACCEPTED' && currentRole === 'provider') {
@@ -398,15 +449,19 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         notifyRef.current({ title: 'Cotización Recibida', message: 'El profesional ha enviado una cotización.', type: 'info' });
       }
 
-      const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-      if (TERMINAL_STATUSES.includes(payload.status)) {
-        _setLocalActiveOrder((prev: any) => {
-          if (prev && prev.id === payload.orderRealtimeId) {
-            return { ...prev, status: payload.status };
-          }
-          return prev;
-        });
-      }
+      _setLocalActiveOrder((prev: any) => {
+        if (prev && prev.id === payload.orderRealtimeId) {
+          return { ...prev, status: payload.status };
+        }
+        return prev;
+      });
+
+      _setLocalProviderActiveOrder((prev: any) => {
+        if (prev && prev.id === payload.orderRealtimeId) {
+          return { ...prev, status: payload.status };
+        }
+        return prev;
+      });
       
       try {
         apolloClient.cache.modify({
@@ -660,12 +715,20 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     async (orderRealtimeId: number) => {
       if (__DEV__) console.log(`[RT:CANCEL_START] orderId=${orderRealtimeId} role=${roleRef.current}`);
       cancellingRef.current = true;
-      const { data: cancelResult } = await cancelMut({ variables: { orderRealtimeId } });
-      const result = (cancelResult as any)?.cancelRealtimeOrder;
-      if (__DEV__) console.log(`[RT:CANCEL_RESULT] orderId=${result?.id ?? orderRealtimeId} status=${result?.status ?? 'unknown'} role=${roleRef.current}`);
-      refetch();
-      refetchClientOrders();
-      setTimeout(() => { cancellingRef.current = false; }, 1000);
+      _setLocalActiveOrder((prev: any) => (prev?.id === orderRealtimeId ? { ...prev, status: 'CANCELLED' } : prev));
+      _setLocalProviderActiveOrder((prev: any) => (prev?.id === orderRealtimeId ? { ...prev, status: 'CANCELLED' } : prev));
+      try {
+        const { data: cancelResult } = await cancelMut({ variables: { orderRealtimeId } });
+        const result = (cancelResult as any)?.cancelRealtimeOrder;
+        if (__DEV__) console.log(`[RT:CANCEL_RESULT] orderId=${result?.id ?? orderRealtimeId} status=${result?.status ?? 'unknown'} role=${roleRef.current}`);
+      } catch (err) {
+        if (__DEV__) console.warn('[RT:CANCEL_ERROR]', err);
+        throw err;
+      } finally {
+        refetch();
+        refetchClientOrders();
+        setTimeout(() => { cancellingRef.current = false; }, 1000);
+      }
     },
     [cancelMut, refetch, refetchClientOrders],
   );

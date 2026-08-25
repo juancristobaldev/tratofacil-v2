@@ -38,8 +38,7 @@ export const SetPasswordScreen: React.FC = () => {
     setLoading(false);
   };
 
-  const handleSkip = async () => {
-    await logout();
+  const handleSkip = () => {
     navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
   };
 

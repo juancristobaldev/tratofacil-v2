@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIn
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, ErrorState } from '../../components/ui';
+import { Icon, Button, IconButton, ErrorState } from '../../components/ui';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { getImageUrl } from '../../utils/imageUrl';
 
@@ -76,12 +76,14 @@ export const ProductDetailScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         
         {/* HEADER BACK BTN */}
-        <TouchableOpacity 
+        <IconButton 
+          icon="ArrowLeft"
+          variant="white"
+          size="md"
+          accessibilityLabel="Volver al listado de productos"
           style={[styles.backBtn, { top: insets.top + 10 }]} 
           onPress={() => navigation.goBack()}
-        >
-          <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-        </TouchableOpacity>
+        />
 
         {/* IMAGE */}
         <Image source={{ uri: getImageUrl(product.images[0]) || 'https://picsum.photos/400/400?random=10' }} style={styles.image} />
@@ -123,8 +125,8 @@ export const ProductDetailScreen: React.FC = () => {
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom || TOKENS.spacing.md }]}>
         <Button 
           title="Comprar" 
+          size="lg"
           onPress={handleBuy} 
-          style={{ flex: 1 }}
         />
       </View>
     </View>

@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, FlatList, TouchableOpacity, Alert, ActivityIndi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Badge, EmptyState, ErrorState } from '../../components';
+import { Icon, Button, Card, Badge, EmptyState, ErrorState, CTABannerButton } from '../../components';
 import { useServices } from '../../hooks/useServices';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
@@ -41,6 +41,14 @@ export const MyServicesScreen: React.FC = () => {
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: () => deleteService(id) },
     ]);
+  };
+
+  const handleNavigatePublish = () => {
+    if (role === 'guest') {
+      navigation.navigate('Login');
+    } else {
+      navigation.navigate('PublishService');
+    }
   };
 
   if (loading) {
@@ -100,6 +108,12 @@ export const MyServicesScreen: React.FC = () => {
           ListHeaderComponent={
             <View style={styles.introRow}>
               <Text style={styles.subtitle}>Administra los servicios técnicos que ofreces a tus clientes en TratoFácil.</Text>
+              <CTABannerButton
+                title="Publicar Servicio"
+                subtitle="Llega a más clientes hoy"
+                onPress={handleNavigatePublish}
+                style={{ marginTop: 12 }}
+              />
             </View>
           }
           ListEmptyComponent={
@@ -109,13 +123,7 @@ export const MyServicesScreen: React.FC = () => {
         <View style={[styles.footer, { paddingBottom: insets.bottom + 8 }]}>
           <Button
             title="Publicar Nuevo Servicio"
-            onPress={() => {
-              if (role === 'guest') {
-                navigation.navigate('Login');
-              } else {
-                navigation.navigate('PublishService');
-              }
-            }}
+            onPress={handleNavigatePublish}
             icon="Plus"
             style={styles.publishBtn}
           />

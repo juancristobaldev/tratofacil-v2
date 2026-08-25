@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
     gap: 14,
-    paddingBottom: 36,
+    paddingBottom: 18,
   },
   onlineCard: {
     flexDirection: 'row',
@@ -320,8 +320,11 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.medium,
   },
   planLinkBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 10,
     backgroundColor: TOKENS.colors.brand50,
     borderWidth: 1,

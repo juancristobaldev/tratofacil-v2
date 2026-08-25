@@ -696,8 +696,9 @@ export const HomePage: React.FC = () => {
 
     const target = desiredMapSurface.key;
     const activeAllowed = active ? isSheetAllowedForRole(active, role) : false;
+    const activeIsFocus = active === 'focus_client' || active === 'focus_provider';
     const targetHasRealtimePriority = target === 'focus_client' || target === 'focus_provider';
-    const needsReconcile = active !== target && (!activeAllowed || !active || targetHasRealtimePriority);
+    const needsReconcile = active !== target && (!activeAllowed || !active || targetHasRealtimePriority || activeIsFocus);
 
     if (!needsReconcile) {
       bottomSheetDebug('RECONCILE_DECISION', {
@@ -728,9 +729,11 @@ export const HomePage: React.FC = () => {
       ? (target === 'focus_client' || target === 'focus_provider'
         ? 'active_not_allowed_for_role_realtime_priority'
         : 'active_not_allowed_for_role')
-      : active === null
-        ? 'initial_target'
-        : 'domain_priority_changed';
+      : activeIsFocus && !targetHasRealtimePriority
+        ? 'focus_session_ended'
+        : active === null
+          ? 'initial_target'
+          : 'domain_priority_changed';
 
     bottomSheetDebug('RECONCILE_DECISION', {
       role,

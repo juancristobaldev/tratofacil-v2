@@ -56,6 +56,11 @@ jest.mock('../../hooks/useMarketplace', () => ({
   useMarketplace: () => ({ createOrder: mockCreateOrder }),
 }));
 
+const mockRegisterCard = jest.fn();
+jest.mock('../../hooks/usePlans', () => ({
+  usePlans: () => ({ registerCard: mockRegisterCard }),
+}));
+
 jest.mock('../../hooks/useFlow', () => ({
   useFlow: () => ({ pay: mockPay, payWithSavedCard: mockPayWithSavedCard }),
 }));
@@ -128,7 +133,7 @@ describe('PurchaseScreen component', () => {
     mockRole = 'guest';
     const view = await render(<PurchaseScreen />);
 
-    await fireEvent.press(view.getByRole('button', { name: /Ir a Pagar/i }));
+    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
 
     expect(mockNavigate).toHaveBeenCalledWith('Login');
     expect(mockCreateOrder).not.toHaveBeenCalled();
@@ -140,8 +145,10 @@ describe('PurchaseScreen component', () => {
 
     expect(view.getByText('Taladro inalámbrico')).toBeTruthy();
     expect(view.getByText('Av Providencia 1234 Depto 501')).toBeTruthy();
+    expect(view.getByText('Vincular tarjeta nueva')).toBeTruthy();
+    expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
 
-    await fireEvent.press(view.getByRole('button', { name: /Ir a Pagar/i }));
+    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
 
     await waitFor(() => {
       expect(mockCreateOrder).toHaveBeenCalledWith(
@@ -174,9 +181,9 @@ describe('PurchaseScreen component', () => {
     const view = await render(<PurchaseScreen />);
 
     expect(view.getByText('VISA •••• 4242')).toBeTruthy();
-    expect(view.getByText('VINCULADA')).toBeTruthy();
+    expect(view.getByText('1-CLICK')).toBeTruthy();
 
-    await fireEvent.press(view.getByRole('button', { name: 'Pagar con •••• 4242' }));
+    await fireEvent.press(view.getByText('VISA •••• 4242'));
 
     await waitFor(() => {
       expect(mockCreateOrder).toHaveBeenCalled();
@@ -194,7 +201,7 @@ describe('PurchaseScreen component', () => {
     mockCreateOrder.mockRejectedValueOnce(new Error('Stock insuficiente'));
     const view = await render(<PurchaseScreen />);
 
-    await fireEvent.press(view.getByRole('button', { name: /Ir a Pagar/i }));
+    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
 
     await waitFor(() => {
       expect(mockShowNotification).toHaveBeenCalledWith({

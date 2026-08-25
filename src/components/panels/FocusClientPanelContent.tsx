@@ -8,10 +8,12 @@ import {
 } from 'react-native';
 import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Button, Badge } from '../ui';
-import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
+import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards } from '../ui';
+import type { PaymentMethod } from '../ui';
+import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePlans } from '../../hooks/usePlans';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
@@ -19,6 +21,7 @@ import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.ty
 export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client'>> = () => {
   const { showNotification } = useNotification();
   const { user } = useAuth();
+  const { registerCard } = usePlans();
   const session = useFocusSession('client');
   const {
     activeOrder,
@@ -30,9 +33,12 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     setShowChat,
   } = session;
 
-  const hasCard = Boolean((user?.cardActive ?? true) && user?.last4CardDigits && user?.creditCardType);
+  const hasCard = Boolean(user?.cardActive && user?.last4CardDigits && user?.creditCardType);
   const cardBrand = user?.creditCardType || 'Tarjeta';
   const cardLast4 = user?.last4CardDigits || '****';
+
+  const [counterOfferPrice, setCounterOfferPrice] = useState<number | null>(null);
+  const [registering, setRegistering] = useState(false);
 
   const status = activeOrder?.status || 'PENDING';
   const etaRemaining = etaLabel || '...';
@@ -124,6 +130,25 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     }
   };
 
+  const handleRegisterCard = async () => {
+    if (registering) return;
+    setRegistering(true);
+    try {
+      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      if (result?.alreadyRegistered) {
+        showNotification({ title: 'Tarjeta', message: 'Ya tienes una tarjeta vinculada.', type: 'info' });
+      } else if (result?.url) {
+        await Linking.openURL(result.url);
+      } else {
+        showNotification({ title: 'Error', message: 'No se pudo iniciar el registro de la tarjeta.', type: 'error' });
+      }
+    } catch (err: any) {
+      showNotification({ title: 'Error', message: err?.message || 'Error al vincular tarjeta.', type: 'error' });
+    } finally {
+      setRegistering(false);
+    }
+  };
+
 
   const handleCancel = async () => {
     const actionId = nextBottomSheetActionId();
@@ -135,7 +160,10 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'CANCEL_ORDER', result: 'cancel_order' });
     try {
       await realtime.cancelOrder(activeOrder.id);
-    } catch {}
+      showNotification({ title: 'Orden cancelada', message: 'Has cancelado la solicitud.', type: 'info' });
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
+    }
   };
 
   const handleRejectQuote = () => {
@@ -193,6 +221,9 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             <Avatar uri={provider.avatar} name={provider.name} size={46} />
             <View style={styles.sheetHeaderText}>
               <Text style={styles.sheetTitle} numberOfLines={1}>{provider.name}</Text>
+              <Text style={styles.serviceSubtitle} numberOfLines={1}>
+                {activeOrder?.serviceProvider?.service?.name || provider?.serviceName || 'Servicio'}
+              </Text>
               <View style={styles.ratingAndEtaRow}>
                 <Rating rating={provider.rating ?? 0} size={12} showText reviewsCount={provider.reviewsCount} />
                 <View style={styles.etaInlineBadge}>
@@ -216,18 +247,13 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             </TouchableOpacity>
           </View>
 
-          {/* Detalle compacto del servicio */}
-          <View style={styles.serviceDetailCompact}>
-            <Text style={styles.serviceDetailTitle}>Servicio solicitado</Text>
-            <Text style={styles.serviceDetailName} numberOfLines={1}>
-              {activeOrder?.serviceProvider?.service?.name || provider?.serviceName || 'Servicio'}
-            </Text>
-            {Boolean(activeOrder?.clientDescription || provider?.description) && (
+          {Boolean(activeOrder?.clientDescription || provider?.description) && (
+            <View style={styles.serviceDetailCompact}>
               <Text style={styles.serviceDetailDesc} numberOfLines={2}>
                 {activeOrder?.clientDescription || provider?.description}
               </Text>
-            )}
-          </View>
+            </View>
+          )}
 
           {/* Bloque integrado de Cotización y Contraoferta */}
           <View style={styles.pricingCard}>
@@ -299,73 +325,42 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                       />
                       <Button
                         title="Cancelar orden"
-                        variant="outline"
+                        variant="subtle"
+                        size="md"
                         onPress={handleCancel}
-                        style={styles.payBtn}
-                      />
-                    </>
-                  ) : hasCard ? (
-                    <>
-                      <View style={styles.savedCardBoxCompact}>
-                        <View style={styles.savedCardLeft}>
-                          <Icon name="CreditCard" size={16} color={TOKENS.colors.brand600} />
-                          <Text style={styles.savedCardText}>
-                            {cardBrand} •••• {cardLast4}
-                          </Text>
-                        </View>
-                        <Badge label="VINCULADA" tone="success" size="sm" />
-                      </View>
-                      <Button
-                        title={`Pagar con •••• ${cardLast4}`}
-                        icon="CreditCard"
-                        loading={isPayingCard}
-                        disabled={isPayingCard}
-                        onPress={handlePaySavedCard}
-                        style={styles.payBtn}
-                      />
-                      <Button
-                        title="Pagar con Flow / Webpay"
-                        variant="outline"
-                        disabled={isPayingCard}
-                        onPress={handlePay}
-                        style={styles.payBtn}
-                      />
-                      <Button
-                        title="Rechazar cotización"
-                        variant="outline"
-                        disabled={isPayingCard}
-                        onPress={handleRejectQuote}
-                        style={styles.payBtn}
-                      />
-                      <Button
-                        title="Cancelar orden"
-                        variant="outline"
-                        disabled={isPayingCard}
-                        onPress={handleCancel}
-                        style={styles.payBtn}
+                        style={{ marginTop: 8 }}
                       />
                     </>
                   ) : (
                     <>
-                      <Button
-                        title="Pagar ahora"
-                        onPress={handlePay}
-                        style={styles.payBtn}
+                      <PaymentActionCards
+                        hasCard={hasCard}
+                        cardBrand={cardBrand}
+                        cardLast4={cardLast4}
+                        onPayWithSavedCard={handlePaySavedCard}
+                        onRegisterCard={handleRegisterCard}
+                        onPayWithFlow={handlePay}
+                        isProcessing={isPayingCard || registering}
+                        activeAction={isPayingCard ? 'saved_card' : registering ? 'register_card' : null}
                       />
-                      <Button
-                        title="Rechazar cotización"
-                        variant="outline"
-                        disabled={isPayingCard}
-                        onPress={handleRejectQuote}
-                        style={styles.payBtn}
-                      />
-                      <Button
-                        title="Cancelar orden"
-                        variant="outline"
-                        disabled={isPayingCard}
-                        onPress={handleCancel}
-                        style={styles.payBtn}
-                      />
+
+                      <View style={styles.quotedSecondaryActionsStack}>
+                        <Button
+                          title="Rechazar cotización"
+                          variant="subtle"
+                          size="md"
+                          disabled={isPayingCard || registering}
+                          onPress={handleRejectQuote}
+                        />
+                        <Button
+                          title="Cancelar orden"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isPayingCard || registering}
+                          onPress={handleCancel}
+                          textStyle={{ color: TOKENS.colors.error600 }}
+                        />
+                      </View>
                     </>
                   )}
                 </View>
@@ -384,9 +379,13 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               <Text style={styles.arrivalTitle}>Listo para iniciar servicio</Text>
               <Text style={styles.arrivalSubtitle}>El profesional se encuentra en tu dirección.</Text>
               <Button title="Confirmar inicio de servicio" onPress={handleStartOrder} style={styles.confirmStartBtn} />
-              <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85}>
-                <Text style={styles.cancelActionBtnText}>Cancelar orden</Text>
-              </TouchableOpacity>
+              <Button
+                title="Cancelar orden"
+                variant="subtle"
+                size="md"
+                onPress={handleCancel}
+                style={{ marginTop: 8 }}
+              />
             </View>
           ) : (
             <>
@@ -401,7 +400,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               </View>
               
               <View style={styles.providerCardHeader}>
-                <Avatar uri={provider.avatar} name={provider.name} size={50} />
+                <Avatar uri={provider.avatar} name={provider.name} size={48} />
                 <View style={styles.sheetHeaderText}>
                   <Text style={styles.sheetTitle} numberOfLines={1}>{provider.name}</Text>
                   <View style={styles.ratingRow}>
@@ -421,9 +420,13 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85}>
-                <Text style={styles.cancelActionBtnText}>Cancelar servicio</Text>
-              </TouchableOpacity>
+              <Button
+                title="Cancelar servicio"
+                variant="subtle"
+                size="md"
+                onPress={handleCancel}
+                style={{ marginTop: 8 }}
+              />
             </>
           )}
         </View>
@@ -439,18 +442,24 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           <Text style={styles.workingDesc}>
             {provider.name} está realizando el trabajo en tu domicilio.
           </Text>
-          <TouchableOpacity
+          <Button
+            title="Abrir Chat"
+            variant="secondary"
+            icon="MessageCircle"
             onPress={() => {
               const actionId = nextBottomSheetActionId();
               bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
               setShowChat(true);
             }}
             style={styles.chatActionBtn}
-            activeOpacity={0.85}
-          >
-            <Icon name="MessageCircle" size={18} color={TOKENS.colors.brand700} />
-            <Text style={styles.chatActionBtnText}>Abrir Chat</Text>
-          </TouchableOpacity>
+          />
+          <Button
+            title="Cancelar servicio"
+            variant="subtle"
+            size="md"
+            onPress={handleCancel}
+            style={{ marginTop: 8 }}
+          />
         </View>
       )}
     </BottomSheetScrollView>
@@ -591,20 +600,66 @@ const styles = StyleSheet.create({
   payBtn: {
     width: '100%',
   },
+  quotedSecondaryActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  ghostActionBtn: {
+    flex: 1,
+    minHeight: 40,
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    paddingHorizontal: 4,
+  },
+  ghostActionBtnText: {
+    fontSize: TOKENS.typography.sizes.xs + 1,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  ghostActionBtnTextDanger: {
+    fontSize: TOKENS.typography.sizes.xs + 1,
+    color: TOKENS.colors.error600,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  actionDividerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: TOKENS.colors.surface300,
+  },
+  subtleCancelBtn: {
+    width: '100%',
+    minHeight: 40,
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  subtleCancelText: {
+    color: TOKENS.colors.textSubtle,
+    fontSize: TOKENS.typography.sizes.xs + 1,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
   cancelActionBtn: {
     width: '100%',
-    height: 52,
-    backgroundColor: TOKENS.colors.brand50,
+    height: 48,
+    backgroundColor: TOKENS.colors.surface100,
     borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
-    borderRadius: 16,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cancelActionBtnText: {
-    color: TOKENS.colors.brand700,
-    fontSize: 15,
-    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.medium,
   },
   etaHighlightCard: {
     backgroundColor: TOKENS.colors.surface50,
@@ -899,19 +954,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
   },
+  serviceSubtitle: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.medium,
+    marginTop: 1,
+  },
+  quotedSecondaryActionsStack: {
+    gap: 6,
+    marginTop: 4,
+  },
   actionsContainerCompact: {
     gap: 8,
     marginTop: 2,
-  },
-  actionRowHorizontal: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionBtnHalf: {
-    flex: 1,
-  },
-  actionBtnHalfPrimary: {
-    flex: 1.5,
   },
   savedCardBoxCompact: {
     flexDirection: 'row',

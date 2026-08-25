@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Button } from '../../components/ui/Button';
-import { Icon } from '../../components/ui/Icon';
-import { Badge } from '../../components/ui/Badge';
+import { Icon, Button, Badge, PaymentActionCards } from '../../components/ui';
+import type { PaymentActionType } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useRole } from '../../context/RoleContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
-import { DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useFlow } from '../../hooks/useFlow';
+import { usePlans } from '../../hooks/usePlans';
+import { DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
 import { getProductCommission } from '../../utils/comission';
 
 export const PurchaseScreen: React.FC = () => {
@@ -22,17 +22,16 @@ export const PurchaseScreen: React.FC = () => {
   const { user } = useAuth();
   const { role } = useRole();
   const { showNotification } = useNotification();
+  const { registerCard } = usePlans();
 
   const { createOrder } = useMarketplace();
   const { pay, payWithSavedCard } = useFlow();
 
-  const hasSavedCard = Boolean((user?.cardActive ?? true) && user?.last4CardDigits && user?.creditCardType);
+  const hasSavedCard = Boolean(user?.cardActive && user?.last4CardDigits && user?.creditCardType);
   const cardBrand = user?.creditCardType || 'Tarjeta';
   const cardLast4 = user?.last4CardDigits || '****';
 
-  const [paymentMethod, setPaymentMethod] = useState<'saved_card' | 'webpay'>(
-    hasSavedCard ? 'saved_card' : 'webpay',
-  );
+  const [activeAction, setActiveAction] = useState<PaymentActionType | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
   if (!product) {
@@ -45,11 +44,15 @@ export const PurchaseScreen: React.FC = () => {
     );
   }
 
-  const commission = getProductCommission(product.price);
-  const basePrice = Math.round(product.price / (1 + commission.rate));
-  const commissionAmount = product.price - basePrice;
+  const { basePrice, commissionAmount, rate, label } = getProductCommission(product.price);
+  const commission = { rate, label };
 
-  const processPayment = async () => {
+  const handlePayWithSavedCard = async () => {
+    if (role === 'guest') {
+      navigation.navigate('Login');
+      return;
+    }
+    setActiveAction('saved_card');
     setIsProcessing(true);
     try {
       const orderResult = await createOrder(
@@ -66,20 +69,46 @@ export const PurchaseScreen: React.FC = () => {
         },
       );
       const orderProductId = orderResult?.id;
-      if (!orderProductId) {
-        throw new Error('No se pudo generar la orden de compra.');
-      }
+      if (!orderProductId) throw new Error('No se pudo generar la orden de compra.');
 
-      if (paymentMethod === 'saved_card' && hasSavedCard) {
-        await payWithSavedCard('product', orderProductId);
-        showNotification({
-          title: '¡Compra exitosa!',
-          message: 'Tu pago fue procesado con tu tarjeta guardada.',
-          type: 'success',
-        });
-        navigation.navigate('PurchasesList');
-        return;
-      }
+      await payWithSavedCard('product', orderProductId);
+      showNotification({
+        title: '¡Compra exitosa!',
+        message: 'Tu pago fue procesado con tu tarjeta guardada.',
+        type: 'success',
+      });
+      navigation.navigate('PurchasesList');
+    } catch (err: any) {
+      showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
+    } finally {
+      setIsProcessing(false);
+      setActiveAction(null);
+    }
+  };
+
+  const handlePayWithFlow = async () => {
+    if (role === 'guest') {
+      navigation.navigate('Login');
+      return;
+    }
+    setActiveAction('flow');
+    setIsProcessing(true);
+    try {
+      const orderResult = await createOrder(
+        { productId: parseInt(product.id, 10), quantity: 1 },
+        shippingData && !shippingData.shippingDisabled ? {
+          street: shippingData.street,
+          number: shippingData.number,
+          commune: shippingData.city,
+          region: shippingData.region,
+          phone: shippingData.phone,
+          reference: shippingData.additional || '',
+        } : {
+          street: '', number: '', commune: '', region: '', phone: '',
+        },
+      );
+      const orderProductId = orderResult?.id;
+      if (!orderProductId) throw new Error('No se pudo generar la orden de compra.');
 
       const flowResult = await pay({
         type: 'product',
@@ -88,25 +117,40 @@ export const PurchaseScreen: React.FC = () => {
       });
       if (flowResult.url) {
         setIsProcessing(false);
+        setActiveAction(null);
         return;
       }
-
       showNotification({ title: 'Error', message: 'No se pudo iniciar el pago. Intenta de nuevo.', type: 'error' });
     } catch (err: any) {
       showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
     } finally {
       setIsProcessing(false);
+      setActiveAction(null);
     }
   };
 
-
-  const handleConfirm = () => {
+  const handleRegisterCard = async () => {
     if (role === 'guest') {
-      // Comprar en el marketplace requiere una cuenta autenticada.
       navigation.navigate('Login');
       return;
     }
-    processPayment();
+    setActiveAction('register_card');
+    setIsProcessing(true);
+    try {
+      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      if (result?.alreadyRegistered) {
+        showNotification({ title: 'Tarjeta', message: 'Ya tienes una tarjeta vinculada.', type: 'info' });
+      } else if (result?.url) {
+        await Linking.openURL(result.url);
+      } else {
+        showNotification({ title: 'Error', message: 'No se pudo iniciar el registro de la tarjeta.', type: 'error' });
+      }
+    } catch (err: any) {
+      showNotification({ title: 'Error', message: err?.message || 'Error al vincular tarjeta.', type: 'error' });
+    } finally {
+      setIsProcessing(false);
+      setActiveAction(null);
+    }
   };
 
   return (
@@ -139,130 +183,54 @@ export const PurchaseScreen: React.FC = () => {
             </View>
             <Text style={styles.shippingText}>{shippingData.street} {shippingData.number} {shippingData.additional}</Text>
             <Text style={styles.shippingText}>{shippingData.city}, {shippingData.region}</Text>
-            <Text style={styles.shippingText}>Recibe: {shippingData.receiverName} ({shippingData.phone})</Text>
+            <Text style={styles.shippingText}>Contacto: {shippingData.phone}</Text>
           </View>
-        ) : (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Icon name="Store" size={20} color={TOKENS.colors.brand600} />
-              <Text style={styles.cardTitle}>Retiro en tienda</Text>
-            </View>
-            <Text style={styles.shippingText}>El vendedor no ofrece despacho para este producto.</Text>
-          </View>
-        )}
+        ) : null}
 
-        {/* FINANCIAL SUMMARY */}
+        {/* PRICE SUMMARY */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Icon name="Wallet" size={20} color={TOKENS.colors.brand600} />
-            <Text style={styles.cardTitle}>Resumen de Pago</Text>
+            <Icon name="DollarSign" size={20} color={TOKENS.colors.brand600} />
+            <Text style={styles.cardTitle}>Resumen</Text>
           </View>
-          
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Precio Producto</Text>
+            <Text style={styles.summaryLabel}>Precio del producto</Text>
             <Text style={styles.summaryValue}>${basePrice.toLocaleString('es-CL')}</Text>
           </View>
-          
           <View style={styles.summaryRow}>
-            <View>
-              <Text style={styles.summaryLabel}>Tarifa de Servicio</Text>
-              <Text style={styles.summarySubLabel}>{commission.label} ({(commission.rate * 100).toFixed(0)}%)</Text>
-            </View>
-            <Text style={styles.summaryValue}>+ ${commissionAmount.toLocaleString('es-CL')}</Text>
+            <Text style={styles.summaryLabel}>
+              Comisión por servicio ({Math.round(commission.rate * 100)}%)
+            </Text>
+            <Text style={styles.summaryValue}>${commissionAmount.toLocaleString('es-CL')}</Text>
           </View>
-
           <View style={styles.divider} />
-
           <View style={styles.summaryRow}>
-            <Text style={styles.totalLabel}>Total a Pagar</Text>
+            <Text style={styles.totalLabel}>Total a pagar</Text>
             <Text style={styles.totalValue}>${product.price.toLocaleString('es-CL')}</Text>
           </View>
+        </View>
 
-          <Text style={styles.paymentSectionTitle}>Método de Pago</Text>
-
-          {hasSavedCard ? (
-            <View style={styles.paymentOptionsList}>
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === 'saved_card' && styles.paymentOptionSelected,
-                ]}
-                onPress={() => setPaymentMethod('saved_card')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.paymentOptionRadio}>
-                  <View
-                    style={[
-                      styles.radioCircle,
-                      paymentMethod === 'saved_card' && styles.radioCircleSelected,
-                    ]}
-                  />
-                </View>
-                <Icon name="CreditCard" size={22} color={TOKENS.colors.brand600} />
-                <View style={styles.paymentMethodText}>
-                  <View style={styles.cardHeaderInline}>
-                    <Text style={styles.paymentMethodTitle}>
-                      {cardBrand} •••• {cardLast4}
-                    </Text>
-                    <Badge label="VINCULADA" tone="success" size="sm" />
-                  </View>
-                  <Text style={styles.paymentMethodSub}>Pago rápido directo con Flow</Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.paymentOption,
-                  paymentMethod === 'webpay' && styles.paymentOptionSelected,
-                ]}
-                onPress={() => setPaymentMethod('webpay')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.paymentOptionRadio}>
-                  <View
-                    style={[
-                      styles.radioCircle,
-                      paymentMethod === 'webpay' && styles.radioCircleSelected,
-                    ]}
-                  />
-                </View>
-                <Icon name="Globe" size={22} color={TOKENS.colors.brand600} />
-                <View style={styles.paymentMethodText}>
-                  <Text style={styles.paymentMethodTitle}>Webpay / Otro medio</Text>
-                  <Text style={styles.paymentMethodSub}>Webpay Plus, Mach, Servipag</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.paymentOption}>
-              <Icon name="CreditCard" size={24} color={TOKENS.colors.brand600} />
-              <View style={styles.paymentMethodText}>
-                <Text style={styles.paymentMethodTitle}>Flow / Webpay</Text>
-                <Text style={styles.paymentMethodSub}>Pago seguro online (Webpay, Tarjetas)</Text>
-              </View>
-            </View>
-          )}
+        {/* PAYMENT METHOD */}
+        <View style={styles.paymentSection}>
+          <PaymentActionCards
+            hasCard={hasSavedCard}
+            cardBrand={cardBrand}
+            cardLast4={cardLast4}
+            onPayWithSavedCard={handlePayWithSavedCard}
+            onRegisterCard={handleRegisterCard}
+            onPayWithFlow={handlePayWithFlow}
+            isProcessing={isProcessing}
+            activeAction={activeAction}
+          />
         </View>
 
       </ScrollView>
 
       {/* FIXED FOOTER */}
       <View style={styles.footer}>
-        <Button 
-          title={
-            isProcessing
-              ? 'Procesando...'
-              : paymentMethod === 'saved_card' && hasSavedCard
-              ? `Pagar con •••• ${cardLast4}`
-              : `Ir a Pagar $${product.price.toLocaleString('es-CL')}`
-          } 
-          icon={paymentMethod === 'saved_card' && hasSavedCard ? 'CreditCard' : 'ArrowRight'}
-          onPress={handleConfirm}
-          disabled={isProcessing}
-        />
         <View style={styles.secureTextRow}>
-          <Icon name="ShieldCheck" size={12} color={TOKENS.colors.textSubtle} />
-          <Text style={styles.secureText}>Tus datos viajan encriptados</Text>
+          <Icon name="ShieldCheck" size={14} color={TOKENS.colors.brand600} />
+          <Text style={styles.secureText}>Pago 100% seguro y encriptado por Flow.cl</Text>
         </View>
       </View>
     </View>
@@ -287,6 +255,9 @@ const styles = StyleSheet.create({
   },
   scrollBody: {
     padding: TOKENS.spacing.md,
+  },
+  paymentSection: {
+    marginBottom: TOKENS.spacing.md,
   },
   card: {
     backgroundColor: TOKENS.colors.white,

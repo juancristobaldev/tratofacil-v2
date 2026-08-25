@@ -140,6 +140,7 @@ export const GET_MY_REALTIME_STATE = gql`
               name
             }
           }
+          clientDescription
           payment {
             amount
           }

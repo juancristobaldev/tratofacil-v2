@@ -8,7 +8,7 @@ import {
   Animated,
 } from 'react-native';
 import { TOKENS, MOTION } from '../../theme';
-import { Icon } from './Icon';
+import { IconButton } from './IconButton';
 
 interface ModalProps {
   children: React.ReactNode;
@@ -68,9 +68,14 @@ export const Modal: React.FC<ModalProps> = ({
           ]}
         >
           {showCloseButton && (
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
-            </Pressable>
+            <IconButton
+              icon="X"
+              size="sm"
+              variant="surface"
+              accessibilityLabel="Cerrar modal"
+              onPress={onClose}
+              style={styles.closeBtn}
+            />
           )}
           {children}
         </Animated.View>
@@ -102,11 +107,6 @@ const styles = StyleSheet.create({
     top: 12,
     right: 12,
     zIndex: 10,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: TOKENS.colors.surface100,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
+

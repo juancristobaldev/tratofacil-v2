@@ -80,8 +80,10 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const rawProviderOrder = realtime.providerActiveOrder;
   const lastProviderOrderRef = useRef<OrderRealTime | null>(rawProviderOrder);
-  if (rawProviderOrder) {
+  if (rawProviderOrder && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(rawProviderOrder.status)) {
     lastProviderOrderRef.current = rawProviderOrder;
+  } else {
+    lastProviderOrderRef.current = null;
   }
   const providerOrder = rawProviderOrder || lastProviderOrderRef.current;
 
@@ -265,7 +267,12 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Mapeo de status realtime -> estado de sesión de proveedor.
   useEffect(() => {
     const r = realtime?.providerActiveOrder;
-    if (!r) return;
+    if (!r) {
+      if (orderState !== 'CANCELLED' && orderState !== 'COMPLETED') {
+        setOrderState('CANCELLED');
+      }
+      return;
+    }
     const mapped = STATUS_MAP[r.status];
     if (mapped && mapped !== orderState) {
       setOrderState(mapped);

@@ -12,7 +12,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Badge, Button, ErrorState } from '../../components';
+import { Icon, Avatar, Rating, Badge, Button, ErrorState, StatsOverviewCard, ReviewCard, RatingDistribution, SegmentedTabs } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -202,65 +202,39 @@ export const ProviderProfileScreen: React.FC = () => {
             </View>
 
             {/* Stats Resumen */}
-            <View style={styles.statsCard}>
-              <View style={styles.statItem}>
-                <View style={styles.statScoreRow}>
-                  <Text style={styles.statScoreText}>{provider.rating.toFixed(1)}</Text>
-                  <Icon name="Star" size={15} color={TOKENS.colors.starActive} />
-                </View>
-                <Text style={styles.statLabelText}>{provider.reviewsCount} reseñas</Text>
-              </View>
-
-              <View style={styles.statDivider} />
-
-              <View style={styles.statItem}>
-                <Text style={styles.statScoreText}>{provider.completedOrdersCount}+</Text>
-                <Text style={styles.statLabelText}>Trabajos</Text>
-              </View>
-
-              <View style={styles.statDivider} />
-
-              <View style={styles.statItem}>
-                <Text style={styles.statScoreText}>98%</Text>
-                <Text style={styles.statLabelText}>Puntualidad</Text>
-              </View>
-            </View>
+            <StatsOverviewCard
+              style={{ marginTop: 18 }}
+              stats={[
+                {
+                  value: provider.rating.toFixed(1),
+                  label: `${provider.reviewsCount} reseñas`,
+                  icon: 'Star',
+                  iconColor: TOKENS.colors.starActive,
+                },
+                {
+                  value: `${provider.completedOrdersCount}+`,
+                  label: 'Trabajos',
+                },
+                {
+                  value: '98%',
+                  label: 'Puntualidad',
+                },
+              ]}
+            />
           </View>
         </View>
 
         {/* TABS SEGMENTADAS */}
         <View style={styles.tabsContainer}>
-          <View style={styles.tabsTrack}>
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'servicios' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('servicios')}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.tabBtnText, activeTab === 'servicios' && styles.tabBtnTextActive]}>
-                Servicios
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'sobre_mi' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('sobre_mi')}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.tabBtnText, activeTab === 'sobre_mi' && styles.tabBtnTextActive]}>
-                Sobre Mí
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'resenas' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('resenas')}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.tabBtnText, activeTab === 'resenas' && styles.tabBtnTextActive]}>
-                Reseñas
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <SegmentedTabs
+            tabs={[
+              { key: 'servicios' as const, label: 'Servicios' },
+              { key: 'sobre_mi' as const, label: 'Sobre Mí' },
+              { key: 'resenas' as const, label: 'Reseñas' },
+            ]}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
         </View>
 
         {/* TAB 1: SERVICIOS */}
@@ -396,63 +370,24 @@ export const ProviderProfileScreen: React.FC = () => {
         {/* TAB 3: RESEÑAS */}
         {activeTab === 'resenas' && (
           <View style={styles.tabContentSection}>
-            {/* Resumen de Ratings */}
-            <View style={styles.ratingSummaryCard}>
-              <View style={styles.ratingScoreCol}>
-                <Text style={styles.ratingBigScore}>{provider.rating.toFixed(1)}</Text>
-                <View style={styles.starsRow}>
-                  <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
-                  <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
-                  <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
-                  <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
-                  <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
-                </View>
-                <Text style={styles.ratingOpinionCount}>{provider.reviewsCount} opiniones</Text>
-              </View>
-
-              {/* Histograma */}
-              <View style={styles.histogramCol}>
-                {[5, 4, 3, 2, 1].map((star) => {
-                  const count = (provider.distribution as any)[star] || 0;
-                  const total = provider.reviewsCount || 1;
-                  const pct = Math.max(Math.round((count / total) * 100), star === 5 && count === 0 ? 90 : 0);
-                  return (
-                    <View key={star} style={styles.histogramRow}>
-                      <Text style={styles.histogramStarNum}>{star}</Text>
-                      <View style={styles.histogramTrack}>
-                        <View style={[styles.histogramFill, { width: `${pct}%` }]} />
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
+            {/* Resumen de Ratings e Histograma */}
+            <RatingDistribution
+              averageRating={provider.rating}
+              totalReviews={provider.reviewsCount}
+              distribution={provider.distribution as any}
+            />
 
             {/* Lista de Reseñas */}
             <View style={styles.reviewsList}>
               {provider.reviews.map((rev: any) => (
-                <View key={rev.id} style={styles.reviewCard}>
-                  <View style={styles.reviewHeaderRow}>
-                    <View style={styles.reviewerInfo}>
-                      <View style={styles.reviewerAvatarInitial}>
-                        <Text style={styles.reviewerInitialText}>
-                          {(rev.userName || 'C').charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text style={styles.reviewerNameText}>{rev.userName}</Text>
-                        <View style={styles.reviewDateRow}>
-                          <Rating rating={rev.rating} size={11} />
-                          <Text style={styles.reviewDateText}>• {rev.date}</Text>
-                        </View>
-                      </View>
-                    </View>
-                    <View style={styles.verifiedWorkBadge}>
-                      <Text style={styles.verifiedWorkText}>Trabajo verificado</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.reviewCommentText}>"{rev.comment}"</Text>
-                </View>
+                <ReviewCard
+                  key={rev.id}
+                  userName={rev.userName}
+                  rating={rev.rating}
+                  date={rev.date}
+                  comment={rev.comment}
+                  isVerifiedJob={true}
+                />
               ))}
             </View>
           </View>

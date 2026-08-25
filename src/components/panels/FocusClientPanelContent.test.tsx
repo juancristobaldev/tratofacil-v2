@@ -43,6 +43,11 @@ jest.mock('../../features/focus-session/useFocusSession', () => ({
   useFocusSession: () => mockSessionValue,
 }));
 
+const mockRegisterCard = jest.fn();
+jest.mock('../../hooks/usePlans', () => ({
+  usePlans: () => ({ registerCard: mockRegisterCard }),
+}));
+
 jest.mock('../../bottom-sheet/primitives', () => {
   const { View } = require('react-native');
   return {
@@ -103,7 +108,7 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     expect(view.getByText('Mario Profesional')).toBeTruthy();
     expect(view.getByText('Cotización del profesional')).toBeTruthy();
-    expect(view.getByText('Pagar ahora')).toBeTruthy();
+    expect(view.getAllByText('Pagar con Flow / Webpay').length).toBeGreaterThanOrEqual(1);
     expect(view.getByText('Rechazar cotización')).toBeTruthy();
     expect(view.getByText('Cancelar orden')).toBeTruthy();
   });
@@ -162,11 +167,10 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
     expect(view.getByText('MASTERCARD •••• 9876')).toBeTruthy();
-    expect(view.getByText('VINCULADA')).toBeTruthy();
-    expect(view.getByText('Pagar con •••• 9876')).toBeTruthy();
-    expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
+    expect(view.getByText('1-CLICK')).toBeTruthy();
+    expect(view.getByText('Pagar con Webpay / Flow')).toBeTruthy();
 
-    const payCardBtn = view.getByText('Pagar con •••• 9876');
+    const payCardBtn = view.getByText('MASTERCARD •••• 9876');
     fireEvent.press(payCardBtn);
 
     await waitFor(() => {

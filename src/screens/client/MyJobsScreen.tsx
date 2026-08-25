@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert, Linking } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState } from '../../components';
+import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState, PaymentActionCards } from '../../components';
+import type { PaymentActionType } from '../../components';
 import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
-import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
+import { usePlans } from '../../hooks/usePlans';
+import { useAuth } from '../../context/AuthContext';
+import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
 
 type TabMode = 'Activos' | 'Finalizados';
 
@@ -15,10 +18,18 @@ export const MyJobsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const [activeTab, setActiveTab] = useState<TabMode>('Activos');
-  const [showCandidatesModal, setShowCandidatesModal] = useState(false);
-  const [selectedCandidate, setSelectedCandidate] = useState<number | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<number | null>(null);
+  const [showCandidatesModal, setShowCandidatesModal] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [activeAction, setActiveAction] = useState<PaymentActionType | null>(null);
+
+  const { user } = useAuth();
+  const { registerCard } = usePlans();
+
+  const hasSavedCard = Boolean(user?.cardActive && user?.last4CardDigits && user?.creditCardType);
+  const cardBrand = user?.creditCardType || 'Tarjeta';
+  const cardLast4 = user?.last4CardDigits || '****';
 
   const {
     myJobs: jobs,
@@ -27,22 +38,55 @@ export const MyJobsScreen: React.FC = () => {
     refetchMyJobs: refetch,
     createOrder,
   } = useJobs();
-  const { pay: payFlow } = useFlow();
+  const { pay: payFlow, payWithSavedCard } = useFlow();
 
   const activeJobs = jobs.filter((j) => j.orders?.every((o) => o.status !== 'COMPLETED'));
   const finishedJobs = jobs.filter((j) => j.orders?.some((o) => o.status === 'COMPLETED'));
 
-  const handlePayWorker = async () => {
-    if (!selectedCandidate || !selectedJobId) return;
+  const handlePaySavedCard = async () => {
+    if (!selectedCandidate || !selectedJobId) {
+      Alert.alert('Atención', 'Selecciona un postulante para continuar.');
+      return;
+    }
+    setActiveAction('saved_card');
     setIsProcessing(true);
     try {
       const orderResult = await createOrder({
         jobId: selectedJobId,
         workerId: selectedCandidate,
       });
-      if (!orderResult?.id) {
-        throw new Error('No se pudo crear la orden de trabajo.');
+      if (!orderResult?.id) throw new Error('No se pudo crear la orden de trabajo.');
+
+      const result = await payWithSavedCard('job', orderResult.id);
+      if (result?.id) {
+        Alert.alert('¡Éxito!', 'Trabajador contratado y pago procesado con tu tarjeta.');
+        setShowCandidatesModal(false);
+        await refetch();
+      } else {
+        throw new Error('No se pudo completar el pago con la tarjeta.');
       }
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
+    } finally {
+      setIsProcessing(false);
+      setActiveAction(null);
+    }
+  };
+
+  const handlePayFlow = async () => {
+    if (!selectedCandidate || !selectedJobId) {
+      Alert.alert('Atención', 'Selecciona un postulante para continuar.');
+      return;
+    }
+    setActiveAction('flow');
+    setIsProcessing(true);
+    try {
+      const orderResult = await createOrder({
+        jobId: selectedJobId,
+        workerId: selectedCandidate,
+      });
+      if (!orderResult?.id) throw new Error('No se pudo crear la orden de trabajo.');
+
       await payFlow({
         type: 'job',
         orderId: orderResult.id,
@@ -53,6 +97,27 @@ export const MyJobsScreen: React.FC = () => {
       Alert.alert('Error', err.message || 'No se pudo procesar el pago.');
     } finally {
       setIsProcessing(false);
+      setActiveAction(null);
+    }
+  };
+
+  const handleRegisterCard = async () => {
+    setActiveAction('register_card');
+    setIsProcessing(true);
+    try {
+      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      if (result?.alreadyRegistered) {
+        Alert.alert('Tarjeta', 'Ya tienes una tarjeta vinculada.');
+      } else if (result?.url) {
+        await Linking.openURL(result.url);
+      } else {
+        Alert.alert('Error', 'No se pudo iniciar el registro de la tarjeta.');
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Error al vincular tarjeta.');
+    } finally {
+      setIsProcessing(false);
+      setActiveAction(null);
     }
   };
 
@@ -225,11 +290,16 @@ export const MyJobsScreen: React.FC = () => {
               </Text>
             </View>
 
-            <Button
-              title={isProcessing ? 'Procesando pago...' : 'Contratar y Pagar'}
-              onPress={handlePayWorker}
-              disabled={!selectedCandidate || isProcessing}
-              style={{ width: '100%' }}
+            {/* Acciones de Pago 1-Tap */}
+            <PaymentActionCards
+              hasCard={hasSavedCard}
+              cardBrand={cardBrand}
+              cardLast4={cardLast4}
+              onPayWithSavedCard={handlePaySavedCard}
+              onRegisterCard={handleRegisterCard}
+              onPayWithFlow={handlePayFlow}
+              isProcessing={isProcessing}
+              activeAction={activeAction}
             />
           </View>
         </View>
@@ -282,4 +352,13 @@ const styles = StyleSheet.create({
   totalBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: TOKENS.colors.surface100, padding: TOKENS.spacing.md, borderRadius: 12, marginBottom: TOKENS.spacing.lg },
   totalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   totalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.brand600 },
+  paymentMethodSection: { marginBottom: TOKENS.spacing.lg, gap: 8 },
+  paymentMethodTitle: { fontSize: 10, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle, letterSpacing: 0.5 },
+  methodOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: TOKENS.colors.surface50, borderRadius: 12, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
+  methodOptionActive: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
+  methodLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  methodName: { fontSize: 13, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
+  methodHint: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 1 },
+  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: TOKENS.colors.surface300, alignItems: 'center', justifyContent: 'center' },
+  radioChecked: { width: 10, height: 10, borderRadius: 5, backgroundColor: TOKENS.colors.brand500 },
 });

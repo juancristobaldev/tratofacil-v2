@@ -273,7 +273,7 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
       );
 
       expect(view.getByText('Cotización del profesional')).toBeTruthy();
-      expect(view.getByText('Pagar ahora')).toBeTruthy();
+      expect(view.getAllByText('Pagar con Flow / Webpay').length).toBeGreaterThanOrEqual(1);
     });
 
     it('4. focus_provider panel renders provider quote negotiation view', async () => {

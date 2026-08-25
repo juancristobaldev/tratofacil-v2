@@ -1,19 +1,27 @@
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
-import { Icon, Button, ErrorState } from '../../components';
+import { Icon } from '../../components/ui/Icon';
+import { Button } from '../../components/ui/Button';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
+import { CreditCardPreview } from '../../components/ui/CreditCardPreview';
+import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
 import { REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { DELETE_SAVED_CARD } from '../../graphql/operations/wallet';
 
 export const BillingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { setIsRefreshing } = useRefresh();
 
-  const hasCard = !!(user?.last4CardDigits && user?.creditCardType);
+  const hasCard = Boolean(user?.cardActive && user?.last4CardDigits && user?.creditCardType);
   const cardBrand = user?.creditCardType || 'VISA';
   const cardLast4 = user?.last4CardDigits || '****';
 
@@ -29,8 +37,11 @@ export const BillingScreen: React.FC = () => {
     refetch,
   } = usePlans();
 
+  const [deleteSavedCardMut, { loading: deletingCard }] = useMutation<{ deleteSavedCard: boolean }>(DELETE_SAVED_CARD);
+
   const [refreshing, setRefreshing] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -39,6 +50,33 @@ export const BillingScreen: React.FC = () => {
     setRefreshing(false);
     setIsRefreshing(false);
   }, [refetch, setIsRefreshing]);
+
+  const handleDeleteCard = () => {
+    Alert.alert(
+      'Desvincular tarjeta',
+      `¿Estás seguro de que deseas eliminar tu tarjeta vinculada ${cardBrand} **** ${cardLast4}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sí, desvincular',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { data } = await deleteSavedCardMut();
+              if (data?.deleteSavedCard) {
+                Alert.alert('Éxito', 'Tarjeta desvinculada correctamente.');
+                await onRefresh();
+              } else {
+                Alert.alert('Error', 'No se pudo desvincular la tarjeta.');
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Error al desvincular tarjeta.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleRegisterCard = async () => {
     if (registering) return;
@@ -109,10 +147,11 @@ export const BillingScreen: React.FC = () => {
           <Text style={styles.subsPlan}>
             {type === 'PROVIDER' ? plan.plan.replace('TRATOFACIL_SRV_', '') : plan.plan.replace('TRATOFACIL_PUB_', '') || 'FREE'}
           </Text>
+          <Badge
+            label={plan.planActive ? 'Activa' : ended ? 'Finalizada' : 'Cancelada'}
+            tone={plan.planActive ? 'success' : 'neutral'}
+          />
         </View>
-        <Text style={styles.subsStatus}>
-          {plan.planActive ? 'Activa' : ended ? 'Finalizada' : 'Cancelada'}
-        </Text>
         {plan.planEndsAt && (
           <Text style={styles.subsEnds}>Vence el {new Date(plan.planEndsAt).toLocaleDateString('es-CL')}</Text>
         )}
@@ -127,7 +166,11 @@ export const BillingScreen: React.FC = () => {
     );
   };
 
-  const [activeTab, setActiveTab] = useState<0 | 1 | 2>(0);
+  const tabs = [
+    { key: 0 as const, label: 'Tarjetas' },
+    { key: 1 as const, label: 'Suscripciones' },
+    { key: 2 as const, label: 'Historial' },
+  ];
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
@@ -143,61 +186,28 @@ export const BillingScreen: React.FC = () => {
         }
       >
         {/* Segmented Tabs matching ui-kit.html */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 0 && styles.tabBtnActive]}
-            onPress={() => setActiveTab(0)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.tabText, activeTab === 0 && styles.tabTextActive]}>
-              Tarjetas
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 1 && styles.tabBtnActive]}
-            onPress={() => setActiveTab(1)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.tabText, activeTab === 1 && styles.tabTextActive]}>
-              Suscripciones
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 2 && styles.tabBtnActive]}
-            onPress={() => setActiveTab(2)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.tabText, activeTab === 2 && styles.tabTextActive]}>
-              Historial
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <SegmentedTabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
 
         {/* Tab 0: Tarjetas */}
         {activeTab === 0 && (
           <View style={styles.tabContent}>
             {hasCard ? (
-              <View style={styles.creditCardBox}>
-                <View style={styles.cardHeader}>
-                  <Icon name="CreditCard" size={26} color="#CBD5E1" />
-                  <Text style={styles.cardBrand}>{cardBrand}</Text>
-                </View>
-                <Text style={styles.cardNumber}>•••• •••• •••• {cardLast4}</Text>
-                <View style={styles.cardFooter}>
-                  <Text style={styles.cardName}>
-                    {user?.displayName?.toUpperCase() || 'TITULAR'}
-                  </Text>
-                  <Text style={styles.cardSecText}>VINCULADA</Text>
-                </View>
-              </View>
+              <CreditCardPreview
+                cardBrand={cardBrand}
+                last4={cardLast4}
+                holderName={user?.displayName || 'TITULAR'}
+                statusBadge="VINCULADA"
+              />
             ) : (
-              <View style={styles.emptyCardBox}>
-                <Icon name="CreditCard" size={36} color={TOKENS.colors.textSubtle} />
-                <Text style={styles.emptyCardTitle}>No tienes tarjetas vinculadas</Text>
-                <Text style={styles.emptyCardSubtitle}>
-                  Agrega una tarjeta para suscribirte o pagar servicios fácilmente.
-                </Text>
-              </View>
+              <EmptyState
+                icon="CreditCard"
+                title="No tienes tarjetas vinculadas"
+                description="Agrega una tarjeta para suscribirte o pagar servicios fácilmente."
+              />
             )}
 
             <Button
@@ -205,10 +215,23 @@ export const BillingScreen: React.FC = () => {
               icon="Plus"
               variant="primary"
               loading={registering}
-              disabled={registering}
+              disabled={registering || deletingCard}
               onPress={handleRegisterCard}
               style={styles.actionBtn}
             />
+
+            {hasCard && (
+              <Button
+                title="Desvincular tarjeta"
+                icon="Trash"
+                variant="outline"
+                loading={deletingCard}
+                disabled={registering || deletingCard}
+                onPress={handleDeleteCard}
+                style={[styles.actionBtn, { marginTop: 10, borderColor: TOKENS.colors.statusError }]}
+                textStyle={{ color: TOKENS.colors.statusError }}
+              />
+            )}
           </View>
         )}
 
@@ -218,13 +241,11 @@ export const BillingScreen: React.FC = () => {
             {renderSubscription(providerPlan, 'PROVIDER')}
             {renderSubscription(marketplacePlan, 'MARKETPLACE')}
             {!providerPlan?.subscriptionFlowId && !marketplacePlan?.subscriptionFlowId && (
-              <View style={styles.emptyCardBox}>
-                <Icon name="Crown" size={36} color={TOKENS.colors.textSubtle} />
-                <Text style={styles.emptyCardTitle}>Sin suscripciones activas</Text>
-                <Text style={styles.emptyCardSubtitle}>
-                  Explora los planes para profesionales y potencia tu visibilidad.
-                </Text>
-              </View>
+              <EmptyState
+                icon="Crown"
+                title="Sin suscripciones activas"
+                description="Explora los planes para profesionales y potencia tu visibilidad."
+              />
             )}
           </View>
         )}
@@ -233,13 +254,11 @@ export const BillingScreen: React.FC = () => {
         {activeTab === 2 && (
           <View style={styles.tabContent}>
             {payments.length === 0 ? (
-              <View style={styles.emptyCardBox}>
-                <Icon name="Clock" size={36} color={TOKENS.colors.textSubtle} />
-                <Text style={styles.emptyCardTitle}>Sin transacciones recientes</Text>
-                <Text style={styles.emptyCardSubtitle}>
-                  Tus pagos y renovaciones aparecerán aquí.
-                </Text>
-              </View>
+              <EmptyState
+                icon="Clock"
+                title="Sin transacciones recientes"
+                description="Tus pagos y renovaciones aparecerán aquí."
+              />
             ) : (
               <View style={styles.transactionsList}>
                 {payments.map((tx) => (

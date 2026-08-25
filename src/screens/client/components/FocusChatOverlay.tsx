@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TOKENS } from '../../../theme';
-import { Icon, Avatar } from '../../../components/ui';
+import { Icon, Avatar, IconButton } from '../../../components/ui';
 
 interface FocusChatOverlayProps {
   chatUser: any;
@@ -60,9 +60,14 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.chatHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.chatBackBtn} accessibilityLabel="Volver" accessibilityRole="button">
-            <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-          </TouchableOpacity>
+          <IconButton
+            icon="ArrowLeft"
+            size="md"
+            variant="ghost"
+            accessibilityLabel="Volver"
+            onPress={onClose}
+            style={styles.chatBackBtn}
+          />
           <Avatar uri={chatUser?.avatar} name={chatUser?.name || chatUser?.displayName} size={36} />
           <Text style={styles.chatHeaderTitle}>{chatUser?.name || chatUser?.displayName}</Text>
         </View>
@@ -115,9 +120,14 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
               onChangeText={setTypedMessage}
               style={styles.chatInput}
             />
-            <TouchableOpacity onPress={handleSendMessage} style={styles.chatSendBtn} accessibilityLabel="Enviar mensaje" accessibilityRole="button">
-              <Icon name="Send" size={18} color={TOKENS.colors.white} />
-            </TouchableOpacity>
+            <IconButton
+              icon="Send"
+              size="md"
+              variant="primary"
+              accessibilityLabel="Enviar mensaje"
+              onPress={handleSendMessage}
+              style={styles.chatSendBtn}
+            />
           </View>
         )}
       </KeyboardAvoidingView>

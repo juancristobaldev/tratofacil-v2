@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, ScrollView, Alert, RefreshControl, TouchableOpa
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Badge } from '../../components';
+import { Icon, Button, Card, Badge, IntervalToggle, PlanCard } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
@@ -53,8 +53,6 @@ const PLANS: Plan[] = [
     planEnum: ProviderPlan.TRATOFACIL_SRV_PREMIUM,
   },
 ];
-
-const fmt = (n: number) => n.toLocaleString('es-CL');
 
 export const PlansScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -153,110 +151,32 @@ export const PlansScreen: React.FC = () => {
 
           {/* Segmented Pill selector matching ui-kit.html */}
           <View style={styles.intervalCenterWrapper}>
-            <View style={styles.intervalPillContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.intervalPillBtn,
-                  interval === 'MONTHLY' && styles.intervalPillBtnActive,
-                ]}
-                onPress={() => setInterval('MONTHLY')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.intervalPillText,
-                    interval === 'MONTHLY' && styles.intervalPillTextActive,
-                  ]}
-                >
-                  Mensual
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.intervalPillBtn,
-                  interval === 'YEARLY' && styles.intervalPillBtnActive,
-                ]}
-                onPress={() => setInterval('YEARLY')}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.intervalPillText,
-                    interval === 'YEARLY' && styles.intervalPillTextActive,
-                  ]}
-                >
-                  Anual{' '}
-                  <Text style={styles.discountBadgeText}>-20%</Text>
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <IntervalToggle
+              isAnnual={interval === 'YEARLY'}
+              onToggle={(annual) => setInterval(annual ? 'YEARLY' : 'MONTHLY')}
+              discountLabel="-20%"
+            />
           </View>
 
           {/* Plan Cards */}
           <View style={styles.plansList}>
             {PLANS.map((plan) => {
-              const isCurrent = plan.planEnum === currentPlan;
+              const isCurrent = plan.planEnum === currentPlan && currentPlanActive;
               const price = interval === 'MONTHLY' ? plan.monthly : plan.yearly;
-              const isPro = plan.recommended;
 
               return (
-                <View
+                <PlanCard
                   key={plan.id}
-                  style={[
-                    styles.planCard,
-                    isPro && styles.planCardPro,
-                  ]}
-                >
-                  {isPro && (
-                    <View style={styles.popularBadge}>
-                      <Text style={styles.popularBadgeText}>MÁS POPULAR</Text>
-                    </View>
-                  )}
-
-                  <Text style={styles.planName}>{plan.name}</Text>
-
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceAmount}>
-                      {price === 0 ? '$0' : `$${fmt(price)}`}
-                    </Text>
-                    <Text style={styles.pricePeriod}>
-                      {interval === 'MONTHLY' ? '/mes' : '/año'}
-                    </Text>
-                  </View>
-
-                  <View style={styles.featuresBox}>
-                    <View style={styles.featureRow}>
-                      <Icon name="Check" size={14} color="#16A34A" />
-                      <Text style={styles.featureTextCommission}>
-                        Comisión {plan.commission}
-                      </Text>
-                    </View>
-                    {plan.features.map((feat, idx) => (
-                      <View key={idx} style={styles.featureRow}>
-                        <Icon name="Check" size={14} color="#16A34A" />
-                        <Text style={styles.featureText}>{feat}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {isCurrent && currentPlanActive ? (
-                    <TouchableOpacity
-                      style={styles.currentPlanBtn}
-                      disabled
-                      activeOpacity={1}
-                    >
-                      <Text style={styles.currentPlanBtnText}>Plan actual</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Button
-                      title={loading ? 'Procesando...' : 'Suscribirse'}
-                      onPress={() => handleSubscribe(plan)}
-                      variant={isPro ? 'primary' : 'outline'}
-                      style={styles.subscribeBtn}
-                      disabled={loading}
-                    />
-                  )}
-                </View>
+                  name={plan.name}
+                  price={price}
+                  period={interval === 'MONTHLY' ? '/mes' : '/año'}
+                  commission={plan.commission}
+                  features={plan.features}
+                  isRecommended={plan.recommended}
+                  isCurrent={isCurrent}
+                  onSubscribe={() => handleSubscribe(plan)}
+                  loading={loading}
+                />
               );
             })}
           </View>

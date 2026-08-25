@@ -170,21 +170,23 @@ export const RatingScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Action Buttons Row */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.supportSquareBtn}
-            onPress={() => navigation.navigate('Support')}
-            activeOpacity={0.8}
-          >
-            <Icon name="HelpCircle" size={22} color={TOKENS.colors.dark900} />
-          </TouchableOpacity>
-
+        {/* Action Buttons Stack */}
+        <View style={styles.actionStack}>
           <Button
             title={submitting ? 'Enviando...' : 'Enviar calificación'}
             onPress={handleSubmit}
             disabled={submitting}
+            size="lg"
             style={styles.submitBtn}
+          />
+
+          <Button
+            title="¿Necesitas ayuda con este servicio?"
+            variant="ghost"
+            size="sm"
+            icon="HelpCircle"
+            onPress={() => navigation.navigate('Support')}
+            textStyle={styles.supportBtnText}
           />
         </View>
       </ScrollView>
@@ -354,26 +356,18 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  // Action Row
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
-  },
-  supportSquareBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface300,
-    backgroundColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Action Stack
+  actionStack: {
+    gap: 8,
+    marginTop: 6,
+    width: '100%',
   },
   submitBtn: {
-    flex: 1,
-    height: 52,
-    borderRadius: 14,
+    width: '100%',
+  },
+  supportBtnText: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.medium,
   },
 });

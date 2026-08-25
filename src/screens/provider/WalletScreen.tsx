@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Icon } from '../../components/ui/Icon';
 import { Modal } from '../../components/ui/Modal';
+import { WalletBalanceCard, TransactionListItem } from '../../components/ui/WalletBalanceCard';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
@@ -53,27 +54,15 @@ export const WalletScreen: React.FC = () => {
     }
   };
 
-  const renderItem = ({ item }: { item: any }) => {
-    const isIncome = item.type === 'EARNING';
-    return (
-      <View style={styles.transactionCard}>
-        <View style={[styles.txIconCircle, isIncome ? styles.txIconIncome : styles.txIconWithdraw]}>
-          <Icon
-            name={isIncome ? 'ArrowDownLeft' : 'ArrowUpRight'}
-            size={16}
-            color={isIncome ? TOKENS.colors.statusSuccess : TOKENS.colors.statusError}
-          />
-        </View>
-        <View style={styles.txInfo}>
-          <Text style={styles.txTitle} numberOfLines={1}>{item.description || 'Transacción'}</Text>
-          <Text style={styles.txDate}>{new Date(item.createdAt).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}</Text>
-        </View>
-        <Text style={[styles.txAmount, isIncome ? styles.txAmtIncome : styles.txAmtWithdraw]}>
-          {isIncome ? '+' : '-'}${Math.abs(item.amount).toLocaleString('es-CL')}
-        </Text>
-      </View>
-    );
-  };
+  const renderItem = ({ item }: { item: any }) => (
+    <TransactionListItem
+      id={item.id}
+      type={item.type}
+      amount={item.amount}
+      description={item.description}
+      date={item.createdAt}
+    />
+  );
 
   return (
     <ProviderOnlyGate hasProvider={hasProvider} role={role}>
@@ -87,37 +76,11 @@ export const WalletScreen: React.FC = () => {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
           ListHeaderComponent={
             <>
-              {/* Dark Hero Balance Card */}
-              <View style={styles.heroBalanceCard}>
-                <View style={styles.glowDecor} pointerEvents="none" />
-                <Text style={styles.heroLabel}>Saldo disponible</Text>
-                <Text style={styles.heroAmount}>${balance.toLocaleString('es-CL')}</Text>
-                <View style={styles.heroActionsRow}>
-                  <TouchableOpacity
-                    style={[styles.heroWithdrawBtn, balance <= 0 && styles.heroBtnDisabled]}
-                    onPress={() => setModalVisible(true)}
-                    activeOpacity={0.9}
-                    disabled={balance <= 0}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retirar dinero"
-                    accessibilityState={{ disabled: balance <= 0 }}
-                  >
-                    <Icon name="ArrowDownCircle" size={16} color={TOKENS.colors.white} />
-                    <Text style={styles.heroWithdrawBtnText}>Retirar dinero</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.heroRefreshBtn}
-                    onPress={onRefresh}
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Actualizar billetera"
-                  >
-                    <Icon name="RotateCcw" size={16} color={TOKENS.colors.white} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
+              <WalletBalanceCard
+                balance={balance}
+                onWithdraw={() => setModalVisible(true)}
+                onRefresh={onRefresh}
+              />
               <Text style={styles.sectionTitle}>Historial de Movimientos</Text>
             </>
           }

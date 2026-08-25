@@ -1,7 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { StyleSheet, View, Text, Dimensions, NativeSyntheticEvent, NativeScrollEvent, TouchableOpacity } from 'react-native';
 import { TOKENS } from '../../theme';
-import { Avatar, Rating, EmptyState, Icon } from '../ui';
+import { Avatar, Rating, EmptyState, Icon, Button, IconButton } from '../ui';
 import { BottomSheetFlatList } from '../../bottom-sheet/primitives';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug } from '../../bottom-sheet/core/bottomSheet.debug';
@@ -105,10 +105,6 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
       distanceKmText = distMeters < 1000 ? `${Math.round(distMeters)}m` : `${(distMeters / 1000).toFixed(1)} km`;
     }
 
-    const subtitleText = distanceKmText 
-      ? `A ${distanceKmText} de tu ubicación actual`
-      : 'A tu domicilio en Av. Providencia';
-
     return (
       <View
         style={styles.card}
@@ -116,75 +112,69 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
           if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=CARD requestId=${requestId ?? 'null'}`);
         }}
       >
-        {/* 1. LLEGADA ESTIMADA CARD */}
-        <View style={styles.etaCard}>
-          <View style={styles.etaInfoCol}>
-            <Text style={styles.etaHeaderLabel}>LLEGADA ESTIMADA</Text>
-            <Text style={styles.etaValueText}>{etaText}</Text>
-            <Text style={styles.etaSubtitleText} numberOfLines={1}>
-              {subtitleText}
-            </Text>
+        <View style={styles.previewCard}>
+          {/* Top Row: Provider identity + Rating/ETA + Close affordance */}
+          <View style={styles.cardTopRow}>
+            <TouchableOpacity
+              style={styles.providerMainPressable}
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
+                dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
+              }}
+              activeOpacity={0.8}
+              accessibilityLabel="Ver perfil del profesional"
+              accessibilityRole="button"
+            >
+              <Avatar uri={item.avatar} name={item.name || item.providerName || ''} size={48} />
+              
+              <View style={styles.providerInfo}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {item.name || item.providerName || 'Mario R.'}
+                </Text>
+                <View style={styles.ratingAndEtaRow}>
+                  <View style={styles.ratingRow}>
+                    <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
+                    <Text style={styles.ratingScoreText}>
+                      {(item.rating || 4.9).toFixed(1)}
+                    </Text>
+                  </View>
+                  <View style={styles.etaInlinePill}>
+                    <Icon name="Clock" size={11} color={TOKENS.colors.brand600} />
+                    <Text style={styles.etaInlineText}>{etaText}</Text>
+                    {Boolean(distanceKmText) && (
+                      <Text style={styles.distanceInlineText}>• {distanceKmText}</Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Subtle dismiss / close button */}
+            <IconButton
+              icon="X"
+              size="sm"
+              variant="ghost"
+              accessibilityLabel="Cancelar selección de servicio"
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
+                dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
+              }}
+              style={styles.dismissBtn}
+            />
           </View>
 
-          <View style={styles.etaIconCircle}>
-            <Icon name="MapPin" size={22} color={TOKENS.colors.brand500} />
-          </View>
-        </View>
-
-        {/* 2. PROFILE CARD */}
-        <TouchableOpacity
-          style={styles.profileCard}
-          onPress={() => {
-            bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
-            dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
-          }}
-          activeOpacity={0.85}
-          accessibilityLabel="Ver perfil del profesional"
-          accessibilityRole="button"
-        >
-          <Avatar uri={item.avatar} name={item.name || item.providerName || ''} size={52} />
-          
-          <View style={styles.providerInfo}>
-            <Text style={styles.name} numberOfLines={1}>
-              {item.name || item.providerName || 'Mario R.'}
-            </Text>
-            <View style={styles.ratingRow}>
-              <Icon name="Star" size={14} color={TOKENS.colors.starActive} />
-              <Text style={styles.ratingScoreText}>
-                {(item.rating || 4.9).toFixed(1)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Action button on right: Ver -> ProviderProfileScreen */}
-          <TouchableOpacity
-            style={styles.viewBtn}
+          {/* Action Button: Ver Perfil */}
+          <Button
+            title="Ver perfil del profesional"
+            iconRight="ChevronRight"
+            size="md"
             onPress={() => {
               bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
               dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', item, 'PROVIDER_PREVIEW_PANEL');
             }}
-            activeOpacity={0.85}
-            accessibilityLabel="Ver perfil del profesional"
-            accessibilityRole="button"
-          >
-            <Text style={styles.viewBtnText}>Ver</Text>
-            <Icon name="ChevronRight" size={14} color={TOKENS.colors.white} />
-          </TouchableOpacity>
-        </TouchableOpacity>
-
-        {/* 3. CANCELAR BUTTON */}
-        <TouchableOpacity
-          style={styles.cancelBtn}
-          onPress={() => {
-            bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
-            dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
-          }}
-          activeOpacity={0.85}
-          accessibilityLabel="Cancelar selección de servicio"
-          accessibilityRole="button"
-        >
-          <Text style={styles.cancelBtnText}>Cancelar</Text>
-        </TouchableOpacity>
+            style={styles.viewProfileCta}
+          />
+        </View>
       </View>
     );
   };
@@ -232,122 +222,94 @@ const styles = StyleSheet.create({
   card: {
     width: SCREEN_WIDTH,
     paddingHorizontal: CARD_H_PADDING,
-    paddingBottom: 24,
+    paddingBottom: TOKENS.spacing.md,
+  },
+  previewCard: {
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: 14,
+    ...TOKENS.shadows.soft,
     gap: 12,
   },
-
-  // 1. ETA CARD
-  etaCard: {
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    ...TOKENS.shadows.soft,
   },
-  etaInfoCol: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  etaHeaderLabel: {
-    fontSize: 11,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textSubtle,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
-  etaValueText: {
-    fontSize: 28,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand500,
-    marginTop: 2,
-    marginBottom: 2,
-    letterSpacing: -0.5,
-  },
-  etaSubtitleText: {
-    fontSize: 13,
-    fontWeight: TOKENS.typography.weights.medium,
-    color: TOKENS.colors.textSubtle,
-  },
-  etaIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: TOKENS.colors.brand50,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // 2. PROFILE CARD
-  profileCard: {
+  providerMainPressable: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.white,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    ...TOKENS.shadows.soft,
+    flex: 1,
+    marginRight: 8,
   },
   providerInfo: {
     flex: 1,
     marginLeft: 12,
-    marginRight: 8,
   },
   name: {
     fontSize: 16,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.dark900,
+    letterSpacing: -0.2,
+  },
+  ratingAndEtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 3,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
   },
   ratingScoreText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.dark900,
   },
-  viewBtn: {
-    backgroundColor: TOKENS.colors.brand700,
+  etaInlinePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: TOKENS.colors.brand50,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: TOKENS.geometry.radiusPill,
+  },
+  etaInlineText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.brand700,
+  },
+  distanceInlineText: {
+    fontSize: 11,
+    color: TOKENS.colors.brand600,
+  },
+  dismissBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewProfileCta: {
+    backgroundColor: TOKENS.colors.brand500,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 14,
-    gap: 4,
+    borderRadius: TOKENS.geometry.radiusInput,
+    gap: 6,
     ...TOKENS.shadows.soft,
   },
-  viewBtnText: {
+  viewProfileCtaText: {
     color: TOKENS.colors.white,
     fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-  },
-
-  // 3. CANCEL BUTTON
-  cancelBtn: {
-    width: '100%',
-    height: 52,
-    backgroundColor: TOKENS.colors.brand50,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cancelBtnText: {
-    color: TOKENS.colors.brand700,
-    fontSize: 15,
     fontWeight: TOKENS.typography.weights.bold,
   },
   dotsRow: {
@@ -355,7 +317,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    paddingBottom: 16,
+    paddingBottom: 8,
   },
   dot: {
     width: 8,
