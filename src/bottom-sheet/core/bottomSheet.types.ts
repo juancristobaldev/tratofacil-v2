@@ -173,6 +173,8 @@ export interface SheetDescriptor<K extends SheetKey> {
   requiresMapFlow: boolean;
   allowedRoles: AppRole[];
   snapPoints?: readonly (string | number)[];
+  initialIndex?: number;
+  collapsedHeight?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
   replaceFrom?: readonly SheetKey[];

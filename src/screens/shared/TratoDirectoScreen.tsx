@@ -21,10 +21,12 @@ import { usePlans } from '../../hooks/usePlans';
 import { useCategories } from '../../context/CategoriesContext';
 import { DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { RequireAuth } from '../../components/ui/RequireAuth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { uploadImage } from '../../utils/uploadImage';
 import { getImageUrl } from '../../utils/imageUrl';
 
 export const TratoDirectoScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const { user, role } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [days, setDays] = useState<number>(30);
@@ -278,7 +280,7 @@ export const TratoDirectoScreen: React.FC = () => {
 
         <RNModal visible={showCategoryPicker} transparent animationType="slide">
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Selecciona una categoría</Text>
                 <TouchableOpacity onPress={() => setShowCategoryPicker(false)} style={styles.closeBtn}>

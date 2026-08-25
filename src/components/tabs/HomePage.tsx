@@ -808,6 +808,7 @@ export const HomePage: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
+          mapPadding={{ top: 80, right: 16, bottom: 96, left: 16 }}
         >
         {location && (
           <AnimatedUserMarker 

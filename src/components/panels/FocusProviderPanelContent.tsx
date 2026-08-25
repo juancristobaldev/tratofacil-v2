@@ -156,21 +156,6 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     }
   };
 
-  const handleStartWork = async () => {
-    const actionId = nextBottomSheetActionId();
-    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'START_WORK', origin: 'FOCUS_PROVIDER' });
-    if (!order?.id || !realtime?.startOrder) {
-      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'START_WORK', reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor' });
-      return;
-    }
-    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'START_WORK', result: 'start_work' });
-    try {
-      await realtime.startOrder(order.id);
-      setOrderState('IN_PROGRESS');
-    } catch {
-      showNotification({ title: 'Error', message: 'No se pudo iniciar el trabajo.', type: 'error' });
-    }
-  };
 
   const handleCompleteWork = async () => {
     const actionId = nextBottomSheetActionId();
@@ -203,26 +188,35 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
   };
 
   return (
-    <BottomSheetScrollView style={styles.container}>
+    <BottomSheetScrollView
+      style={styles.container}
+      contentContainerStyle={styles.sheetBody}
+      showsVerticalScrollIndicator={true}
+      bounces={true}
+    >
       <View
-        style={styles.sheetBody}
+        collapsable={false}
         onLayout={(event) => setContentHeight(event.nativeEvent.layout.height)}
       >
         {orderState === 'VIEW_REQUEST' && (
           <View style={styles.viewRequestContainer}>
-            <View style={styles.clientCard}>
-              <Avatar uri={null} name={clientName} size={50} />
-              <View style={styles.clientCardInfo}>
-                <Text style={styles.clientName}>{clientName}</Text>
-                <View style={styles.ratingRow}>
-                  <Rating rating={clientAvgRating} size={13} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
+            {/* Header unificado del cliente y problema */}
+            <View style={styles.clientCompactCard}>
+              <View style={styles.clientCardHeader}>
+                <Avatar uri={null} name={clientName} size={42} />
+                <View style={styles.clientCardInfo}>
+                  <Text style={styles.clientName}>{clientName}</Text>
+                  <View style={styles.ratingRow}>
+                    <Rating rating={clientAvgRating} size={12} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
+                  </View>
                 </View>
               </View>
-            </View>
-
-            <View style={styles.detailSection}>
-              <Text style={styles.detailTitle}>Detalles del problema</Text>
-              <Text style={styles.detailText}>{clientDescription || 'Sin descripción adicional'}</Text>
+              <View style={styles.problemSnippet}>
+                <Text style={styles.problemSnippetLabel}>Detalles del problema</Text>
+                <Text style={styles.detailText} numberOfLines={3}>
+                  {clientDescription || 'Sin descripción adicional'}
+                </Text>
+              </View>
             </View>
 
             {order?.counterOfferPrice != null && (
@@ -234,17 +228,17 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                 <Text style={styles.counterOfferDetail}>
                   Propuesta: {order.counterOfferHours}h / {order.counterOfferTransport}km
                 </Text>
-                <View style={styles.actionRow}>
+                <View style={styles.counterOfferActionStack}>
+                  <Button
+                    title="Aceptar"
+                    onPress={handleAcceptCounterOffer}
+                    style={styles.actionBtn}
+                  />
                   <Button
                     title="Rechazar"
                     variant="outline"
                     onPress={handleRejectCounterOffer}
-                    style={styles.actionRowBtn}
-                  />
-                  <Button
-                    title="Aceptar"
-                    onPress={handleAcceptCounterOffer}
-                    style={styles.actionRowBtn}
+                    style={styles.actionBtn}
                   />
                 </View>
               </View>
@@ -252,8 +246,14 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
 
             {order?.counterOfferPrice == null && (
               <>
-                <View style={styles.priceAdjusterContainer}>
-                  <Text style={styles.priceAdjusterLabel}>Cotización del servicio</Text>
+                <View style={styles.quoteCard}>
+                  <View style={styles.quoteCardHeader}>
+                    <Text style={styles.priceAdjusterLabel}>Cotización del servicio</Text>
+                    <View style={styles.totalBadge}>
+                      <Text style={styles.totalBadgeLabel}>Total a Cobrar</Text>
+                      <Text style={styles.totalBadgeValue}>${totalQuote.toLocaleString('es-CL')}</Text>
+                    </View>
+                  </View>
                   <View style={styles.quoteRow}>
                     <View style={styles.quoteField}>
                       <Text style={styles.quoteFieldLabel}>Horas</Text>
@@ -264,7 +264,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Disminuir horas de cotización"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={18} color={TOKENS.colors.dark900} />
+                          <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteHours}</Text>
                         <TouchableOpacity
@@ -273,7 +273,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Aumentar horas de cotización"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={18} color={TOKENS.colors.dark900} />
+                          <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -286,7 +286,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Disminuir transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={18} color={TOKENS.colors.dark900} />
+                          <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteTransport}</Text>
                         <TouchableOpacity
@@ -295,14 +295,10 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Aumentar transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={18} color={TOKENS.colors.dark900} />
+                          <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
                         </TouchableOpacity>
                       </View>
                     </View>
-                  </View>
-                  <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>Total a Cobrar</Text>
-                    <Text style={styles.totalValue}>${totalQuote.toLocaleString('es-CL')}</Text>
                   </View>
                 </View>
 
@@ -317,7 +313,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                       console.log('[BS:ACTION_GEOMETRY]', {
                         key: 'focus_provider',
                         action: 'PRIMARY_ACTION_STACK',
-                        description: 'SEND_QUOTE(above) + REJECT(last)',
+                        description: 'SEND_QUOTE(above) + REJECT(below)',
                         stackTop: y,
                         stackBottom: y + h,
                         navTop,
@@ -353,11 +349,11 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                   ${order.counterOfferPrice.toLocaleString('es-CL')}
                 </Text>
                 <Text style={styles.counterOfferDetail}>
-                  {order.counterOfferHours}h / {order.counterOfferTransport}km
+                  Propuesta: {order.counterOfferHours}h / {order.counterOfferTransport}km
                 </Text>
-                <View style={styles.actionRow}>
-                  <Button title="Rechazar" variant="outline" onPress={handleRejectCounterOffer} style={styles.actionRowBtn} />
-                  <Button title="Aceptar" onPress={handleAcceptCounterOffer} style={styles.actionRowBtn} />
+                <View style={styles.counterOfferActionStack}>
+                  <Button title="Aceptar" onPress={handleAcceptCounterOffer} style={styles.actionBtn} />
+                  <Button title="Rechazar" variant="outline" onPress={handleRejectCounterOffer} style={styles.actionBtn} />
                 </View>
               </View>
             )}
@@ -426,11 +422,16 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               </TouchableOpacity>
             </View>
 
-            <Button
-              title="Iniciar Trabajo"
-              onPress={handleStartWork}
-              style={styles.actionBtn}
-            />
+            <View style={styles.arrivedWaitingCard}>
+              <Icon name="Clock" size={20} color={TOKENS.colors.brand600} />
+              <View style={styles.arrivedWaitingInfo}>
+                <Text style={styles.arrivedWaitingTitle}>Esperando confirmación</Text>
+                <Text style={styles.arrivedWaitingSub}>
+                  El cliente debe confirmar el inicio del servicio en su aplicación para comenzar.
+                </Text>
+              </View>
+            </View>
+
             <Button
               title="Cancelar orden"
               variant="outline"
@@ -509,7 +510,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.md,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: TOKENS.spacing.xl,
+    paddingBottom: 36,
   },
   stateHeader: {
     flexDirection: 'row',
@@ -714,6 +715,76 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.black,
     color: TOKENS.colors.brand700,
   },
+  clientCompactCard: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+  },
+  clientCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  problemSnippet: {
+    backgroundColor: TOKENS.colors.white,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface100,
+  },
+  problemSnippetLabel: {
+    fontSize: 9,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textSubtle,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  quoteCard: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    padding: 12,
+    gap: 10,
+  },
+  quoteCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalBadge: {
+    backgroundColor: TOKENS.colors.brand50,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+    alignItems: 'flex-end',
+  },
+  totalBadgeLabel: {
+    fontSize: 8,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand600,
+    textTransform: 'uppercase',
+  },
+  totalBadgeValue: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand700,
+  },
+  primaryActionStack: {
+    gap: 8,
+    marginTop: 8,
+    width: '100%',
+  },
+  counterOfferActionStack: {
+    gap: 8,
+    marginTop: 8,
+    width: '100%',
+  },
   counterOfferCard: {
     alignItems: 'center',
     backgroundColor: TOKENS.colors.warning50,
@@ -740,10 +811,6 @@ const styles = StyleSheet.create({
   actionRowBtn: {
     flex: 1,
   },
-  primaryActionStack: {
-    gap: TOKENS.spacing.sm,
-    marginTop: TOKENS.spacing.sm,
-  },
   waitingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -769,5 +836,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: TOKENS.colors.brand200,
+  },
+  arrivedWaitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.brand50,
+    padding: TOKENS.spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand200,
+    gap: 12,
+    marginTop: 8,
+  },
+  arrivedWaitingInfo: {
+    flex: 1,
+  },
+  arrivedWaitingTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand900,
+    marginBottom: 2,
+  },
+  arrivedWaitingSub: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: TOKENS.colors.brand700,
+    lineHeight: 16,
   },
 });

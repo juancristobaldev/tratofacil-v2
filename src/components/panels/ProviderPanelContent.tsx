@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
     gap: 14,
-    paddingBottom: 24,
+    paddingBottom: 36,
   },
   onlineCard: {
     flexDirection: 'row',

@@ -152,6 +152,7 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
       ref={modalRef}
       sheetKey={request.key}
       snapPoints={descriptor.snapPoints}
+      initialIndex={descriptor.initialIndex}
       enableDynamicSizing={descriptor.enableDynamicSizing}
       maxDynamicContentSize={descriptor.maxDynamicContentSize}
       onChange={(index) => onChange(request, index)}

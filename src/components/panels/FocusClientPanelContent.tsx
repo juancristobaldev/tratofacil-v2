@@ -179,19 +179,26 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
   if (__DEV__) console.log({status})
   return (
-    <BottomSheetScrollView style={styles.container}>
-      {/* PENDING — Esperando cotización */}
-      
-
+    <BottomSheetScrollView
+      style={styles.container}
+      contentContainerStyle={styles.sheetBody}
+      showsVerticalScrollIndicator={true}
+      bounces={true}
+    >
       {/* QUOTED — Quote recibida */}
       {status === 'QUOTED' && (
-        <View style={styles.sheetBody}>
-          <View style={styles.providerCardHeader}>
-            <Avatar uri={provider.avatar} name={provider.name} size={54} />
+        <View style={styles.quotedContainer}>
+          {/* Header unificado del profesional con ETA y Chat */}
+          <View style={styles.providerCardHeaderCompact}>
+            <Avatar uri={provider.avatar} name={provider.name} size={46} />
             <View style={styles.sheetHeaderText}>
               <Text style={styles.sheetTitle} numberOfLines={1}>{provider.name}</Text>
-              <View style={styles.ratingRow}>
-                <Rating rating={provider.rating ?? 0} size={13} showText reviewsCount={provider.reviewsCount} />
+              <View style={styles.ratingAndEtaRow}>
+                <Rating rating={provider.rating ?? 0} size={12} showText reviewsCount={provider.reviewsCount} />
+                <View style={styles.etaInlineBadge}>
+                  <Icon name="Clock" size={12} color={TOKENS.colors.brand600} />
+                  <Text style={styles.etaInlineText}>{etaRemaining || '...'} ({distanceRemaining || '...'})</Text>
+                </View>
               </View>
             </View>
             <TouchableOpacity
@@ -205,141 +212,166 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               accessibilityLabel="Abrir chat con el profesional"
               accessibilityRole="button"
             >
-              <Icon name="MessageSquare" size={18} color={TOKENS.colors.brand700} />
+              <Icon name="MessageSquare" size={16} color={TOKENS.colors.brand700} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.infoGrid}>
-            <View style={styles.infoCard}>
-              <View style={styles.infoIconBox}>
-                <Icon name="Clock" size={16} color={TOKENS.colors.brand500} />
-              </View>
-              <View>
-                <Text style={styles.infoLabel}>Llegada estimada</Text>
-                <Text style={styles.infoValue}>{etaRemaining || '...'}</Text>
-              </View>
-            </View>
-            <View style={styles.infoCard}>
-              <View style={styles.infoIconBox}>
-                <Icon name="MapPin" size={16} color={TOKENS.colors.brand500} />
-              </View>
-              <View>
-                <Text style={styles.infoLabel}>Distancia</Text>
-                <Text style={styles.infoValue}>{distanceRemaining || '...'}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.serviceDetail}>
+          {/* Detalle compacto del servicio */}
+          <View style={styles.serviceDetailCompact}>
             <Text style={styles.serviceDetailTitle}>Servicio solicitado</Text>
-            <Text style={styles.serviceDetailName}>{activeOrder?.serviceProvider?.service?.name || provider?.serviceName || 'Servicio'}</Text>
-            <Text style={styles.serviceDetailDesc}>{activeOrder?.clientDescription || provider?.description || 'Sin descripción adicional'}</Text>
+            <Text style={styles.serviceDetailName} numberOfLines={1}>
+              {activeOrder?.serviceProvider?.service?.name || provider?.serviceName || 'Servicio'}
+            </Text>
+            {Boolean(activeOrder?.clientDescription || provider?.description) && (
+              <Text style={styles.serviceDetailDesc} numberOfLines={2}>
+                {activeOrder?.clientDescription || provider?.description}
+              </Text>
+            )}
           </View>
 
-          {/* Price row + Negotiation adjuster */}
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Cotización del profesional</Text>
-            <Text style={styles.priceValue}>${(activeOrder?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
-          </View>
-
-          {counterOfferSent ? (
-            <View style={styles.waitingContainer}>
-              <Icon name="Clock" size={40} color={TOKENS.colors.brand500} />
-              <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
-              <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
-              <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85}>
-                <Text style={styles.cancelActionBtnText}>Cancelar orden</Text>
-              </TouchableOpacity>
+          {/* Bloque integrado de Cotización y Contraoferta */}
+          <View style={styles.pricingCard}>
+            <View style={styles.priceHeaderRow}>
+              <Text style={styles.priceLabel}>Cotización del profesional</Text>
+              <Text style={styles.priceValue}>${(activeOrder?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
             </View>
-          ) : (
-            <>
-              <View style={styles.negotiateRow}>
-                <Text style={styles.negotiateLabel}>Tu contraoferta</Text>
-                <View style={styles.adjusterRow}>
-                  <TouchableOpacity
-                    onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
-                    style={styles.adjusterBtn}
-                    accessibilityLabel="Disminuir monto de contraoferta"
-                    accessibilityHint="Resta 1000 pesos a tu propuesta"
-                    accessibilityRole="button"
-                  >
-                    <Icon name="Minus" size={20} color={TOKENS.colors.dark900} />
-                  </TouchableOpacity>
-                  <Text style={styles.adjusterPrice}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
-                  <TouchableOpacity
-                    onPress={() => setNegotiatedPrice((p) => p + 1000)}
-                    style={styles.adjusterBtn}
-                    accessibilityLabel="Aumentar monto de contraoferta"
-                    accessibilityHint="Suma 1000 pesos a tu propuesta"
-                    accessibilityRole="button"
-                  >
-                    <Icon name="Plus" size={20} color={TOKENS.colors.dark900} />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              <View style={{ gap: 10 }}>
-                {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
-                  <Button
-                    title="Enviar contraoferta"
-                    onPress={async () => {
-                      const actionId = nextBottomSheetActionId();
-                      bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
-                      if (!activeOrder?.id || !realtime?.clientCounterOffer) {
-                        bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
-                        return;
-                      }
-                      bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
-                      try {
-                        await realtime.clientCounterOffer(
-                          activeOrder.id,
-                          negotiatedPrice,
-                          activeOrder.quotedHours || 1,
-                          activeOrder.quotedTransport || 0,
-                        );
-                        setCounterOfferSent(true);
-                      } catch {
-                        showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
-                      }
-                    }}
-                    style={styles.payBtn}
-                  />
-                ) : hasCard ? (
-                  <>
-                    <View style={styles.savedCardBox}>
-                      <View style={styles.savedCardLeft}>
-                        <Icon name="CreditCard" size={18} color={TOKENS.colors.brand600} />
-                        <Text style={styles.savedCardText}>
-                          {cardBrand} •••• {cardLast4}
-                        </Text>
-                      </View>
-                      <Badge label="VINCULADA" tone="success" size="sm" />
-                    </View>
-                    <Button
-                      title={`Pagar con •••• ${cardLast4}`}
-                      icon="CreditCard"
-                      loading={isPayingCard}
-                      disabled={isPayingCard}
-                      onPress={handlePaySavedCard}
-                      style={styles.payBtn}
-                    />
-                    <Button
-                      title="Pagar con Flow / Webpay"
-                      variant="outline"
-                      disabled={isPayingCard}
-                      onPress={handlePay}
-                    />
-                  </>
-                ) : (
-                  <Button title="Pagar ahora" onPress={handlePay} style={styles.payBtn} />
-                )}
-                <Button title="Rechazar cotización" variant="outline" disabled={isPayingCard} onPress={handleRejectQuote} />
-                <TouchableOpacity style={styles.cancelActionBtn} onPress={handleCancel} activeOpacity={0.85} disabled={isPayingCard}>
-                  <Text style={styles.cancelActionBtnText}>Cancelar orden</Text>
-                </TouchableOpacity>
+            {counterOfferSent ? (
+              <View style={styles.waitingContainerCompact}>
+                <Icon name="Clock" size={32} color={TOKENS.colors.brand500} />
+                <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
+                <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
+                <Button title="Cancelar orden" variant="outline" onPress={handleCancel} style={styles.cancelOrderBtn} />
               </View>
-            </>
-          )}
+            ) : (
+              <>
+                <View style={styles.negotiateRowCompact}>
+                  <Text style={styles.negotiateLabel}>Tu contraoferta</Text>
+                  <View style={styles.adjusterRowCompact}>
+                    <TouchableOpacity
+                      onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
+                      style={styles.adjusterBtnSmall}
+                      accessibilityLabel="Disminuir monto de contraoferta"
+                      accessibilityHint="Resta 1000 pesos a tu propuesta"
+                      accessibilityRole="button"
+                    >
+                      <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
+                    </TouchableOpacity>
+                    <Text style={styles.adjusterPriceCompact}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
+                    <TouchableOpacity
+                      onPress={() => setNegotiatedPrice((p) => p + 1000)}
+                      style={styles.adjusterBtnSmall}
+                      accessibilityLabel="Aumentar monto de contraoferta"
+                      accessibilityHint="Suma 1000 pesos a tu propuesta"
+                      accessibilityRole="button"
+                    >
+                      <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.actionsContainerCompact}>
+                  {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
+                    <>
+                      <Button
+                        title="Enviar contraoferta"
+                        onPress={async () => {
+                          const actionId = nextBottomSheetActionId();
+                          bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
+                          if (!activeOrder?.id || !realtime?.clientCounterOffer) {
+                            bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+                            return;
+                          }
+                          bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
+                          try {
+                            await realtime.clientCounterOffer(
+                              activeOrder.id,
+                              negotiatedPrice,
+                              activeOrder.quotedHours || 1,
+                              activeOrder.quotedTransport || 0,
+                            );
+                            setCounterOfferSent(true);
+                          } catch {
+                            showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
+                          }
+                        }}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Cancelar orden"
+                        variant="outline"
+                        onPress={handleCancel}
+                        style={styles.payBtn}
+                      />
+                    </>
+                  ) : hasCard ? (
+                    <>
+                      <View style={styles.savedCardBoxCompact}>
+                        <View style={styles.savedCardLeft}>
+                          <Icon name="CreditCard" size={16} color={TOKENS.colors.brand600} />
+                          <Text style={styles.savedCardText}>
+                            {cardBrand} •••• {cardLast4}
+                          </Text>
+                        </View>
+                        <Badge label="VINCULADA" tone="success" size="sm" />
+                      </View>
+                      <Button
+                        title={`Pagar con •••• ${cardLast4}`}
+                        icon="CreditCard"
+                        loading={isPayingCard}
+                        disabled={isPayingCard}
+                        onPress={handlePaySavedCard}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Pagar con Flow / Webpay"
+                        variant="outline"
+                        disabled={isPayingCard}
+                        onPress={handlePay}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Rechazar cotización"
+                        variant="outline"
+                        disabled={isPayingCard}
+                        onPress={handleRejectQuote}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Cancelar orden"
+                        variant="outline"
+                        disabled={isPayingCard}
+                        onPress={handleCancel}
+                        style={styles.payBtn}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        title="Pagar ahora"
+                        onPress={handlePay}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Rechazar cotización"
+                        variant="outline"
+                        disabled={isPayingCard}
+                        onPress={handleRejectQuote}
+                        style={styles.payBtn}
+                      />
+                      <Button
+                        title="Cancelar orden"
+                        variant="outline"
+                        disabled={isPayingCard}
+                        onPress={handleCancel}
+                        style={styles.payBtn}
+                      />
+                    </>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
         </View>
       )}
 
@@ -433,7 +465,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: TOKENS.spacing.xl,
+    paddingBottom: 36,
   },
   providerCardHeader: {
     flexDirection: 'row',
@@ -770,6 +802,130 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.dark900,
+  },
+
+  // Compact Quotation Styles
+  quotedContainer: {
+    gap: 8,
+  },
+  providerCardHeaderCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 16,
+    padding: 10,
+    ...TOKENS.shadows.soft,
+  },
+  ratingAndEtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  etaInlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: TOKENS.colors.brand50,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  etaInlineText: {
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand700,
+  },
+  serviceDetailCompact: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 12,
+    padding: 10,
+  },
+  pricingCard: {
+    backgroundColor: TOKENS.colors.surface50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+  },
+  priceHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  waitingContainerCompact: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  cancelOrderBtn: {
+    marginTop: 8,
+    width: '100%',
+  },
+  negotiateRowCompact: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  adjusterRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  adjusterPriceCompact: {
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.dark900,
+    minWidth: 120,
+    textAlign: 'center',
+  },
+  adjusterBtnSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  actionsContainerCompact: {
+    gap: 8,
+    marginTop: 2,
+  },
+  actionRowHorizontal: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionBtnHalf: {
+    flex: 1,
+  },
+  actionBtnHalfPrimary: {
+    flex: 1.5,
+  },
+  savedCardBoxCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand200,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  flowPayBtn: {
+    marginTop: -2,
   },
 });
 

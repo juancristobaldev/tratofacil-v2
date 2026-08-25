@@ -12,6 +12,7 @@ import { getBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 interface SheetProps {
   children: React.ReactNode;
   snapPoints?: readonly (string | number)[];
+  initialIndex?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
   onDismiss?: () => void;
@@ -23,13 +24,13 @@ interface SheetProps {
 const HANDLE_CHROME_ESTIMATE = 24;
 
 export const Sheet = forwardRef<SheetModalRef, SheetProps>(
-  ({ children, snapPoints, enableDynamicSizing = true, maxDynamicContentSize, onDismiss, onChange, sheetKey }, ref) => {
+  ({ children, snapPoints, initialIndex: providedInitialIndex, enableDynamicSizing = true, maxDynamicContentSize, onDismiss, onChange, sheetKey }, ref) => {
     const insets = useSafeAreaInsets();
     const { height: windowHeight } = useWindowDimensions();
 
     const NAVBAR_HEIGHT = getBottomNavHeight(insets.bottom);
     const HEADER_HEIGHT = 60 + insets.top;
-    const TOP_GAP = Math.max(24, windowHeight * 0.2);
+    const TOP_GAP = 16;
     const computedMaxDynamicContentSize = Math.max(
       240,
       windowHeight - HEADER_HEIGHT - TOP_GAP - NAVBAR_HEIGHT,
@@ -37,15 +38,15 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
 
     const activeSnapPoints = useMemo(() => {
       if (snapPoints && snapPoints.length > 0) {
-        return [...snapPoints];
+        return snapPoints.map((point) => {
+          if (point === 'MAX') return computedMaxDynamicContentSize;
+          return point;
+        });
       }
-      if (!enableDynamicSizing) {
-        return [240, computedMaxDynamicContentSize];
-      }
-      return undefined;
-    }, [computedMaxDynamicContentSize, enableDynamicSizing, snapPoints]);
+      return [84, computedMaxDynamicContentSize];
+    }, [computedMaxDynamicContentSize, snapPoints]);
 
-    const initialIndex = 0;
+    const initialIndex = providedInitialIndex ?? (activeSnapPoints.length > 1 ? 1 : 0);
 
     if (__DEV__) {
       console.log('[BS:SHEET_CONFIG]', {
@@ -107,6 +108,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
           onDismiss?.();
         }}
         backdropComponent={() => null}
+        containerStyle={styles.container}
         backgroundStyle={styles.background}
         handleIndicatorStyle={styles.indicator}
         bottomInset={NAVBAR_HEIGHT}
@@ -143,6 +145,9 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
 Sheet.displayName = 'Sheet';
 
 const styles = StyleSheet.create({
+  container: {
+    pointerEvents: 'box-none',
+  },
   background: {
     backgroundColor: TOKENS.colors.white,
     borderTopLeftRadius: 32,

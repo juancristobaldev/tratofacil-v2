@@ -307,12 +307,14 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: TOKENS.spacing.lg,
+    paddingBottom: 20,
   },
   contentFlex: {
     paddingHorizontal: TOKENS.spacing.lg,
+    paddingBottom: 20,
   },
   promoSection: {
-    paddingBottom: TOKENS.spacing.md,
+    paddingBottom: 24,
   },
   sheetTitle: {
     fontSize: TOKENS.typography.sizes.md,
@@ -449,7 +451,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 24,
+    paddingBottom: 36,
     paddingTop: 4,
   },
   nodeCard: {

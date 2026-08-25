@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
   card: {
     width: SCREEN_WIDTH,
     paddingHorizontal: CARD_H_PADDING,
-    paddingBottom: TOKENS.spacing.md,
+    paddingBottom: 24,
     gap: 12,
   },
 
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    paddingBottom: TOKENS.spacing.sm,
+    paddingBottom: 16,
   },
   dot: {
     width: 8,

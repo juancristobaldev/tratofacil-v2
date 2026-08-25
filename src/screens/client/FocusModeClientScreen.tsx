@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import MapView, { type Region } from 'react-native-maps';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin } from '../../components/ui';
@@ -23,7 +22,6 @@ import { FocusChatOverlay } from './components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
 export const FocusModeClientScreen: React.FC = () => {
-  const insets = useSafeAreaInsets();
   const bottomNavHeight = useBottomNavHeight();
   const navigation = useNavigation<any>();
   const { dismiss } = useBottomSheet();
@@ -187,7 +185,7 @@ export const FocusModeClientScreen: React.FC = () => {
   }, [status]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* MAP COVER */}
       <View style={styles.mapContainer}>
         <MapView
@@ -199,7 +197,7 @@ export const FocusModeClientScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: insets.top + 20, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
+          mapPadding={{ top: 16, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
         >
             {clientCoords && <HousePin coordinate={clientCoords} />}
 
@@ -314,7 +312,7 @@ export const FocusModeClientScreen: React.FC = () => {
           onClose={() => setShowChat(false)}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 };
 

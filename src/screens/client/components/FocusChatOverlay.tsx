@@ -23,6 +23,8 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
     const socket = (realtime as any).socketRef?.current;
     if (!socket) return;
 
+    socket.emit('chat:join', { orderRealtimeId: orderId });
+
     const handler = (msg: any) => {
       setChatMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
@@ -36,7 +38,7 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
     };
     socket.on('chat:received', handler);
     return () => { socket.off('chat:received', handler); };
-  }, [activeOrder?.id, realtime.clientId]);
+  }, [activeOrder?.id, realtime.clientId, role]);
 
   const isTerminal = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(activeOrder?.status);
 
