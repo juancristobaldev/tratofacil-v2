@@ -160,12 +160,16 @@ export type BottomSheetRequest<K extends SheetKey = SheetKey> = {
   payload: SheetPayloadMap[K];
 };
 
+export type SheetPresentationState = 'collapsed' | 'content' | 'expanded';
+
 export interface SheetComponentProps<K extends SheetKey> {
   sheetKey: K;
   requestId?: number;
   payload: SheetPayloadMap[K];
   dismiss: () => void;
   setIndex: (index: number) => void;
+  isCollapsed?: boolean;
+  presentationState?: SheetPresentationState;
 }
 
 export interface SheetDescriptor<K extends SheetKey> {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type {
   BottomSheetActionName,
   BottomSheetActionPayload,
@@ -46,13 +46,22 @@ export function useBottomSheet(): BottomSheetContextValue {
   return ctx;
 }
 
-export function usePanelState<T>(key: SheetKey, defaultState: T): [T, (val: T) => void] {
-  const { getPanelState, setPanelState } = useBottomSheet();
-  const [state, setState] = useState<T>(() => getPanelState(key, defaultState));
+export function usePanelState<T>(key: SheetKey, defaultState: T): [T, (val: T | ((prev: T) => T)) => void] {
+  const ctx = useContext(BottomSheetContext);
+  const [state, setState] = useState<T>(() => (ctx ? ctx.getPanelState(key, defaultState) : defaultState));
 
-  useEffect(() => {
-    setPanelState(key, state);
-  }, [state, key, setPanelState]);
+  const setPanelState = useCallback(
+    (updater: T | ((prev: T) => T)) => {
+      setState((prev) => {
+        const next = typeof updater === 'function' ? (updater as (p: T) => T)(prev) : updater;
+        if (ctx) {
+          ctx.setPanelState(key, next);
+        }
+        return next;
+      });
+    },
+    [ctx, key],
+  );
 
-  return [state, setState];
+  return [state, setPanelState];
 }

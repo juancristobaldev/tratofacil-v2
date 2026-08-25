@@ -204,7 +204,7 @@ export const FocusModeClientScreen: React.FC = () => {
             {status !== 'PENDING' && providerCoords && (
               <AnimatedProviderMarker
                 coordinate={providerCoords}
-                text={status === 'QUOTED' ? 'Cotizó' : status === 'ACCEPTED' ? 'En camino' : 'Llegó a tu domicilio'}
+                text={status === 'ACCEPTED' ? 'En camino' : status === 'IN_PROGRESS' ? 'Llegó a tu domicilio' : undefined}
               />
             )}
 

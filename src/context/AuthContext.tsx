@@ -235,10 +235,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
   const providerOrder = user?.provider?.activeRealtimeOrder ?? null;
   const hasActiveProviderOrder = !!providerOrder && !TERMINAL_STATUSES.includes(providerOrder.status);
+  const isRealtimeActive = Boolean(user?.provider?.isRealtimeActive);
 
-  // La app abre SIEMPRE en modo cliente; solo pasa a modo proveedor si existe
-  // una orden realtime activa (no terminal) donde el usuario es el provider.
-  const defaultRole: AppRole = !user ? 'guest' : hasActiveProviderOrder ? 'provider' : serverRole === 'provider' ? 'client' : serverRole;
+  // Si el usuario es proveedor y está activo en realtime (isRealtimeActive === true)
+  // o tiene una orden activa no terminal, el modo inicial al abrir la app es 'provider'.
+  // Si es cliente o proveedor inactivo (isRealtimeActive === false), el modo inicial es 'client'.
+  const isProviderActiveMode = hasProvider && (isRealtimeActive || hasActiveProviderOrder);
+  const defaultRole: AppRole = !user ? 'guest' : isProviderActiveMode ? 'provider' : serverRole === 'provider' ? 'client' : serverRole;
   const role: AppRole = activeRole ?? defaultRole;
 
   const setRole = useCallback((newRole: AppRole) => {

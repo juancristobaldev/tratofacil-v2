@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
 import { Marker, AnimatedRegion } from 'react-native-maps';
 import { TOKENS } from '../../theme';
 import { Icon } from './Icon';
@@ -104,7 +104,7 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
           <View style={styles.label}>
             <View style={styles.labelDot} />
             <View style={styles.labelTextWrap}>
-              <Icon name="Briefcase" size={10} color={TOKENS.colors.white} />
+              <Text style={styles.labelText}>{text}</Text>
             </View>
           </View>
         ) : null}
@@ -120,8 +120,7 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    width: 48,
-    height: 56,
+    minWidth: 48,
     alignItems: 'center',
   },
   car: {
@@ -156,7 +155,12 @@ const styles = StyleSheet.create({
   labelTextWrap: {
     backgroundColor: 'rgba(230, 0, 126, 0.9)',
     borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  labelText: {
+    color: TOKENS.colors.white,
+    fontSize: 10,
+    fontWeight: '700',
   },
 });

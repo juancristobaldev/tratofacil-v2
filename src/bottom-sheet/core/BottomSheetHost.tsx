@@ -36,6 +36,10 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
   const previousRequestId = useRef<number | null>(null);
   const wasMapFlowActive = useRef(false);
 
+  const descriptor = request ? registry[request.key] : null;
+  const initialIndex = descriptor?.initialIndex ?? 1;
+  const [currentIndex, setCurrentIndex] = React.useState<number>(initialIndex);
+
   useEffect(() => {
     bottomSheetDebug('HOST', {
       requestId: request?.requestId,
@@ -51,6 +55,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     if (request.requestId === previousRequestId.current && !becameActive) return;
 
     previousRequestId.current = request.requestId;
+    setCurrentIndex(registry[request.key]?.initialIndex ?? 1);
+
     if (operation !== 'PRESENT') return;
 
     onPresent(request);
@@ -64,18 +70,26 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     });
   }, [isMapFlowActive, modalRef, onPresent, operation, request]);
 
-  if (!request) {
+  if (!request || !descriptor) {
     previousRequestId.current = null;
     return null;
   }
 
-  const descriptor = registry[request.key];
+  const isCollapsed = currentIndex === 0;
+  const presentationState = isCollapsed ? 'collapsed' : 'content';
+
+  const handleIndexChange = (index: number) => {
+    setCurrentIndex(index);
+    onChange(request, index);
+  };
 
   const renderContent = () => {
     bottomSheetDebug('CONTENT', {
       requestId: request.requestId,
       key: request.key,
       reason: 'render',
+      isCollapsed,
+      presentationState,
     });
     bottomSheetDebug('HOST_CONTENT', {
       requestId: request.requestId,
@@ -93,6 +107,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
             payload={typedRequest.payload}
             dismiss={dismiss}
             setIndex={setIndex}
+            isCollapsed={isCollapsed}
+            presentationState={presentationState}
           />
         );
       }
@@ -105,6 +121,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
             payload={typedRequest.payload}
             dismiss={dismiss}
             setIndex={setIndex}
+            isCollapsed={isCollapsed}
+            presentationState={presentationState}
           />
         );
       }
@@ -117,6 +135,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
             payload={typedRequest.payload}
             dismiss={dismiss}
             setIndex={setIndex}
+            isCollapsed={isCollapsed}
+            presentationState={presentationState}
           />
         );
       }
@@ -129,6 +149,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
             payload={typedRequest.payload}
             dismiss={dismiss}
             setIndex={setIndex}
+            isCollapsed={isCollapsed}
+            presentationState={presentationState}
           />
         );
       }
@@ -141,6 +163,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
             payload={typedRequest.payload}
             dismiss={dismiss}
             setIndex={setIndex}
+            isCollapsed={isCollapsed}
+            presentationState={presentationState}
           />
         );
       }
@@ -157,7 +181,7 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
       maxDynamicContentSize={descriptor.maxDynamicContentSize}
       keyboardBehavior={descriptor.keyboardBehavior}
       keyboardBlurBehavior={descriptor.keyboardBlurBehavior}
-      onChange={(index) => onChange(request, index)}
+      onChange={handleIndexChange}
       onDismiss={() => onDismiss(request)}
     >
       {renderContent()}

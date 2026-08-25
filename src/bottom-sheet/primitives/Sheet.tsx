@@ -56,7 +56,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
           return point;
         });
       }
-      return [84, computedMaxDynamicContentSize];
+      return [88, computedMaxDynamicContentSize];
     }, [computedMaxDynamicContentSize, snapPoints]);
 
     const initialIndex = providedInitialIndex ?? (activeSnapPoints.length > 1 ? 1 : 0);

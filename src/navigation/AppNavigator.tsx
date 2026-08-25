@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePushNavigation } from '../push/usePushNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DrawerActions } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
@@ -9,6 +9,7 @@ import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navig
 import { TOKENS } from '../theme';
 import { Icon, Avatar, Badge, Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
+import { useRealtime } from '../realtime/RealtimeContext';
 import { getImageUrl } from '../utils/imageUrl';
 import { summarizeForRole } from '../utils/ratings';
 import { MainLayout } from '../components/layout/MainLayout';
@@ -146,8 +147,9 @@ const Stack = createNativeStackNavigator();
 const Drawer = createDrawerNavigator();
 
 // CUSTOM DRAWER CONTENT
-const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
+export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   const { role, user, logout, setRole } = useAuth();
+  const realtime = useRealtime();
   const { navigation } = props;
 
   const userName = user?.displayName || user?.username || 'Usuario';
@@ -158,9 +160,39 @@ const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   const clientRating = summarizeForRole(user, 'client');
   const providerRating = summarizeForRole(user?.provider, 'provider');
 
+  const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+  const providerOrder = realtime?.providerActiveOrder ?? user?.provider?.activeRealtimeOrder ?? null;
+  const hasActiveProviderOrder = !!providerOrder && !TERMINAL_STATUSES.includes(providerOrder.status);
+
   const handleSwitchRole = () => {
     navigation.dispatch(DrawerActions.closeDrawer());
     if (role === 'provider') {
+      if (hasActiveProviderOrder) {
+        Alert.alert(
+          'Servicio en curso',
+          'No puedes cambiar a modo cliente mientras tengas una orden en curso.',
+          [{ text: 'Entendido' }]
+        );
+        return;
+      }
+      if (realtime?.isRealtimeActive) {
+        Alert.alert(
+          'Desconexión de Proveedor',
+          'Te desconectarás y dejarás de recibir órdenes. ¿Deseas continuar?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Desconectar y cambiar',
+              style: 'destructive',
+              onPress: () => {
+                realtime.toggleAvailability(false);
+                setRole('client');
+              },
+            },
+          ]
+        );
+        return;
+      }
       setRole('client');
     } else if (!hasProvider) {
       // Cliente sin provider → flujo guiado de registro (referencia Web: registerProvider → verification-center)

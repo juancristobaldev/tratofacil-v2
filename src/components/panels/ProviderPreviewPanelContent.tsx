@@ -29,7 +29,13 @@ function formatEtaFromMeters(meters: number): string {
   return `${minutes} min`;
 }
 
-export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider_preview'>> = ({ sheetKey, requestId, payload }) => {
+export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider_preview'>> = ({
+  sheetKey,
+  requestId,
+  payload,
+  isCollapsed = false,
+  setIndex,
+}) => {
   const { dispatchBottomSheetAction } = useBottomSheet();
   const { location } = useLocation();
   const { showNotification } = useNotification();
@@ -90,6 +96,74 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
       </View>
     );
   }
+
+  const currentItem = clampedProviders[activeIndex] || clampedProviders[0];
+  const userCoords = location?.coords;
+  const pLat = currentItem.lat ?? currentItem.latitude;
+  const pLng = currentItem.lng ?? currentItem.longitude;
+  let compactEtaText = '12 min';
+  let compactDistText = '';
+  if (userCoords && pLat != null && pLng != null) {
+    const distM = getMetersBetween(userCoords.latitude, userCoords.longitude, pLat, pLng);
+    compactEtaText = formatEtaFromMeters(distM);
+    compactDistText = distM < 1000 ? `${Math.round(distM)}m` : `${(distM / 1000).toFixed(1)} km`;
+  }
+
+  if (isCollapsed) {
+    return (
+      <View style={styles.compactContainer}>
+        <View style={styles.compactCardRow}>
+          <TouchableOpacity
+            style={styles.compactProviderInfo}
+            onPress={() => setIndex?.(1)}
+            activeOpacity={0.8}
+            accessibilityLabel="Expandir perfil de profesional"
+            accessibilityRole="button"
+          >
+            <Avatar uri={currentItem.avatar} name={currentItem.name || currentItem.providerName || ''} size={36} />
+            <View style={styles.compactDetailsCol}>
+              <Text style={styles.compactName} numberOfLines={1}>
+                {currentItem.name || currentItem.providerName || 'Mario R.'}
+              </Text>
+              <View style={styles.compactRatingAndEta}>
+                <Icon name="Star" size={11} color={TOKENS.colors.starActive} />
+                <Text style={styles.compactRatingText}>{(currentItem.rating || 4.9).toFixed(1)}</Text>
+                <Text style={styles.compactDot}>•</Text>
+                <Text style={styles.compactEtaText}>{compactEtaText}</Text>
+                {Boolean(compactDistText) && (
+                  <Text style={styles.compactDistText}>({compactDistText})</Text>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.compactActionsRight}>
+            <Button
+              title="Ver perfil"
+              size="sm"
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
+                dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', currentItem, 'PROVIDER_PREVIEW_PANEL');
+              }}
+              style={styles.compactProfileBtn}
+            />
+            <IconButton
+              icon="X"
+              size="sm"
+              variant="ghost"
+              accessibilityLabel="Cancelar selección de servicio"
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
+                dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
+              }}
+              style={styles.compactDismissBtn}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const showDots = clampedProviders.length > 1;
 
   const renderItem = ({ item }: { item: ProviderPreviewItem }) => {
@@ -328,6 +402,78 @@ const styles = StyleSheet.create({
   dotActive: {
     backgroundColor: TOKENS.colors.brand500,
     width: 20,
+  },
+  compactContainer: {
+    width: SCREEN_WIDTH,
+    paddingHorizontal: CARD_H_PADDING,
+    paddingTop: TOKENS.spacing.xs,
+    paddingBottom: TOKENS.spacing.sm,
+  },
+  compactCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: 10,
+    ...TOKENS.shadows.soft,
+    gap: 8,
+  },
+  compactProviderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 10,
+  },
+  compactDetailsCol: {
+    flex: 1,
+  },
+  compactName: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  compactRatingAndEta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+  },
+  compactRatingText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  compactDot: {
+    fontSize: 10,
+    color: TOKENS.colors.textMuted,
+    marginHorizontal: 1,
+  },
+  compactEtaText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.brand700,
+  },
+  compactDistText: {
+    fontSize: 10,
+    color: TOKENS.colors.brand600,
+  },
+  compactActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactProfileBtn: {
+    minHeight: 36,
+    paddingHorizontal: 10,
+  },
+  compactDismissBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: TOKENS.colors.surface100,
   },
 });
 

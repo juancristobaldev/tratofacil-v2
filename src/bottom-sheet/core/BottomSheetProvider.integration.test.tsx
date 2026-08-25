@@ -364,7 +364,7 @@ describe('BottomSheet Provider & Reconciler Integration Layer (Layer 2)', () => 
       expect(descriptor).toBeDefined();
       expect(descriptor.enableDynamicSizing).toBe(true);
       expect(descriptor.collapsedHeight).toBeGreaterThanOrEqual(80);
-      expect(descriptor.collapsedHeight).toBeLessThanOrEqual(120);
+      expect(descriptor.collapsedHeight).toBeLessThanOrEqual(150);
       expect(descriptor.snapPoints).toBeDefined();
       expect(descriptor.snapPoints?.length).toBeGreaterThanOrEqual(2);
       expect(descriptor.snapPoints?.[0]).toBe(descriptor.collapsedHeight);

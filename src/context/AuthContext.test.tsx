@@ -179,4 +179,96 @@ describe('AuthContext lifecycle and session management', () => {
     expect(result.current.user).toBeNull();
   });
 
+  it('ROLE: starts in provider mode if user is provider and isRealtimeActive is true', async () => {
+    (secureStorage.getToken as jest.Mock).mockResolvedValue('prov-online-token');
+    mockQueryResult = {
+      data: {
+        me: {
+          id: 50,
+          email: 'pro-online@tratofacil.test',
+          role: Role.PROVIDER,
+          displayName: 'Pro Online',
+          provider: {
+            id: 100,
+            isRealtimeActive: true,
+            activeRealtimeOrder: null,
+          },
+        },
+      },
+      loading: false,
+    };
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AuthProvider>{children}</AuthProvider>
+    );
+
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.role).toBe('provider');
+    });
+  });
+
+  it('ROLE: starts in client mode if user is provider but isRealtimeActive is false and no active order', async () => {
+    (secureStorage.getToken as jest.Mock).mockResolvedValue('prov-offline-token');
+    mockQueryResult = {
+      data: {
+        me: {
+          id: 51,
+          email: 'pro-offline@tratofacil.test',
+          role: Role.PROVIDER,
+          displayName: 'Pro Offline',
+          provider: {
+            id: 101,
+            isRealtimeActive: false,
+            activeRealtimeOrder: null,
+          },
+        },
+      },
+      loading: false,
+    };
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AuthProvider>{children}</AuthProvider>
+    );
+
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.role).toBe('client');
+    });
+  });
+
+  it('ROLE: starts in provider mode if user has non-terminal active order even if isRealtimeActive is false', async () => {
+    (secureStorage.getToken as jest.Mock).mockResolvedValue('prov-order-token');
+    mockQueryResult = {
+      data: {
+        me: {
+          id: 52,
+          email: 'pro-order@tratofacil.test',
+          role: Role.PROVIDER,
+          displayName: 'Pro Con Orden',
+          provider: {
+            id: 102,
+            isRealtimeActive: false,
+            activeRealtimeOrder: {
+              id: 999,
+              status: 'IN_PROGRESS',
+            },
+          },
+        },
+      },
+      loading: false,
+    };
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <AuthProvider>{children}</AuthProvider>
+    );
+
+    const { result } = await renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.role).toBe('provider');
+    });
+  });
 });

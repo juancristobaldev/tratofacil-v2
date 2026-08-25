@@ -17,7 +17,13 @@ import { bottomSheetDebug } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 
-export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>> = ({ sheetKey, requestId, payload }) => {
+export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>> = ({
+  sheetKey,
+  requestId,
+  payload,
+  isCollapsed = false,
+  setIndex,
+}) => {
   const { dispatchBottomSheetAction } = useBottomSheet();
   const [panelState, setPanelState] = usePanelState(sheetKey, { searchQuery: '', showOffline: false });
   // DEV-only measurement probe (Fase 0) — no layout change
@@ -165,6 +171,74 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
     ),
     [handleNodePress, requestId],
   );
+
+  if (isCollapsed) {
+    return (
+      <View style={styles.compactContainer}>
+        {selectedCategory ? (
+          <View style={styles.compactSelectedRow}>
+            <TouchableOpacity
+              style={styles.compactSelectedLeft}
+              onPress={() => setIndex?.(1)}
+              activeOpacity={0.8}
+              accessibilityLabel="Expandir filtro de categoría"
+              accessibilityRole="button"
+            >
+              <View style={styles.compactSelectedIconCircle}>
+                <Icon name="CheckCircle" size={14} color={TOKENS.colors.brand500} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.compactSelectedLabel}>Filtrando por</Text>
+                <Text style={styles.compactSelectedTitle} numberOfLines={1}>
+                  {selectedCategory.name}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.compactClearBtn}
+              onPress={handleClear}
+              activeOpacity={0.8}
+              accessibilityLabel="Limpiar filtro de categoría"
+              accessibilityRole="button"
+            >
+              <Text style={styles.compactClearBtnText}>Limpiar</Text>
+              <Icon name="X" size={12} color={TOKENS.colors.brand700} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.compactSearchBar}
+            onPress={() => setIndex?.(1)}
+            activeOpacity={0.8}
+            accessibilityLabel="Buscar servicios o categorías"
+            accessibilityRole="button"
+          >
+            <Icon
+              name="Search"
+              size={16}
+              color={TOKENS.colors.brand500}
+              style={styles.compactSearchIcon}
+            />
+            <Text style={searchQuery ? styles.compactSearchTextFilled : styles.compactSearchTextPlaceholder} numberOfLines={1}>
+              {searchQuery || '¿Qué servicio necesitas?'}
+            </Text>
+            {searchQuery ? (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={styles.compactClearSearchBtn}
+                accessibilityLabel="Borrar texto de búsqueda"
+                accessibilityRole="button"
+              >
+                <Icon name="X" size={14} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
+            ) : (
+              <Icon name="ChevronUp" size={18} color={TOKENS.colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -526,5 +600,93 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.success700,
+  },
+  compactContainer: {
+    paddingHorizontal: TOKENS.spacing.lg,
+    paddingTop: TOKENS.spacing.xs,
+    paddingBottom: TOKENS.spacing.sm,
+  },
+  compactSelectedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+    borderRadius: 16,
+    padding: 10,
+    paddingHorizontal: 12,
+  },
+  compactSelectedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  compactSelectedIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand200,
+  },
+  compactSelectedLabel: {
+    fontSize: 9,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand600,
+    textTransform: 'uppercase',
+  },
+  compactSelectedTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  compactClearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand200,
+  },
+  compactClearBtnText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand700,
+  },
+  compactSearchBar: {
+    height: 44,
+    backgroundColor: TOKENS.colors.surface100,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: TOKENS.spacing.md,
+  },
+  compactSearchIcon: {
+    marginRight: TOKENS.spacing.sm,
+  },
+  compactSearchTextPlaceholder: {
+    flex: 1,
+    color: TOKENS.colors.textMuted,
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  compactSearchTextFilled: {
+    flex: 1,
+    color: TOKENS.colors.dark900,
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.medium,
+  },
+  compactClearSearchBtn: {
+    padding: 6,
   },
 });

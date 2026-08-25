@@ -12,13 +12,31 @@ import { TOKENS } from '../../theme';
 import { Icon, Avatar, Button, Badge, Rating, WorkTimer } from '../ui';
 import { useNotification } from '../../context/NotificationContext';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { usePanelState } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_provider'>> = () => {
+export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_provider'>> = ({
+  isCollapsed = false,
+  setIndex,
+}) => {
   const { showNotification } = useNotification();
-  const [quoteHours, setQuoteHours] = useState(1);
-  const [quoteTransport, setQuoteTransport] = useState(0);
+  const [quoteState, setQuoteState] = usePanelState('focus_provider', {
+    quoteHours: 1,
+    quoteTransport: 0,
+  });
+  const quoteHours = quoteState.quoteHours;
+  const quoteTransport = quoteState.quoteTransport;
+  const setQuoteHours = (fnOrVal: number | ((h: number) => number)) =>
+    setQuoteState((prev) => ({
+      ...prev,
+      quoteHours: typeof fnOrVal === 'function' ? fnOrVal(prev.quoteHours) : fnOrVal,
+    }));
+  const setQuoteTransport = (fnOrVal: number | ((t: number) => number)) =>
+    setQuoteState((prev) => ({
+      ...prev,
+      quoteTransport: typeof fnOrVal === 'function' ? fnOrVal(prev.quoteTransport) : fnOrVal,
+    }));
   const [contentHeight, setContentHeight] = useState(0);
   // DEV-only measurement probe (Fase 0) — no layout change
   const primaryActionRef = useRef<View>(null);
@@ -188,6 +206,119 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     handleFinish();
   };
 
+  if (isCollapsed) {
+    return (
+      <View style={styles.compactContainer}>
+        <TouchableOpacity
+          style={styles.compactHeaderRow}
+          onPress={() => setIndex?.(1)}
+          activeOpacity={0.8}
+          accessibilityLabel="Expandir panel del profesional"
+          accessibilityRole="button"
+        >
+          <Avatar uri={null} name={clientName} size={36} />
+          <View style={styles.compactInfoCol}>
+            <View style={styles.compactTitleRow}>
+              <Text style={styles.compactName} numberOfLines={1}>{clientName}</Text>
+              {derivedPhase === 'REQUEST_CREATED' && (
+                <Text style={styles.compactPriceBadge}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
+              )}
+              {derivedPhase === 'WAITING_PROVIDER_RESPONSE' && order?.counterOfferPrice != null && (
+                <Text style={styles.compactPriceBadge}>{`$${order.counterOfferPrice.toLocaleString('es-CL')}`}</Text>
+              )}
+            </View>
+            <Text style={styles.compactStatusText} numberOfLines={1}>
+              {derivedPhase === 'REQUEST_CREATED'
+                ? 'Solicitud de cotización'
+                : derivedPhase === 'WAITING_PROVIDER_RESPONSE'
+                  ? 'Contraoferta recibida'
+                  : orderState === 'WAITING_CLIENT_RESPONSE'
+                    ? 'Esperando respuesta del cliente'
+                    : orderState === 'EN_CAMINO'
+                      ? `En camino • ${etaRemaining}`
+                      : orderState === 'ARRIVED'
+                        ? 'En destino • Listo para iniciar'
+                        : orderState === 'IN_PROGRESS'
+                          ? 'Servicio en curso'
+                          : orderState === 'COMPLETED'
+                            ? 'Servicio completado'
+                            : 'Servicio cancelado'}
+            </Text>
+          </View>
+          <Icon name="ChevronUp" size={20} color={TOKENS.colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.compactActionRow}>
+          {sendQuoteVisible && (
+            <Button
+              title="Enviar cotización"
+              onPress={handleSendQuote}
+              size="md"
+              style={styles.compactActionBtn}
+            />
+          )}
+
+          {acceptCounterVisible && (
+            <View style={styles.compactActionGroup}>
+              <Button
+                title="Aceptar"
+                onPress={handleAcceptCounterOffer}
+                size="md"
+                style={styles.compactGroupBtn}
+              />
+              <Button
+                title="Rechazar"
+                variant="outline"
+                onPress={handleRejectCounterOffer}
+                size="md"
+                style={styles.compactGroupBtn}
+              />
+            </View>
+          )}
+
+          {orderState === 'WAITING_CLIENT_RESPONSE' && !acceptCounterVisible && (
+            <Button
+              title="Actualizar Cotización"
+              variant="secondary"
+              size="md"
+              onPress={handleSendQuote}
+              style={styles.compactActionBtn}
+            />
+          )}
+
+          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && (
+            <Button
+              title="Abrir Chat"
+              variant="secondary"
+              icon="MessageCircle"
+              size="md"
+              onPress={handleOpenChat}
+              style={styles.compactActionBtn}
+            />
+          )}
+
+          {orderState === 'IN_PROGRESS' && (
+            <Button
+              title="Completar Trabajo"
+              size="md"
+              onPress={handleCompleteWork}
+              style={styles.compactActionBtn}
+            />
+          )}
+
+          {(orderState === 'COMPLETED' || orderState === 'CANCELLED') && (
+            <Button
+              title="Volver al Panel"
+              size="md"
+              onPress={handleReturnPanel}
+              style={styles.compactActionBtn}
+            />
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <BottomSheetScrollView
       style={styles.container}
@@ -252,7 +383,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                     <Text style={styles.priceAdjusterLabel}>Cotización del servicio</Text>
                     <View style={styles.totalBadge}>
                       <Text style={styles.totalBadgeLabel}>Total a Cobrar</Text>
-                      <Text style={styles.totalBadgeValue}>${totalQuote.toLocaleString('es-CL')}</Text>
+                      <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
                     </View>
                   </View>
                   <View style={styles.quoteRowsContainer}>
@@ -919,5 +1050,60 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.xs,
     color: TOKENS.colors.brand700,
     lineHeight: 16,
+  },
+  compactContainer: {
+    paddingHorizontal: TOKENS.spacing.lg,
+    paddingTop: TOKENS.spacing.xs,
+    paddingBottom: TOKENS.spacing.sm,
+    gap: 8,
+  },
+  compactHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  compactInfoCol: {
+    flex: 1,
+  },
+  compactTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  compactName: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    flex: 1,
+  },
+  compactPriceBadge: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand600,
+  },
+  compactStatusText: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 1,
+  },
+  compactActionRow: {
+    width: '100%',
+  },
+  compactActionBtn: {
+    width: '100%',
+    minHeight: 44,
+  },
+  compactActionGroup: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  compactGroupBtn: {
+    flex: 1,
+    minHeight: 44,
+  },
+  compactWaitingRow: {
+    width: '100%',
   },
 });

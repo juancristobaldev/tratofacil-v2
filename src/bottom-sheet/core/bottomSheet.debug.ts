@@ -58,6 +58,8 @@ type DebugPayload = {
   type?: string;
   stale?: boolean;
   action?: string;
+  isCollapsed?: boolean;
+  presentationState?: string;
   previousRole?: string;
   owner?: string | null;
   generation?: number;

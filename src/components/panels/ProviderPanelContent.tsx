@@ -15,7 +15,10 @@ import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashboard'>> = () => {
+export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashboard'>> = ({
+  isCollapsed = false,
+  setIndex,
+}) => {
   const navigation = useNavigation<any>();
   const { present } = useBottomSheet();
   const { user } = useAuth();
@@ -116,6 +119,40 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'provider_dashboard', action: 'VIEW_ORDER', target: 'focus_provider' });
     present('focus_provider', { orderId });
   };
+
+  if (isCollapsed) {
+    return (
+      <View style={styles.compactContainer}>
+        <View style={styles.compactCardRow}>
+          <TouchableOpacity
+            style={styles.compactOnlineInfo}
+            onPress={() => setIndex?.(1)}
+            activeOpacity={0.8}
+            accessibilityLabel="Expandir panel del profesional"
+            accessibilityRole="button"
+          >
+            <View style={[styles.statusDot, online && styles.statusDotActive]} />
+            <View style={styles.compactTextCol}>
+              <Text style={styles.compactOnlineTitle} numberOfLines={1}>
+                {online ? 'Disponible para órdenes' : 'Desconectado'}
+              </Text>
+              <Text style={styles.compactOnlineSubtitle} numberOfLines={1}>
+                Saldo: ${walletBalance.toLocaleString('es-CL')} • {completedOrdersCount} servicios
+              </Text>
+            </View>
+            <Icon name="ChevronUp" size={18} color={TOKENS.colors.textMuted} />
+          </TouchableOpacity>
+          <Switch
+            value={online}
+            onValueChange={handleToggleOnline}
+            trackColor={{ false: TOKENS.colors.surface300, true: TOKENS.colors.brand100 }}
+            thumbColor={online ? TOKENS.colors.brand500 : TOKENS.colors.surface300}
+            accessibilityLabel={online ? 'Desactivar disponibilidad' : 'Activar disponibilidad'}
+          />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <BottomSheetScrollView style={styles.container} contentContainerStyle={styles.scrollBody} bounces={true}>
@@ -334,5 +371,42 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.brand700,
     fontSize: 12,
     fontWeight: TOKENS.typography.weights.bold,
+  },
+  compactContainer: {
+    paddingHorizontal: TOKENS.spacing.lg,
+    paddingTop: TOKENS.spacing.xs,
+    paddingBottom: TOKENS.spacing.sm,
+  },
+  compactCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    padding: 12,
+    ...TOKENS.shadows.soft,
+    gap: 10,
+  },
+  compactOnlineInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  compactTextCol: {
+    flex: 1,
+  },
+  compactOnlineTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  compactOnlineSubtitle: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 1,
+    fontWeight: TOKENS.typography.weights.medium,
   },
 });

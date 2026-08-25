@@ -147,7 +147,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const socketRef = useRef<Socket | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const locationTsRef = useRef<Record<number, number>>({});
+  const locationTsRef = useRef<Record<string, number>>({});
 
   // El efecto de conexión del socket (más abajo) no depende de `role`/`showNotification`
   // para no forzar una reconexión cada vez que el usuario cambia de modo cliente/proveedor.
@@ -229,23 +229,27 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   }, [role, activeOrder?.id, activeOrder?.status, activeOrder?.provider, activeOrder?.serviceProvider, providerActiveOrder?.id, providerActiveOrder?.status]);
 
   // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
-  // en modo cliente, pasamos a modo proveedor. Al terminar esa misma orden (y solo si
-  // fue esta lógica la que lo activó), volvemos a modo cliente. Nunca sobrescribe un
-  // toggle manual del usuario.
+  // en modo cliente, pasamos a modo proveedor.
+  // Al terminar la orden: si el proveedor sigue activo en tiempo real (isRealtimeActive === true),
+  // se mantiene en modo proveedor. Solo si NO está activo en tiempo real vuelve a modo cliente.
   const autoProviderOrderRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!providerActiveOrder) {
       if (autoProviderOrderRef.current !== null && role === 'provider') {
         autoProviderOrderRef.current = null;
-        setRole('client');
+        if (!isRealtimeActive) {
+          setRole('client');
+        }
       }
       return;
     }
     if (TERMINAL_ORDER_STATUSES.includes(providerActiveOrder.status)) {
       if (autoProviderOrderRef.current === providerActiveOrder.id && role === 'provider') {
         autoProviderOrderRef.current = null;
-        setRole('client');
+        if (!isRealtimeActive) {
+          setRole('client');
+        }
       }
       return;
     }
@@ -253,7 +257,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     if (role === 'provider') return;
     autoProviderOrderRef.current = providerActiveOrder.id;
     setRole('provider');
-  }, [providerActiveOrder, role, setRole]);
+  }, [providerActiveOrder, isRealtimeActive, role, setRole]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -488,17 +492,36 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       providerLat: number | null;
       providerLng: number | null;
       timestamp?: number;
+      source?: 'client' | 'provider';
     }) => {
       logSocketIn('order-realtime:location-updated', payload);
 
-      // Guard de recencia client-side: descarta eventos fuera de orden/duplicados.
+      const sourceKey = payload.source || 'default';
+      const actorKey = `${payload.orderRealtimeId}:${sourceKey}`;
+
+      // Guard de recencia client-side por actor: descarta eventos obsoletos del mismo actor sin bloquear al otro.
       if (payload.timestamp && Number.isFinite(payload.timestamp)) {
-        const prev = locationTsRef.current[payload.orderRealtimeId] ?? 0;
+        const prev = locationTsRef.current[actorKey] ?? 0;
         if (payload.timestamp <= prev) return;
-        locationTsRef.current[payload.orderRealtimeId] = payload.timestamp;
+        locationTsRef.current[actorKey] = payload.timestamp;
+      }
+
+      if (__DEV__) {
+        console.log(`[RT:SOCKET_LOCATION_RECEIVED] receiverRole=${roleRef.current} source=${sourceKey} orderId=${payload.orderRealtimeId} clientLat=${payload.clientLat} clientLng=${payload.clientLng} providerLat=${payload.providerLat} providerLng=${payload.providerLng}`);
       }
 
       setLocalActiveOrder((prev) => {
+        if (!prev || prev.id !== payload.orderRealtimeId) return prev;
+        return {
+          ...prev,
+          clientLat: payload.clientLat,
+          clientLng: payload.clientLng,
+          providerLat: payload.providerLat ?? prev.providerLat,
+          providerLng: payload.providerLng ?? prev.providerLng,
+        };
+      });
+
+      _setLocalProviderActiveOrder((prev: any) => {
         if (!prev || prev.id !== payload.orderRealtimeId) return prev;
         return {
           ...prev,
@@ -742,10 +765,16 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [updateLocMut],
   );
 
+  const trackingOrder = role === 'provider'
+    ? (localProviderActiveOrder ?? (providerState?.activeRealtimeOrder as OrderRealTime | null))
+    : (localActiveOrder ?? activeOrder);
+
+  const trackingOrderId = trackingOrder?.id ?? null;
+  const trackingOrderStatus = trackingOrder?.status ?? null;
+
   useEffect(() => {
-    const order = localActiveOrder ?? activeOrder;
-    if (!order || !order.id) return;
-    if (order.status !== 'ACCEPTED' && order.status !== 'IN_PROGRESS') return;
+    if (!trackingOrderId) return;
+    if (trackingOrderStatus !== 'ACCEPTED' && trackingOrderStatus !== 'IN_PROGRESS') return;
 
     let watchId: number | null = null;
     const lastSentRef = { current: 0 };
@@ -758,7 +787,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     // trackear una orden en curso), nunca al arrancar la app. Sin este permiso, iOS pausa
     // el watchPosition apenas la app pasa a background. Nunca se dispara para un cliente.
     if (Platform.OS === 'ios' && roleRef.current === 'provider') {
-      Geolocation.requestAuthorization('always').catch(() => {});
+      Geolocation.requestAuthorization?.('always')?.catch?.(() => {});
     }
 
     try {
@@ -767,8 +796,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           const now = Date.now();
           if (now - lastSentRef.current < 4000) return;
           lastSentRef.current = now;
+          if (__DEV__) {
+            console.log(`[RT:LOCATION_SEND] actor=${roleRef.current} orderId=${trackingOrderId} lat=${position.coords.latitude} lng=${position.coords.longitude} ts=${position.timestamp}`);
+          }
           updateLocation(
-            order.id,
+            trackingOrderId,
             position.coords.latitude,
             position.coords.longitude,
             position.timestamp,
@@ -782,15 +814,21 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           fastestInterval: 2000,
         },
       );
+      if (__DEV__) {
+        console.log(`[RT:ORDER_GPS_START] actor=${roleRef.current} orderId=${trackingOrderId} watchId=${watchId}`);
+      }
     } catch (_) {}
 
     return () => {
       if (watchId != null) {
+        if (__DEV__) {
+          console.log(`[RT:ORDER_GPS_STOP] actor=${roleRef.current} orderId=${trackingOrderId} watchId=${watchId}`);
+        }
         Geolocation.clearWatch(watchId);
       }
       stopLocationTracking();
     };
-  }, [localActiveOrder?.status, activeOrder?.status, updateLocation, localActiveOrder?.id, activeOrder?.id]);
+  }, [role, trackingOrderId, trackingOrderStatus, updateLocation]);
 
   const initPayment = useCallback(
     async (orderRealtimeId: number, returnUrl: string) => {

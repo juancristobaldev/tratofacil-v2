@@ -8,7 +8,7 @@ if (__DEV__) console.log('[endpoints] Config.API_URL =', Config.API_URL);
 const ENDPOINT_API = Config.API_URL ?? `http://${DEFAULT_HOST}:4000/`;
 const API_BASE = Config.API_URL?.replace(/\/$/, '') ?? `http://${DEFAULT_HOST}:4000`;
 const MEDIA_BASE = (Config.MEDIA_CDN?.replace(/\/$/, '') ?? `http://${DEFAULT_HOST}:3002`);
-const FRONTEND_BASE = Config.FRONTEND_URL ?? `http://${DEFAULT_HOST}:3000`;
+const FRONTEND_BASE = (Config.FRONTEND_URL?.replace(/\/$/, '') ?? `http://${DEFAULT_HOST}:3000`);
 
 export const ENDPOINT = ENDPOINT_API;
 export const GRAPHQL_ENDPOINT = `${ENDPOINT_API}graphql`;

@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   Linking,
+  AppState,
 } from 'react-native';
 import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
@@ -15,12 +16,16 @@ import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { usePanelState } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
 
-export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client'>> = () => {
+export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client'>> = ({
+  isCollapsed = false,
+  setIndex,
+}) => {
   const { showNotification } = useNotification();
-  const { user } = useAuth();
+  const { user, refetch: refetchUser } = useAuth();
   const { registerCard } = usePlans();
   const session = useFocusSession('client');
   const {
@@ -50,6 +55,17 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
   const [isPayingCard, setIsPayingCard] = useState(false);
   const prevCounterOfferRef = useRef<number | null | undefined>(undefined);
   const prevNegotiatedPriceRef = useRef<number>(activeOrder?.quotedPrice || 0);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        refetchUser?.().catch(() => {});
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [refetchUser]);
 
   useEffect(() => {
     const hadCounterOffer = prevCounterOfferRef.current != null;
@@ -206,6 +222,137 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
 
   if (__DEV__) console.log({status})
+
+  if (isCollapsed) {
+    return (
+      <View style={styles.compactContainer}>
+        <TouchableOpacity
+          style={styles.compactHeaderRow}
+          onPress={() => setIndex?.(1)}
+          activeOpacity={0.8}
+          accessibilityLabel="Expandir panel del cliente"
+          accessibilityRole="button"
+        >
+          <Avatar uri={provider.avatar} name={provider.name} size={36} />
+          <View style={styles.compactInfoCol}>
+            <View style={styles.compactTitleRow}>
+              <Text style={styles.compactName} numberOfLines={1}>{provider.name}</Text>
+              {status === 'QUOTED' && !counterOfferSent && (
+                <Text style={styles.compactPriceBadge}>
+                  {`$${(negotiatedPrice !== (activeOrder?.quotedPrice || 0) && negotiatedPrice > 0 ? negotiatedPrice : (activeOrder?.quotedPrice || 0)).toLocaleString('es-CL')}`}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.compactStatusText} numberOfLines={1}>
+              {status === 'QUOTED'
+                ? counterOfferSent
+                  ? 'Contraoferta enviada • Esperando'
+                  : negotiatedPrice !== (activeOrder?.quotedPrice || 0)
+                    ? 'Tu contraoferta lista para enviar'
+                    : 'Cotización recibida'
+                : status === 'ACCEPTED'
+                  ? canStartOrder
+                    ? 'Llegó al domicilio • Listo'
+                    : `En camino • ${etaRemaining}`
+                  : status === 'IN_PROGRESS'
+                    ? `En curso • ${serviceElapsed}`
+                    : 'Seguimiento de orden'}
+            </Text>
+          </View>
+          <Icon name="ChevronUp" size={20} color={TOKENS.colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.compactActionRow}>
+          {status === 'QUOTED' && !counterOfferSent && (
+            negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
+              <Button
+                title="Enviar contraoferta"
+                onPress={async () => {
+                  const actionId = nextBottomSheetActionId();
+                  bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
+                  if (!activeOrder?.id || !realtime?.clientCounterOffer) {
+                    bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+                    return;
+                  }
+                  bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
+                  try {
+                    await realtime.clientCounterOffer(
+                      activeOrder.id,
+                      negotiatedPrice,
+                      activeOrder?.quotedHours || 1,
+                      activeOrder?.quotedTransport || 0,
+                    );
+                    setCounterOfferSent(true);
+                  } catch {
+                    showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
+                  }
+                }}
+                size="md"
+                style={styles.compactActionBtn}
+              />
+            ) : (
+              <Button
+                title="Pagar con Flow / Webpay"
+                onPress={handlePay}
+                size="md"
+                style={styles.compactActionBtn}
+              />
+            )
+          )}
+
+          {status === 'QUOTED' && counterOfferSent && (
+            <Button
+              title="Cancelar orden"
+              variant="outline"
+              size="md"
+              onPress={handleCancel}
+              style={styles.compactActionBtn}
+            />
+          )}
+
+          {status === 'ACCEPTED' && (
+            canStartOrder ? (
+              <Button
+                title="Confirmar inicio de servicio"
+                onPress={handleStartOrder}
+                size="md"
+                style={styles.compactActionBtn}
+              />
+            ) : (
+              <Button
+                title="Abrir Chat"
+                variant="secondary"
+                icon="MessageCircle"
+                size="md"
+                onPress={() => {
+                  const actionId = nextBottomSheetActionId();
+                  bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
+                  setShowChat(true);
+                }}
+                style={styles.compactActionBtn}
+              />
+            )
+          )}
+
+          {status === 'IN_PROGRESS' && (
+            <Button
+              title="Abrir Chat"
+              variant="secondary"
+              icon="MessageCircle"
+              size="md"
+              onPress={() => {
+                const actionId = nextBottomSheetActionId();
+                bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
+                setShowChat(true);
+              }}
+              style={styles.compactActionBtn}
+            />
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <BottomSheetScrollView
       style={styles.container}
@@ -981,6 +1128,49 @@ const styles = StyleSheet.create({
   },
   flowPayBtn: {
     marginTop: -2,
+  },
+  compactContainer: {
+    paddingHorizontal: TOKENS.spacing.lg,
+    paddingTop: TOKENS.spacing.xs,
+    paddingBottom: TOKENS.spacing.sm,
+    gap: 8,
+  },
+  compactHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  compactInfoCol: {
+    flex: 1,
+  },
+  compactTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  compactName: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.textMain,
+    flex: 1,
+  },
+  compactPriceBadge: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand600,
+  },
+  compactStatusText: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 1,
+  },
+  compactActionRow: {
+    width: '100%',
+  },
+  compactActionBtn: {
+    width: '100%',
+    minHeight: 44,
   },
 });
 
