@@ -19,6 +19,7 @@ interface SheetProps {
   keyboardBlurBehavior?: 'none' | 'restore';
   onDismiss?: () => void;
   onChange?: (index: number) => void;
+  onContentHeightChange?: (height: number) => void;
   // DEV-only instrumentation key (no behavior change)
   sheetKey?: string;
 }
@@ -36,6 +37,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
     keyboardBlurBehavior = 'restore',
     onDismiss,
     onChange,
+    onContentHeightChange,
     sheetKey,
   }, ref) => {
     const insets = useSafeAreaInsets();
@@ -131,8 +133,9 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       >
         <BottomSheetView
           onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            onContentHeightChange?.(height);
             if (__DEV__) {
-              const { width, height } = event.nativeEvent.layout;
               const contentBottom = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
               console.log('[BS:CONTENT_LAYOUT]', { width, height });
               console.log('[BS:SAFE_CONTENT]', {

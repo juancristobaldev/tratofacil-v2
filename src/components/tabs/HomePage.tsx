@@ -10,6 +10,8 @@ import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import { isSheetAllowedForRole } from '../../bottom-sheet/core/bottomSheet.registry';
 import type { SheetKey } from '../../bottom-sheet/core/bottomSheet.types';
+import { useMapCamera } from '../../hooks/useMapCamera';
+import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 import { useRole } from '../../context/RoleContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -57,16 +59,33 @@ export const HomePage: React.FC = () => {
   const navigation = useNavigation<any>();
   const { location } = useLocation();
   const mapRef = useRef<MapView>(null);
+  const bottomNavHeight = useBottomNavHeight();
+  const headerBottom = 60 + insets.top;
   const {
     present,
     dismiss,
     update,
     active,
     activePayload,
+    sheetMetrics,
     setMapFlowActive,
     bindRuntimeActionHandlers,
     unbindRuntimeActionHandlers,
   } = useBottomSheet();
+  const {
+    fitToRoute,
+    followCoordinate,
+    handlePanDrag: onCameraPanDrag,
+    handleRegionChangeComplete: onCameraRegionChangeComplete,
+    recenter: recenterCamera,
+    dynamicEdgePadding,
+    isUserExploring,
+  } = useMapCamera({
+    mapRef,
+    headerBottom,
+    sheetTop: sheetMetrics?.sheetTop ?? null,
+    bottomNavHeight,
+  });
   const runtimeOwnerRef = useRef({
     ownerId: `HomePage:${++homePageRuntimeOwnerGeneration}`,
     generation: homePageRuntimeOwnerGeneration,
@@ -166,6 +185,7 @@ export const HomePage: React.FC = () => {
   }, []);
 
   const handleRegionChangeComplete = useCallback((newRegion: any) => {
+    onCameraRegionChangeComplete(newRegion, mapPanActiveRef.current);
     const current = regionRef.current;
     if (!current) return;
     const moved = (
@@ -182,29 +202,30 @@ export const HomePage: React.FC = () => {
       mapPanActiveRef.current = false;
       console.log('[MAP:GESTURE] PAN_END');
     }
-  }, [updateClusters]);
+  }, [updateClusters, onCameraRegionChangeComplete]);
 
   const handleMapPanDrag = useCallback(() => {
+    onCameraPanDrag();
     if (mapPanActiveRef.current) return;
     mapPanActiveRef.current = true;
     console.log('[MAP:GESTURE] PAN_START');
-  }, []);
+  }, [onCameraPanDrag]);
 
   useEffect(() => {
     if (location?.coords && !initialCenterDone.current) {
-      const newRegion = {
+      const userCoord = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
       };
-      setRegion(newRegion);
+      setRegion({
+        ...userCoord,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      });
       initialCenterDone.current = true;
-      if (mapRef.current) {
-        mapRef.current.animateToRegion(newRegion, 600);
-      }
+      followCoordinate(userCoord, { force: true, reason: 'initial_gps_fix' });
     }
-  }, [location?.coords?.latitude, location?.coords?.longitude]);
+  }, [location?.coords?.latitude, location?.coords?.longitude, followCoordinate]);
 
   const { token } = useAuth();
 
@@ -429,16 +450,15 @@ export const HomePage: React.FC = () => {
       (p: any) => p.lat != null && p.lng != null,
     );
     if (withCoords.length === 0) return;
-    const validLat = withCoords.map((p: any) => p.lat);
-    const validLng = withCoords.map((p: any) => p.lng);
-    const pad = 0.01;
-    setRegion({
-      latitude: (Math.min(...validLat) + Math.max(...validLat)) / 2,
-      longitude: (Math.min(...validLng) + Math.max(...validLng)) / 2,
-      latitudeDelta: Math.max((Math.max(...validLat) - Math.min(...validLat)) * 1.5, pad),
-      longitudeDelta: Math.max((Math.max(...validLng) - Math.min(...validLng)) * 1.5, pad),
-    });
-  }, [filteredProviders, selectedCategory]);
+    const points = withCoords.map((p: any) => ({
+      latitude: p.lat,
+      longitude: p.lng,
+    }));
+    if (location?.coords) {
+      points.push({ latitude: location.coords.latitude, longitude: location.coords.longitude });
+    }
+    fitToRoute(points, { reason: 'category_filtered_providers' });
+  }, [filteredProviders, selectedCategory, fitToRoute, location?.coords]);
 
   const handleClearCategory = useCallback(() => {
     setSelectedCategory(null);
@@ -473,40 +493,54 @@ export const HomePage: React.FC = () => {
         if (controller.signal.aborted) return;
         if (result && result.coordinates.length >= 2) {
           setRouteCoords(result.coordinates);
+          fitToRoute(
+            [
+              { latitude: user.latitude, longitude: user.longitude },
+              { latitude: pLat, longitude: pLng },
+              ...result.coordinates,
+            ],
+            { reason: 'provider_route_ready' },
+          );
         } else {
-          setRouteCoords([
-            { latitude: user.latitude, longitude: user.longitude },
-            { latitude: pLat, longitude: pLng },
-          ]);
+          setRouteCoords([]);
+          fitToRoute(
+            [
+              { latitude: user.latitude, longitude: user.longitude },
+              { latitude: pLat, longitude: pLng },
+            ],
+            { reason: 'provider_pins_no_route' },
+          );
         }
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setRouteCoords([
-            { latitude: user.latitude, longitude: user.longitude },
-            { latitude: pLat, longitude: pLng },
-          ]);
+          setRouteCoords([]);
+          fitToRoute(
+            [
+              { latitude: user.latitude, longitude: user.longitude },
+              { latitude: pLat, longitude: pLng },
+            ],
+            { reason: 'provider_pins_route_error' },
+          );
         }
       });
 
     return () => {
       controller.abort();
     };
-  }, [selectedProvider, location?.coords?.latitude, location?.coords?.longitude]);
+  }, [selectedProvider, location?.coords?.latitude, location?.coords?.longitude, fitToRoute]);
 
-  // Centra la cámara en un proveedor (desplazado al norte para no quedar tapado por el sheet).
-  const animateToProvider = useCallback((provider: any) => {
-    if (!provider || provider.lat == null || provider.lng == null) return;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: provider.lat + 0.005,
-        longitude: provider.lng,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
-      },
-      500,
-    );
-  }, []);
+  // Centra la cámara en un proveedor respetando el área útil sobre provider_preview.
+  const animateToProvider = useCallback(
+    (provider: any) => {
+      if (!provider || provider.lat == null || provider.lng == null) return;
+      followCoordinate(
+        { latitude: provider.lat, longitude: provider.lng },
+        { force: true, animated: true, reason: 'carousel_provider_select' },
+      );
+    },
+    [followCoordinate],
+  );
 
   // Navegación desde el carrusel: selecciona proveedor, centra cámara y sincroniza el sheet
   // SIN reabrir el panel (usa update para evitar loops de present).
@@ -783,12 +817,21 @@ export const HomePage: React.FC = () => {
 
   const handleRecenter = (source: 'gps_button' | 'user_marker' = 'gps_button') => {
     console.log(`[MAP:INTERACTION] type=USER_LOCATION_PRESS source=${source}`);
-    if (location?.coords) {
-      setRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+    if (selectedProvider && location?.coords) {
+      const pLat = selectedProvider.lat ?? selectedProvider.latitude;
+      const pLng = selectedProvider.lng ?? selectedProvider.longitude;
+      const points = [
+        { latitude: location.coords.latitude, longitude: location.coords.longitude },
+        { latitude: pLat, longitude: pLng },
+        ...routeCoords,
+      ];
+      recenterCamera({ pointsToFit: points });
+    } else if (location?.coords) {
+      recenterCamera({
+        targetCoordinate: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
       });
     }
   };
@@ -803,7 +846,7 @@ export const HomePage: React.FC = () => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          region={region}
+          initialRegion={region}
           onRegionChangeComplete={handleRegionChangeComplete}
           onPanDrag={handleMapPanDrag}
           onPress={handleMapPress}
@@ -811,7 +854,7 @@ export const HomePage: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: 80, right: 16, bottom: 96, left: 16 }}
+          mapPadding={dynamicEdgePadding}
         >
         {location && (
           <AnimatedUserMarker 

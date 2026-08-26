@@ -1,10 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { BottomSheetContext, type Present } from './useBottomSheet';
 import { BottomSheetHost } from './BottomSheetHost';
 import { isSheetAllowedForRole, registry } from './bottomSheet.registry';
 import { bottomSheetDebug, nextBottomSheetActionId, nextBottomSheetTransitionId } from './bottomSheet.debug';
+import { getBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 import type {
   BottomSheetActionName,
   BottomSheetActionPayload,
@@ -57,6 +59,8 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
   const [isMapFlowActive, setIsMapFlowActive] = useState(false);
   const [pendingMapFlowKey, setPendingMapFlowKey] = useState<SheetKey | null>(null);
   const [runtimeHandlersVersion, setRuntimeHandlersVersion] = useState(0);
+  const [sheetIndex, setSheetIndex] = useState<number>(-1);
+  const [contentLayoutHeight, setContentLayoutHeight] = useState<number>(0);
 
   const setState = useCallback((next: BottomSheetState, request?: AnyBottomSheetRequest | null) => {
     stateRef.current = next;
@@ -327,6 +331,8 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
       pendingDismissOperationRef.current = dismissOperation;
     }
     setPendingMapFlowKey(null);
+    setSheetIndex(-1);
+    setContentLayoutHeight(0);
     modalRef.current?.dismiss();
     setCurrentRequest(null);
     setState('CLOSED', currentActive);
@@ -334,6 +340,7 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
 
   const handleHostPresent = useCallback((request: AnyBottomSheetRequest) => {
     if (activeRequestRef.current?.requestId !== request.requestId) return;
+    setSheetIndex(registry[request.key]?.initialIndex ?? 1);
     setState('PRESENTING', request);
   }, [setState]);
 
@@ -346,10 +353,17 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
     });
 
     if (activeRequestRef.current?.requestId !== request.requestId) return;
+    setSheetIndex(index);
     if (index >= 0 && stateRef.current !== 'OPEN') {
       setState('OPEN', request);
     }
   }, [setState]);
+
+  const handleContentHeightChange = useCallback((height: number) => {
+    if (Number.isFinite(height) && height > 0) {
+      setContentLayoutHeight(height);
+    }
+  }, []);
 
   const handleHostDismiss = useCallback((request: AnyBottomSheetRequest) => {
     const dismissOperation = pendingDismissOperationRef.current;
@@ -411,6 +425,8 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
       return;
     }
 
+    setSheetIndex(-1);
+    setContentLayoutHeight(0);
     setCurrentRequest(null);
     setState('CLOSED', request);
   }, [setCurrentRequest, setState]);
@@ -697,6 +713,33 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
     } as AnyBottomSheetRequest;
   }, [activeRequest, logRoleMismatch, role, runtimeHandlersVersion]);
 
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const NAVBAR_HEIGHT = getBottomNavHeight(insets.bottom);
+
+  const sheetMetrics = useMemo(() => {
+    if (!activeRequest || stateRef.current === 'CLOSED') {
+      return {
+        sheetTop: null,
+        sheetHeight: null,
+        isCollapsed: false,
+        index: -1,
+      };
+    }
+    const descriptor = registry[activeRequest.key];
+    const isCollapsed = sheetIndex === 0;
+    const collapsedH = descriptor?.collapsedHeight ?? 88;
+    const computedContentH = contentLayoutHeight > 0 ? contentLayoutHeight : (collapsedH ? collapsedH * 2.5 : 320);
+    const height = isCollapsed ? collapsedH : computedContentH;
+    const sheetTop = Math.max(0, windowHeight - NAVBAR_HEIGHT - height);
+    return {
+      sheetTop,
+      sheetHeight: height,
+      isCollapsed,
+      index: sheetIndex,
+    };
+  }, [activeRequest, contentLayoutHeight, sheetIndex, windowHeight, NAVBAR_HEIGHT]);
+
   const value = useMemo(
     () => ({
       present,
@@ -713,10 +756,11 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
       active: activeRequest?.key ?? null,
       activePayload: activeRequest?.payload ?? null,
       pendingMapFlowKey,
+      sheetMetrics,
       getPanelState,
       setPanelState,
     }),
-    [present, dismiss, dismissAll, setMapFlowActive, setIndex, update, bindRuntimeHandlers, unbindRuntimeHandlers, bindRuntimeActionHandlers, unbindRuntimeActionHandlers, dispatchBottomSheetAction, activeRequest, pendingMapFlowKey, getPanelState, setPanelState],
+    [present, dismiss, dismissAll, setMapFlowActive, setIndex, update, bindRuntimeHandlers, unbindRuntimeHandlers, bindRuntimeActionHandlers, unbindRuntimeActionHandlers, dispatchBottomSheetAction, activeRequest, pendingMapFlowKey, sheetMetrics, getPanelState, setPanelState],
   );
 
   return (
@@ -732,6 +776,7 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
             onPresent={handleHostPresent}
             onChange={handleHostChange}
             onDismiss={handleHostDismiss}
+            onContentHeightChange={handleContentHeightChange}
           />
         </BottomSheetModalProvider>
       </BottomSheetContext.Provider>

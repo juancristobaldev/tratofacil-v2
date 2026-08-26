@@ -1,49 +1,112 @@
-import React from 'react';
-import { StyleSheet, View, TouchableOpacity, Text, Linking, Animated, Dimensions } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import React, { useRef, useMemo, useEffect } from 'react';
+import { StyleSheet, View, TouchableOpacity, Text, Dimensions } from 'react-native';
+import MapView, { type Region } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Button, Card, Badge, AnimatedUserMarker, HousePin, AnimatedPolyline } from '../../components/ui';
+import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline } from '../../components/ui';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { useMapCamera } from '../../hooks/useMapCamera';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
+import type { RouteCoordinate } from '../../utils/directions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const FocusModeProviderScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
+  const { sheetMetrics } = useBottomSheet();
   const session = useFocusSession('provider');
   const { activeOrder, orderState, providerCoords, clientCoords, routeCoords, showChat, setShowChat, realtime } = session;
 
   const polylineCoords = routeCoords;
-
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
+  const mapRef = useRef<MapView>(null);
+
+  const {
+    fitToRoute,
+    followCoordinate,
+    handlePanDrag,
+    handleRegionChangeComplete,
+    recenter,
+    dynamicEdgePadding,
+    isFollowing,
+  } = useMapCamera({
+    mapRef,
+    headerBottom,
+    sheetTop: sheetMetrics?.sheetTop ?? null,
+    bottomNavHeight,
+  });
+
+  const initialCenterRegion: Region = useMemo(() => {
+    const lat = providerCoords?.latitude ?? clientCoords?.latitude ?? -33.4489;
+    const lng = providerCoords?.longitude ?? clientCoords?.longitude ?? -70.6693;
+    return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+  }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
+
+  useEffect(() => {
+    if (routeCoords.length >= 2) {
+      const points: RouteCoordinate[] = [
+        providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
+        clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
+        ...routeCoords,
+      ].filter(Boolean) as RouteCoordinate[];
+      fitToRoute(points, { reason: 'focus_provider_route_fit' });
+    } else if (providerCoords && clientCoords) {
+      fitToRoute(
+        [
+          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+        ],
+        { reason: 'focus_provider_pins_fit' },
+      );
+    } else if (providerCoords) {
+      followCoordinate(providerCoords, { reason: 'focus_provider_self_follow' });
+    }
+  }, [orderState, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate]);
+
+  const handleFollow = () => {
+    if (routeCoords.length >= 2) {
+      const points: RouteCoordinate[] = [
+        providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
+        clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
+        ...routeCoords,
+      ].filter(Boolean) as RouteCoordinate[];
+      recenter({ pointsToFit: points });
+    } else if (providerCoords && clientCoords) {
+      recenter({
+        pointsToFit: [
+          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+        ],
+      });
+    } else if (providerCoords) {
+      recenter({ targetCoordinate: providerCoords });
+    }
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.mapContainer}>
         <MapView
+          ref={mapRef}
           style={styles.map}
-          region={{
-            latitude: ((clientCoords?.latitude ?? -33.4489) + (providerCoords?.latitude ?? -33.4489)) / 2,
-            longitude: ((clientCoords?.longitude ?? -70.6693) + (providerCoords?.longitude ?? -70.6693)) / 2,
-            latitudeDelta: clientCoords && providerCoords
-              ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
-              : 0.05,
-            longitudeDelta: clientCoords && providerCoords
-              ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
-              : 0.05,
-          }}
+          initialRegion={initialCenterRegion}
+          onPanDrag={handlePanDrag}
+          onRegionChangeComplete={handleRegionChangeComplete}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: 16, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
+          mapPadding={dynamicEdgePadding}
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 
           {providerCoords && <AnimatedUserMarker coordinate={providerCoords} />}
 
-          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && polylineCoords.length >= 2 && (
+          {polylineCoords.length >= 2 && (
             <AnimatedPolyline
               coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
@@ -51,6 +114,13 @@ export const FocusModeProviderScreen: React.FC = () => {
             />
           )}
         </MapView>
+
+        {!isFollowing && (
+          <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
+            <Icon name="Locate" size={18} color={TOKENS.colors.brand500} />
+            <Text style={styles.followBtnText}>Centrar</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
       {/* CHAT OVERLAY */}
@@ -221,5 +291,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...TOKENS.shadows.floating,
+  },
+  followBtn: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  followBtnText: {
+    color: TOKENS.colors.brand500,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

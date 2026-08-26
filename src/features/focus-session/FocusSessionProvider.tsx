@@ -223,12 +223,12 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const providerRoute = useRoutePolyline(
     liveProviderCoords,
     providerClientCoords,
-    orderState === 'EN_CAMINO' || orderState === 'ARRIVED',
+    orderState === 'EN_CAMINO' || orderState === 'ARRIVED' || orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'VIEW_REQUEST',
   );
 
   useEffect(() => {
     if (!__DEV__) return;
-    console.log(`[MAP:ROUTE_ORDER] orderId=${providerOrder?.id ?? 'null'} status=${providerOrder?.status ?? 'null'} orderState=${orderState} routeActive=${orderState === 'EN_CAMINO' || orderState === 'ARRIVED'} hasProviderCoords=${!!liveProviderCoords} hasClientCoords=${!!providerClientCoords}`);
+    console.log(`[MAP:ROUTE_ORDER] orderId=${providerOrder?.id ?? 'null'} status=${providerOrder?.status ?? 'null'} orderState=${orderState} routeActive=${orderState === 'EN_CAMINO' || orderState === 'ARRIVED' || orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'VIEW_REQUEST'} hasProviderCoords=${!!liveProviderCoords} hasClientCoords=${!!providerClientCoords}`);
   }, [providerOrder?.id, providerOrder?.status, orderState, liveProviderCoords, providerClientCoords]);
 
   const providerDistanceLabel = useMemo(() => {

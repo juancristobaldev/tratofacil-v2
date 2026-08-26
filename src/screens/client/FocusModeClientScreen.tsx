@@ -21,10 +21,16 @@ import type { OrderRealTime } from '../../types/graphql';
 import { FocusChatOverlay } from './components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMapCamera } from '../../hooks/useMapCamera';
+import type { RouteCoordinate } from '../../utils/directions';
+
 export const FocusModeClientScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
   const navigation = useNavigation<any>();
-  const { dismiss } = useBottomSheet();
+  const { dismiss, sheetMetrics } = useBottomSheet();
   const session = useFocusSession('client');
   const realtime = useRealtime();
 
@@ -38,38 +44,76 @@ export const FocusModeClientScreen: React.FC = () => {
 
   const polylineCoords = routeCoords;
 
-  // Cámara: follow mode (auto-centra) vs manual (el usuario explora).
   const mapRef = useRef<MapView>(null);
-  const [followMode, setFollowMode] = useState(true);
-  const lastAnimatedRef = useRef<string>('');
+  const {
+    fitToRoute,
+    followCoordinate,
+    handlePanDrag,
+    handleRegionChangeComplete,
+    recenter,
+    dynamicEdgePadding,
+    isFollowing,
+  } = useMapCamera({
+    mapRef,
+    headerBottom,
+    sheetTop: sheetMetrics?.sheetTop ?? null,
+    bottomNavHeight,
+  });
 
-  const followRegion: Region = useMemo(() => {
-    const lat = ((clientCoords?.latitude ?? -33.4489) + (providerCoords?.latitude ?? -33.4489)) / 2;
-    const lng = ((clientCoords?.longitude ?? -70.6693) + (providerCoords?.longitude ?? -70.6693)) / 2;
-    const latitudeDelta =
-      providerCoords && clientCoords
-        ? Math.abs(clientCoords.latitude - providerCoords.latitude) * 2 + 0.005
-        : 0.05;
-    const longitudeDelta =
-      providerCoords && clientCoords
-        ? Math.abs(clientCoords.longitude - providerCoords.longitude) * 2 + 0.005
-        : 0.05;
-    return { latitude: lat, longitude: lng, latitudeDelta, longitudeDelta };
-  }, [clientCoords, providerCoords]);
+  const initialCenterRegion: Region = useMemo(() => {
+    const lat = clientCoords?.latitude ?? providerCoords?.latitude ?? -33.4489;
+    const lng = clientCoords?.longitude ?? providerCoords?.longitude ?? -70.6693;
+    return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+  }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
-  // Sigue al proveedor solo en follow mode; el usuario puede alejarse (manual).
+  // Actualización de cámara basada en ruta y pins
   useEffect(() => {
-    if (!followMode || !mapRef.current) return;
-    const key = `${followRegion.latitude.toFixed(5)},${followRegion.longitude.toFixed(5)},${followRegion.latitudeDelta.toFixed(5)},${followRegion.longitudeDelta.toFixed(5)}`;
-    if (key === lastAnimatedRef.current) return;
-    lastAnimatedRef.current = key;
-    mapRef.current.animateToRegion(followRegion, 800);
-  }, [followRegion, followMode]);
+    if (status === 'PENDING') {
+      if (clientCoords) {
+        followCoordinate(clientCoords, { force: true, reason: 'pending_client_fixed' });
+      }
+      return;
+    }
+
+    if (routeCoords.length >= 2) {
+      const points: RouteCoordinate[] = [
+        clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
+        providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
+        ...routeCoords,
+      ].filter(Boolean) as RouteCoordinate[];
+      fitToRoute(points, { reason: 'focus_client_route_fit' });
+    } else if (providerCoords && clientCoords) {
+      fitToRoute(
+        [
+          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+        ],
+        { reason: 'focus_client_pins_fit' },
+      );
+    } else if (providerCoords) {
+      followCoordinate(providerCoords, { reason: 'focus_client_provider_follow' });
+    }
+  }, [status, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate]);
 
   const handleFollow = () => {
-    setFollowMode(true);
-    if (mapRef.current) {
-      mapRef.current.animateToRegion(followRegion, 800);
+    if (routeCoords.length >= 2) {
+      const points: RouteCoordinate[] = [
+        clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
+        providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
+        ...routeCoords,
+      ].filter(Boolean) as RouteCoordinate[];
+      recenter({ pointsToFit: points });
+    } else if (providerCoords && clientCoords) {
+      recenter({
+        pointsToFit: [
+          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+        ],
+      });
+    } else if (providerCoords) {
+      recenter({ targetCoordinate: providerCoords });
+    } else if (clientCoords) {
+      recenter({ targetCoordinate: clientCoords });
     }
   };
 
@@ -191,33 +235,34 @@ export const FocusModeClientScreen: React.FC = () => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          initialRegion={followRegion}
-          onPanDrag={() => setFollowMode(false)}
+          initialRegion={initialCenterRegion}
+          onPanDrag={handlePanDrag}
+          onRegionChangeComplete={handleRegionChangeComplete}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={{ top: 16, right: 16, bottom: bottomNavHeight + 24, left: 16 }}
+          mapPadding={dynamicEdgePadding}
         >
-            {clientCoords && <HousePin coordinate={clientCoords} />}
+          {clientCoords && <HousePin coordinate={clientCoords} />}
 
-            {status !== 'PENDING' && providerCoords && (
-              <AnimatedProviderMarker
-                coordinate={providerCoords}
-                text={status === 'ACCEPTED' ? 'En camino' : status === 'IN_PROGRESS' ? 'Llegó a tu domicilio' : undefined}
-              />
-            )}
+          {status !== 'PENDING' && providerCoords && (
+            <AnimatedProviderMarker
+              coordinate={providerCoords}
+              text={status === 'ACCEPTED' ? 'En camino' : status === 'IN_PROGRESS' ? 'Llegó a tu domicilio' : undefined}
+            />
+          )}
 
-            {polylineCoords.length >= 2 && (
-              <AnimatedPolyline
-                coordinates={polylineCoords}
-                strokeColor={TOKENS.colors.brand500}
-                strokeWidth={4}
-              />
-            )}
-          </MapView>
+          {polylineCoords.length >= 2 && (
+            <AnimatedPolyline
+              coordinates={polylineCoords}
+              strokeColor={TOKENS.colors.brand500}
+              strokeWidth={4}
+            />
+          )}
+        </MapView>
 
-        {!followMode && status !== 'PENDING' && (
+        {!isFollowing && status !== 'PENDING' && (
           <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
             <Icon name="Locate" size={18} color={TOKENS.colors.brand500} />
             <Text style={styles.followBtnText}>Centrar</Text>

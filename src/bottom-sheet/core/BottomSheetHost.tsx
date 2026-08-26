@@ -21,6 +21,7 @@ interface BottomSheetHostProps {
   onPresent: (request: AnyBottomSheetRequest) => void;
   onChange: (request: AnyBottomSheetRequest, index: number) => void;
   onDismiss: (request: AnyBottomSheetRequest) => void;
+  onContentHeightChange?: (height: number) => void;
 }
 
 export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
@@ -31,6 +32,7 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
   onPresent,
   onChange,
   onDismiss,
+  onContentHeightChange,
 }) => {
   const { dismiss, setIndex } = useBottomSheet();
   const previousRequestId = useRef<number | null>(null);
@@ -183,6 +185,7 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
       keyboardBlurBehavior={descriptor.keyboardBlurBehavior}
       onChange={handleIndexChange}
       onDismiss={() => onDismiss(request)}
+      onContentHeightChange={onContentHeightChange}
     >
       {renderContent()}
     </Sheet>

@@ -32,6 +32,12 @@ export interface BottomSheetContextValue {
   active: SheetKey | null;
   activePayload: SheetPayloadMap[SheetKey] | null;
   pendingMapFlowKey: SheetKey | null;
+  sheetMetrics: {
+    sheetTop: number | null;
+    sheetHeight: number | null;
+    isCollapsed: boolean;
+    index: number;
+  };
   getPanelState: <T>(key: SheetKey, defaultState: T) => T;
   setPanelState: <T>(key: SheetKey, state: T) => void;
 }
@@ -65,3 +71,9 @@ export function usePanelState<T>(key: SheetKey, defaultState: T): [T, (val: T | 
 
   return [state, setPanelState];
 }
+
+export function useSheetMetrics() {
+  const { sheetMetrics } = useBottomSheet();
+  return sheetMetrics;
+}
+

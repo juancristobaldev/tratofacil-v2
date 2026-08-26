@@ -162,6 +162,13 @@ export type BottomSheetRequest<K extends SheetKey = SheetKey> = {
 
 export type SheetPresentationState = 'collapsed' | 'content' | 'expanded';
 
+export interface SheetMetrics {
+  sheetTop: number | null;
+  sheetHeight: number | null;
+  isCollapsed: boolean;
+  index: number;
+}
+
 export interface SheetComponentProps<K extends SheetKey> {
   sheetKey: K;
   requestId?: number;
