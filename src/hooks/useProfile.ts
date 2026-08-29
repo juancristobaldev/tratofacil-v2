@@ -1,6 +1,11 @@
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { GET_PUBLIC_PROFILE } from '../graphql/operations/providers';
+import {
+  GET_PUBLIC_PROFILE,
+  ADD_PROVIDER_PORTFOLIO_ITEM,
+  DELETE_PROVIDER_PORTFOLIO_ITEM,
+  UPDATE_PROVIDER_PORTFOLIO_ITEM,
+} from '../graphql/operations/providers';
 import { SEND_EMAIL_VERIFICATION_CODE, CONFIRM_EMAIL_AND_REGISTER } from '../graphql/operations/auth';
 import {
   UPDATE_USER,
@@ -15,6 +20,21 @@ import {
 } from '../graphql/operations/wallet';
 import { useAuth } from '../context/AuthContext';
 import type { User } from '../types/graphql';
+
+interface CreatePortfolioInput {
+  imageUrl: string;
+  title?: string;
+  description?: string;
+  position?: number;
+}
+
+interface UpdatePortfolioInput {
+  id: number;
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  position?: number;
+}
 
 interface UpdateUserInput {
   displayName?: string;
@@ -79,6 +99,9 @@ interface UseProfileReturn {
   completeKyc: (session: string) => Promise<void>;
   sendEmailVerificationCode: (email: string) => Promise<void>;
   confirmEmail: (code: string, email: string) => Promise<void>;
+  addPortfolioItem: (input: CreatePortfolioInput) => Promise<void>;
+  updatePortfolioItem: (input: UpdatePortfolioInput) => Promise<void>;
+  deletePortfolioItem: (id: number) => Promise<void>;
   saving: boolean;
   setSaving: Dispatch<SetStateAction<boolean>>;
 }
@@ -132,6 +155,9 @@ export function useProfile(): UseProfileReturn {
   const [completeKycMut] = useMutation(COMPLETE_KYC);
   const [sendEmailCodeMut] = useMutation(SEND_EMAIL_VERIFICATION_CODE);
   const [confirmEmailMut] = useMutation(CONFIRM_EMAIL_AND_REGISTER);
+  const [addPortfolioMut] = useMutation(ADD_PROVIDER_PORTFOLIO_ITEM);
+  const [updatePortfolioMut] = useMutation(UPDATE_PROVIDER_PORTFOLIO_ITEM);
+  const [deletePortfolioMut] = useMutation(DELETE_PROVIDER_PORTFOLIO_ITEM);
 
   const updateProfile = async (input: UpdateUserInput) => {
     setSaving(true);
@@ -212,6 +238,36 @@ export function useProfile(): UseProfileReturn {
     await refetchAuth();
   };
 
+  const addPortfolioItem = async (input: CreatePortfolioInput) => {
+    setSaving(true);
+    try {
+      await addPortfolioMut({ variables: { input } });
+      await refetchAuth();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updatePortfolioItem = async (input: UpdatePortfolioInput) => {
+    setSaving(true);
+    try {
+      await updatePortfolioMut({ variables: { input } });
+      await refetchAuth();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deletePortfolioItem = async (id: number) => {
+    setSaving(true);
+    try {
+      await deletePortfolioMut({ variables: { id } });
+      await refetchAuth();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return {
     publicProfile: publicData?.publicProfile || null,
     publicProfileLoading,
@@ -228,6 +284,9 @@ export function useProfile(): UseProfileReturn {
     completeKyc,
     sendEmailVerificationCode,
     confirmEmail,
+    addPortfolioItem,
+    updatePortfolioItem,
+    deletePortfolioItem,
     saving,
     setSaving,
   };

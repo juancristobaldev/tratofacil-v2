@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
   warningBannerText: {
     flex: 1,
     fontSize: 10,
-    color: TOKENS.colors.warning800,
+    color: TOKENS.colors.warning700,
     fontWeight: '500',
   },
 });

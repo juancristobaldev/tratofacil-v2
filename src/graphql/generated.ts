@@ -301,6 +301,13 @@ export type CreateProviderInput = {
   logoUrl?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type CreateProviderPortfolioInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  imageUrl: Scalars['String']['input'];
+  position?: InputMaybe<Scalars['Int']['input']>;
+  title?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type CreateRealtimeOrderInput = {
   clientAddress?: InputMaybe<Scalars['String']['input']>;
   clientDescription?: InputMaybe<Scalars['String']['input']>;
@@ -537,6 +544,7 @@ export type Mutation = {
   __typename?: 'Mutation';
   UpdateKyc: User;
   acceptRealtimeOrderQuote: OrderRealTime;
+  addProviderPortfolioItem: ProviderPortfolio;
   adminApproveWithdrawal: Withdrawal;
   adminCommission: ComissionServices;
   adminCreateCategory: Category;
@@ -610,6 +618,8 @@ export type Mutation = {
   deleteHobby: Hobby;
   deleteImageMarketing: Scalars['Boolean']['output'];
   deleteImageTransition: ImageMarketingDurationType;
+  deleteProviderPortfolioItem: Scalars['Boolean']['output'];
+  deleteSavedCard: Scalars['Boolean']['output'];
   deleteService: Scalars['Boolean']['output'];
   deleteUserIdentity: Scalars['Boolean']['output'];
   /** Verifica disponibilidad de email y envía código de validación */
@@ -628,8 +638,11 @@ export type Mutation = {
   login: AuthType;
   /** Inicia sesión con Google y retorna el token con la info del usuario */
   loginWithGoogle: AuthType;
+  payAdOrderWithSavedCard: OrderAds;
+  payJobOrderWithSavedCard: OrderJob;
   payProductOrderWithSavedCard: OrderProduct;
   payRealtimeOrderWithSavedCard: OrderRealTime;
+  payServiceOrderWithSavedCard: Order;
   quoteRealtimeOrder: OrderRealTime;
   reactivateSubscription: PlanResponse;
   /** Registra un usuario nuevo (Cliente por defecto) */
@@ -675,6 +688,7 @@ export type Mutation = {
   updateProductStock: Product;
   updateProvider: Provider;
   updateProviderLocation: Scalars['Boolean']['output'];
+  updateProviderPortfolioItem: ProviderPortfolio;
   updateRealtimeOrderLocation: OrderRealTime;
   updateRealtimeQuote: OrderRealTime;
   updateService: ServiceProvider;
@@ -691,6 +705,11 @@ export type MutationUpdateKycArgs = {
 
 export type MutationAcceptRealtimeOrderQuoteArgs = {
   orderRealtimeId: Scalars['Int']['input'];
+};
+
+
+export type MutationAddProviderPortfolioItemArgs = {
+  input: CreateProviderPortfolioInput;
 };
 
 
@@ -1088,6 +1107,11 @@ export type MutationDeleteImageTransitionArgs = {
 };
 
 
+export type MutationDeleteProviderPortfolioItemArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
 export type MutationDeleteServiceArgs = {
   id: Scalars['Int']['input'];
 };
@@ -1168,6 +1192,16 @@ export type MutationLoginWithGoogleArgs = {
 };
 
 
+export type MutationPayAdOrderWithSavedCardArgs = {
+  orderAdsId: Scalars['Int']['input'];
+};
+
+
+export type MutationPayJobOrderWithSavedCardArgs = {
+  orderJobId: Scalars['Int']['input'];
+};
+
+
 export type MutationPayProductOrderWithSavedCardArgs = {
   orderProductId: Scalars['Int']['input'];
 };
@@ -1175,6 +1209,11 @@ export type MutationPayProductOrderWithSavedCardArgs = {
 
 export type MutationPayRealtimeOrderWithSavedCardArgs = {
   orderRealtimeId: Scalars['Int']['input'];
+};
+
+
+export type MutationPayServiceOrderWithSavedCardArgs = {
+  orderId: Scalars['Int']['input'];
 };
 
 
@@ -1415,6 +1454,11 @@ export type MutationUpdateProviderLocationArgs = {
   lat: Scalars['Float']['input'];
   lng: Scalars['Float']['input'];
   timestamp?: InputMaybe<Scalars['Float']['input']>;
+};
+
+
+export type MutationUpdateProviderPortfolioItemArgs = {
+  input: UpdateProviderPortfolioInput;
 };
 
 
@@ -1835,6 +1879,7 @@ export type Provider = {
   /** @deprecated Usar logoImage.cdnUrl */
   logoUrl?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
+  portfolio?: Maybe<Array<Maybe<ProviderPortfolio>>>;
   priority: Scalars['Int']['output'];
   realtimeReviews?: Maybe<Array<Maybe<RealtimeProviderReview>>>;
   reviews?: Maybe<Array<Maybe<ProviderReview>>>;
@@ -1876,6 +1921,19 @@ export enum ProviderPlan {
   TratofacilSrvPremium = 'TRATOFACIL_SRV_PREMIUM',
   TratofacilSrvPro = 'TRATOFACIL_SRV_PRO'
 }
+
+export type ProviderPortfolio = {
+  __typename?: 'ProviderPortfolio';
+  createdAt: Scalars['DateTime']['output'];
+  description?: Maybe<Scalars['String']['output']>;
+  id: Scalars['Int']['output'];
+  image?: Maybe<Image>;
+  imageUrl: Scalars['String']['output'];
+  position: Scalars['Int']['output'];
+  providerId: Scalars['Int']['output'];
+  title?: Maybe<Scalars['String']['output']>;
+  updatedAt: Scalars['DateTime']['output'];
+};
 
 export type ProviderReview = {
   __typename?: 'ProviderReview';
@@ -1976,6 +2034,7 @@ export type Query = {
   myOffers: Array<Job>;
   myOrders: OrdersObject;
   myPaymentHistory: PaymentHistoryResponse;
+  myPortfolio: Array<ProviderPortfolio>;
   myProviderPlan?: Maybe<PlanOrder>;
   myProviderSchedules: Array<ProviderSchedule>;
   myRealtimeOrdersAsClient: Array<OrderRealTime>;
@@ -1990,6 +2049,7 @@ export type Query = {
   productsByUser: Array<Product>;
   provider?: Maybe<Provider>;
   providerDailyAvailability: ProviderDailyAvailability;
+  providerPortfolio: Array<ProviderPortfolio>;
   providers: Array<Provider>;
   publicProfile?: Maybe<User>;
   serviceDetail: ServiceDetail;
@@ -2130,6 +2190,11 @@ export type QueryProviderArgs = {
 
 export type QueryProviderDailyAvailabilityArgs = {
   date: Scalars['String']['input'];
+  providerId: Scalars['Int']['input'];
+};
+
+
+export type QueryProviderPortfolioArgs = {
   providerId: Scalars['Int']['input'];
 };
 
@@ -2448,6 +2513,14 @@ export type UpdateProviderInput = {
   logoUrl?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   rut?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type UpdateProviderPortfolioInput = {
+  description?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['Int']['input'];
+  imageUrl?: InputMaybe<Scalars['String']['input']>;
+  position?: InputMaybe<Scalars['Int']['input']>;
+  title?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type UpdateServiceInput = {

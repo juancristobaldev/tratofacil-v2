@@ -115,6 +115,29 @@ export const ME_QUERY = gql`
             displayName
           }
         }
+        portfolio {
+          id
+          title
+          description
+          imageUrl
+          position
+          image {
+            id
+            cdnUrl
+          }
+          createdAt
+        }
+        certificates {
+          id
+          title
+          institution
+          year
+          verified
+          fileImage {
+            id
+            cdnUrl
+          }
+        }
       }
       wallet {
         id

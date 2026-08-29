@@ -71,6 +71,17 @@ export const GET_PUBLIC_PROFILE = gql`
             cdnUrl
           }
         }
+        portfolio {
+          id
+          title
+          description
+          imageUrl
+          image {
+            id
+            cdnUrl
+          }
+          createdAt
+        }
         hobbys {
           id
           name
@@ -185,5 +196,62 @@ export const CREATE_SERVICE_CONTACT_REQUEST = gql`
       id
       status
     }
+  }
+`;
+
+export const GET_MY_PORTFOLIO = gql`
+  query GetMyPortfolio {
+    myPortfolio {
+      id
+      title
+      description
+      imageUrl
+      position
+      image {
+        id
+        cdnUrl
+      }
+      createdAt
+    }
+  }
+`;
+
+export const ADD_PROVIDER_PORTFOLIO_ITEM = gql`
+  mutation AddProviderPortfolioItem($input: CreateProviderPortfolioInput!) {
+    addProviderPortfolioItem(input: $input) {
+      id
+      title
+      description
+      imageUrl
+      position
+      image {
+        id
+        cdnUrl
+      }
+      createdAt
+    }
+  }
+`;
+
+export const UPDATE_PROVIDER_PORTFOLIO_ITEM = gql`
+  mutation UpdateProviderPortfolioItem($input: UpdateProviderPortfolioInput!) {
+    updateProviderPortfolioItem(input: $input) {
+      id
+      title
+      description
+      imageUrl
+      position
+      image {
+        id
+        cdnUrl
+      }
+      createdAt
+    }
+  }
+`;
+
+export const DELETE_PROVIDER_PORTFOLIO_ITEM = gql`
+  mutation DeleteProviderPortfolioItem($id: Int!) {
+    deleteProviderPortfolioItem(id: $id)
   }
 `;

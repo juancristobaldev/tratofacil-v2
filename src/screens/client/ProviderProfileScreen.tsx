@@ -76,21 +76,47 @@ export const ProviderProfileScreen: React.FC = () => {
       // Solo incluir certificados con verified === true (sin fileImage requerido)
       const verifiedCertificates = (p.certificates || []).filter((c: any) => c.verified === true);
 
-      // Galería de 5 fotos del proveedor (trabajos realizados / portafolio)
-      const rawGallery = p.portfolio || p.gallery || p.workImages || [];
+      // Galería de fotos del proveedor (casos de éxito / trabajos realizados / portafolio)
+      const rawGallery = p.portfolio || (p as any).gallery || (p as any).workImages || [];
       const defaultPhotos = [
-        'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+        {
+          uri: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80',
+          title: 'Mantenimiento General',
+          description: 'Trabajo profesional garantizado',
+        },
+        {
+          uri: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80',
+          title: 'Instalación Especializada',
+          description: 'Seguridad y certificación',
+        },
+        {
+          uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
+          title: 'Reparación y Diagnóstico',
+          description: 'Materiales de alta durabilidad',
+        },
+        {
+          uri: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=800&q=80',
+          title: 'Terminaciones',
+          description: 'Acabados de calidad',
+        },
+        {
+          uri: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+          title: 'Servicio en Terreno',
+          description: 'Atención puntual y confiable',
+        },
       ];
-      const gallery = rawGallery.length > 0
-        ? rawGallery.slice(0, 5).map((img: any) => getImageUrl(img?.cdnUrl || img?.url || img))
+      const galleryItems = rawGallery.length > 0
+        ? rawGallery.map((item: any) => ({
+            id: item?.id,
+            uri: getImageUrl(item?.image?.cdnUrl || item?.imageUrl || item?.cdnUrl || item?.url || item),
+            title: item?.title || null,
+            description: item?.description || null,
+          }))
         : defaultPhotos;
+      const gallery = galleryItems.map((g: any) => g.uri);
 
       // Monto acordado/aceptado si proviene de orden previa o parámetro
-      const acceptedPrice = route.params?.acceptedPrice || p.acceptedPrice || p.acceptedQuotePrice || null;
+      const acceptedPrice = route.params?.acceptedPrice || (p as any).acceptedPrice || (p as any).acceptedQuotePrice || null;
 
       return {
         id: String(p.id),
@@ -112,6 +138,7 @@ export const ProviderProfileScreen: React.FC = () => {
         completedOrdersCount: p.completedOrdersCount || Math.max(allReviews.length * 3, 24),
         certificates: verifiedCertificates,
         gallery,
+        galleryItems,
         distribution,
         reviews: allReviews.map((r: any) => ({
           id: String(r.id),
@@ -502,6 +529,18 @@ export const ProviderProfileScreen: React.FC = () => {
                 style={styles.modalFullImage}
                 resizeMode="contain"
               />
+              {provider.galleryItems?.[activePhotoModalIndex]?.title ? (
+                <View style={styles.modalCaptionBox}>
+                  <Text style={styles.modalCaptionTitle}>
+                    {provider.galleryItems[activePhotoModalIndex].title}
+                  </Text>
+                  {provider.galleryItems[activePhotoModalIndex].description ? (
+                    <Text style={styles.modalCaptionDesc}>
+                      {provider.galleryItems[activePhotoModalIndex].description}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
               <View style={styles.modalCounterBadge}>
                 <Text style={styles.modalCounterText}>
                   {activePhotoModalIndex + 1} / {provider.gallery.length}
@@ -1213,11 +1252,29 @@ const styles = StyleSheet.create({
   },
   modalFullImage: {
     width: '94%',
-    height: '85%',
+    height: '75%',
     borderRadius: 12,
   },
+  modalCaptionBox: {
+    marginTop: 10,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  modalCaptionTitle: {
+    color: TOKENS.colors.white,
+    fontSize: 15,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalCaptionDesc: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
   modalCounterBadge: {
-    marginTop: 12,
+    marginTop: 10,
     backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: 14,
     paddingVertical: 6,

@@ -635,7 +635,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: TOKENS.spacing.md,
-    paddingBottom:10
+
   },
   compactPromoLeft: {
     flexDirection: 'row',

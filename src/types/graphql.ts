@@ -117,11 +117,24 @@ export interface Provider {
   reviews: ProviderReview[];
   realtimeReviews: RealtimeProviderReview[];
   certificates: ProviderCertificate[];
+  portfolio?: ProviderPortfolio[];
   hobbys: Hobby[];
   schedules: ProviderSchedule[];
   activeRealtimeOrder: OrderRealTime | null;
   user: User | null;
   userId: number;
+}
+
+export interface ProviderPortfolio {
+  id: number;
+  providerId: number;
+  title: string | null;
+  description: string | null;
+  imageUrl: string;
+  position: number;
+  image?: Image | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface BankAccount {
