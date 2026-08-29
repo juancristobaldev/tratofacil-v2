@@ -7,8 +7,15 @@ import {
   calculateDynamicEdgePadding,
   isPointInSafeRect,
   projectCoordinateToScreen,
+  getAdaptivePolylineWidth,
   MIN_LATITUDE_DELTA,
   MIN_LONGITUDE_DELTA,
+  PROVIDER_PIN_CARD_HEIGHT,
+  PROVIDER_PIN_CARD_WIDTH,
+  ROUTE_FIT_BOTTOM_CLEARANCE,
+  ROUTE_FIT_HORIZONTAL_CLEARANCE,
+  ROUTE_FIT_TOP_CLEARANCE,
+  ROUTE_FIT_ZOOM_SCALE,
 } from './mapGeometry';
 import type { RouteCoordinate } from './directions';
 
@@ -40,6 +47,17 @@ describe('mapGeometry - validateAndSanitizeCoordinates', () => {
     ];
     const sanitized = validateAndSanitizeCoordinates(raw);
     expect(sanitized.length).toBe(2);
+  });
+});
+
+describe('mapGeometry - floating element non-occlusion constants', () => {
+  it('keeps route fits clear of provider card body and floating controls', () => {
+    expect(PROVIDER_PIN_CARD_WIDTH).toBe(180);
+    expect(PROVIDER_PIN_CARD_HEIGHT).toBe(58);
+    expect(ROUTE_FIT_TOP_CLEARANCE).toBeGreaterThanOrEqual(50);
+    expect(ROUTE_FIT_HORIZONTAL_CLEARANCE).toBeGreaterThanOrEqual(28);
+    expect(ROUTE_FIT_BOTTOM_CLEARANCE).toBeGreaterThanOrEqual(28);
+    expect(ROUTE_FIT_ZOOM_SCALE).toBe(1.15);
   });
 });
 
@@ -230,5 +248,37 @@ describe('mapGeometry - projectCoordinateToScreen', () => {
     const bottomCoord = { latitude: -33.50, longitude: -70.65 }; // At the bottom edge of delta
     const ptBottom = projectCoordinateToScreen(bottomCoord, region, windowDimensions);
     expect(ptBottom.y).toBeCloseTo(800, 1);
+  });
+});
+
+describe('mapGeometry - getAdaptivePolylineWidth', () => {
+  it('returns high strokeWidth and glowWidth for street-level close zoom (latitudeDelta <= 0.0025)', () => {
+    const width = getAdaptivePolylineWidth(0.002);
+    expect(width.strokeWidth).toBe(11);
+    expect(width.glowWidth).toBe(17);
+  });
+
+  it('returns medium-high strokeWidth for neighborhood zoom (0.003 - 0.015)', () => {
+    const widthNeighborhood = getAdaptivePolylineWidth(0.01);
+    expect(widthNeighborhood.strokeWidth).toBe(7);
+    expect(widthNeighborhood.glowWidth).toBe(12);
+  });
+
+  it('returns compact strokeWidth for city overview (0.015 - 0.04)', () => {
+    const widthCity = getAdaptivePolylineWidth(0.03);
+    expect(widthCity.strokeWidth).toBe(5);
+    expect(widthCity.glowWidth).toBe(9);
+  });
+
+  it('returns crisp base strokeWidth for far zoom (> 0.04)', () => {
+    const widthFar = getAdaptivePolylineWidth(0.08);
+    expect(widthFar.strokeWidth).toBe(4);
+    expect(widthFar.glowWidth).toBe(7);
+  });
+
+  it('returns safe fallback when latitudeDelta is undefined or invalid', () => {
+    const fallback = getAdaptivePolylineWidth(null);
+    expect(fallback.strokeWidth).toBe(6);
+    expect(fallback.glowWidth).toBe(11);
   });
 });

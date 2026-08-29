@@ -14,7 +14,7 @@ const FAQ_ITEMS: FaqItem[] = [
   { question: '¿Cómo funciona TratoFácil?', answer: 'TratoFácil te conecta en tiempo real con profesionales técnicos (gasfiteros, electricistas, etc) de tu comuna. Buscas la categoría, seleccionas al profesional, negocias tarifas mediante chat, y una vez finalizado el trabajo, confirmas el pago.' },
   { question: '¿Es seguro contratar a través de la aplicación?', answer: 'Sí. Todos los proveedores de servicios pasan por un riguroso proceso de verificación que incluye verificación de identidad, certificados policiales y, en caso de electricistas o gasfiteros, su acreditación oficial SEC.' },
   { question: '¿Qué formas de pago aceptan?', answer: 'Aceptamos pagos a través de tarjetas de crédito, débito (Redcompra) y transferencias directas de forma completamente integrada en la app para proteger tu dinero hasta que el servicio esté terminado.' },
-  { question: '¿Cómo puedo cancelar un servicio solicitado?', answer: 'Puedes cancelar un servicio sin costo alguno antes de que el profesional acepte la cotización. Si el profesional ya se encuentra en camino, se podría aplicar una tarifa de cancelación mínima para cubrir el traslado.' },
+  { question: '¿Cómo puedo cancelar un servicio solicitado?', answer: 'Puedes cancelar un servicio sin costo alguno antes de que el profesional acepte la oferta. Si el profesional ya se encuentra en camino, se podría aplicar una tarifa de cancelación mínima para cubrir el traslado.' },
 ];
 
 export const SupportScreen: React.FC = () => {

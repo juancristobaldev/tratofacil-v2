@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image, Keyboard } from 'react-native';
 import MapView from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline } from '../ui';
+import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import { isSheetAllowedForRole } from '../../bottom-sheet/core/bottomSheet.registry';
@@ -20,9 +20,12 @@ import { useCategories } from '../../context/CategoriesContext';
 import { ENDPOINT } from '../../config/endpoints';
 import { getImageUrl } from '../../utils/imageUrl';
 import { geocodeCity, getCachedCoords } from '../../utils/geocode';
-import { getDirections } from '../../utils/directions';
+import type { RouteCoordinate } from '../../utils/directions';
+import { useRoutePolyline } from '../../hooks/useRoute';
 import { resolveCategorySlugs } from '../../utils/categoryTree';
 import { EMPTY_ARRAY } from '../../utils/emptyArray';
+import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
+import { DevJoystickOverlay } from '../../dev/joystick';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 let homePageRuntimeOwnerGeneration = 0;
@@ -60,7 +63,8 @@ export const HomePage: React.FC = () => {
   const { location } = useLocation();
   const mapRef = useRef<MapView>(null);
   const bottomNavHeight = useBottomNavHeight();
-  const headerBottom = 60 + insets.top;
+  const [topControlsHeight, setTopControlsHeight] = useState<number>(116);
+  const headerBottom = Math.max(80, insets.top + topControlsHeight + 12);
   const {
     present,
     dismiss,
@@ -75,11 +79,16 @@ export const HomePage: React.FC = () => {
   const {
     fitToRoute,
     followCoordinate,
+    navigateToCoordinate,
+    exitNavigationMode,
+    toggleNavigationMode,
+    fitToDefaultRegion,
     handlePanDrag: onCameraPanDrag,
     handleRegionChangeComplete: onCameraRegionChangeComplete,
     recenter: recenterCamera,
     dynamicEdgePadding,
     isUserExploring,
+    isNavigating,
   } = useMapCamera({
     mapRef,
     headerBottom,
@@ -90,12 +99,12 @@ export const HomePage: React.FC = () => {
     ownerId: `HomePage:${++homePageRuntimeOwnerGeneration}`,
     generation: homePageRuntimeOwnerGeneration,
   });
+  const userDeselectedProviderCategoryRef = useRef<string | null>(null);
   const lastRoleReconcileLogRef = useRef<string | null>(null);
-  const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(null);
+  const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(DEFAULT_TEMUCO_PLC_REGION);
   const initialCenterDone = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [isEditingRadius, setIsEditingRadius] = useState(false);
-  const [radiusKm, setRadiusKm] = useState(5);
+  const [searchQuery, setSearchQuery] = useState('');
   const { role } = useRole();
   const realtime = useRealtime();
   const hasActiveRealtimeOrder = useMemo(() => {
@@ -130,8 +139,62 @@ export const HomePage: React.FC = () => {
     });
   }, [active, desiredMapSurface, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
 
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const presentRef = useRef(present);
+  presentRef.current = present;
+  const updateRef = useRef(update);
+  updateRef.current = update;
+
   const [selectedProvider, setSelectedProvider] = useState<any>(null);
-  const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
+
+  const activeUserCoords = useMemo<RouteCoordinate | null>(() => {
+    const lat = location?.coords?.latitude;
+    const lng = location?.coords?.longitude;
+    return lat != null && lng != null ? { latitude: lat, longitude: lng } : null;
+  }, [location?.coords?.latitude, location?.coords?.longitude]);
+
+  // Si rol es provider: Destino es el cliente de la orden activa
+  // Si rol es client/guest con orden activa: Destino es el proveedor de la orden activa
+  // Si rol es client/guest explorando: Destino es el proveedor seleccionado en catálogo
+  const activeDestinationCoords = useMemo<RouteCoordinate | null>(() => {
+    if (role === 'provider') {
+      const order = realtime.providerActiveOrder;
+      if (order && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status)) {
+        const lat = order.clientLat;
+        const lng = order.clientLng;
+        if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+          return { latitude: lat, longitude: lng };
+        }
+      }
+      return null;
+    }
+
+    const clientOrder = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    if (clientOrder && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(clientOrder.status)) {
+      const lat = clientOrder.providerLat ?? (clientOrder.provider as any)?.lat;
+      const lng = clientOrder.providerLng ?? (clientOrder.provider as any)?.lng;
+      if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+        return { latitude: lat, longitude: lng };
+      }
+    }
+
+    if (selectedProvider) {
+      const lat = selectedProvider.lat ?? selectedProvider.latitude;
+      const lng = selectedProvider.lng ?? selectedProvider.longitude;
+      return lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+        ? { latitude: lat, longitude: lng }
+        : null;
+    }
+
+    return null;
+  }, [role, realtime.providerActiveOrder, realtime.localActiveOrder, realtime.activeOrder, selectedProvider]);
+
+  const { routeCoords } = useRoutePolyline(
+    activeUserCoords,
+    activeDestinationCoords,
+    Boolean(activeDestinationCoords && activeUserCoords && isFocused),
+  );
   const hydratedCategoriesPayloadRef = useRef(false);
   const hydratedProviderPreviewPayloadRef = useRef(false);
 
@@ -146,7 +209,6 @@ export const HomePage: React.FC = () => {
     } else if (wasProviderPreviewOpenRef.current) {
       wasProviderPreviewOpenRef.current = false;
       setSelectedProvider(null);
-      setRouteCoords([]);
     }
   }, [active]);
 
@@ -205,27 +267,61 @@ export const HomePage: React.FC = () => {
   }, [updateClusters, onCameraRegionChangeComplete]);
 
   const handleMapPanDrag = useCallback(() => {
+    Keyboard.dismiss();
     onCameraPanDrag();
     if (mapPanActiveRef.current) return;
     mapPanActiveRef.current = true;
     console.log('[MAP:GESTURE] PAN_START');
   }, [onCameraPanDrag]);
 
+  const initialGpsCenteredRef = useRef(false);
+
   useEffect(() => {
-    if (location?.coords && !initialCenterDone.current) {
-      const userCoord = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-      setRegion({
-        ...userCoord,
-        latitudeDelta: 0.012,
-        longitudeDelta: 0.012,
-      });
+    if (!initialCenterDone.current) {
       initialCenterDone.current = true;
-      followCoordinate(userCoord, { force: true, reason: 'initial_gps_fix' });
+      setRegion(DEFAULT_TEMUCO_PLC_REGION);
+    }
+  }, []);
+
+  // Centrado inicial automático metropolitano sobre el dot del usuario tan pronto como GPS obtenga fix
+  useEffect(() => {
+    if (location?.coords && !initialGpsCenteredRef.current) {
+      initialGpsCenteredRef.current = true;
+      followCoordinate(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        {
+          force: true,
+          animated: true,
+          latitudeDelta: DEFAULT_TEMUCO_PLC_REGION.latitudeDelta,
+          longitudeDelta: DEFAULT_TEMUCO_PLC_REGION.longitudeDelta,
+          reason: 'initial_gps_metropolitan_fix',
+        },
+      );
     }
   }, [location?.coords?.latitude, location?.coords?.longitude, followCoordinate]);
+
+  // Seguimiento continuo del stream GPS cuando isFollowing está activo y el usuario no está explorando manualmente
+  useEffect(() => {
+    if (location?.coords && !isUserExploring) {
+      const heading = (location.coords.heading != null && Number.isFinite(location.coords.heading) && location.coords.heading >= 0)
+        ? location.coords.heading
+        : undefined;
+      followCoordinate(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        {
+          animated: true,
+          heading,
+          reason: isNavigating ? 'gps_stream_navigation_follow' : 'gps_stream_follow',
+        },
+      );
+    }
+  }, [location?.coords?.latitude, location?.coords?.longitude, location?.coords?.heading, isUserExploring, isNavigating, followCoordinate]);
 
   const { token } = useAuth();
 
@@ -415,6 +511,7 @@ export const HomePage: React.FC = () => {
   }, [filteredProviders, updateClusters]);
 
   const handleCategoryPress = useCallback((category: Category) => {
+    userDeselectedProviderCategoryRef.current = null;
     setSelectedCategory(category);
     setSelectedProvider(null);
 
@@ -444,27 +541,144 @@ export const HomePage: React.FC = () => {
   const onCategoryPressRef = useRef<(category: Category) => void>(null);
   onCategoryPressRef.current = handleCategoryPress;
 
+  const selectedCategoryRef = useRef(selectedCategory);
+  selectedCategoryRef.current = selectedCategory;
+
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
+
+  const presentCategories = useCallback((categoryOverride?: Category | null, queryOverride?: string) => {
+    const cat = categoryOverride !== undefined ? categoryOverride : selectedCategoryRef.current;
+    const q = queryOverride !== undefined ? queryOverride : searchQueryRef.current;
+    present('categories', {
+      selectedCategory: cat,
+      searchQuery: q,
+    });
+  }, [present]);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchQuery(text);
+    if (selectedCategoryRef.current && text) {
+      userDeselectedProviderCategoryRef.current = null;
+      setSelectedCategory(null);
+      setSelectedProvider(null);
+    }
+    if (activeRef.current === 'categories') {
+      updateRef.current?.({ searchQuery: text, selectedCategory: text ? null : selectedCategoryRef.current });
+    } else if (role === 'client' || role === 'guest') {
+      presentRef.current?.('categories', { searchQuery: text, selectedCategory: null });
+    }
+  }, [role]);
+
+  const handleClearSearch = useCallback(() => {
+    Keyboard.dismiss();
+    setSearchQuery('');
+    if (activeRef.current === 'categories') {
+      updateRef.current?.({ searchQuery: '', selectedCategory: selectedCategoryRef.current });
+    }
+  }, []);
+
+  const logTransitionRequest = useCallback((params: { actionId?: number; from: SheetKey | null; to: SheetKey; origin: string; reason: string }) => {
+    bottomSheetDebug('TRANSITION_REQUEST', {
+      transitionId: nextBottomSheetTransitionId(),
+      actionId: params.actionId,
+      from: params.from,
+      to: params.to,
+      origin: params.origin,
+      reason: params.reason,
+    });
+  }, []);
+
   useEffect(() => {
     if (!selectedCategory || filteredProviders.length === 0) return;
     const withCoords = filteredProviders.filter(
-      (p: any) => p.lat != null && p.lng != null,
+      (p: any) =>
+        p.lat != null &&
+        p.lng != null &&
+        Number.isFinite(p.lat) &&
+        Number.isFinite(p.lng),
     );
     if (withCoords.length === 0) return;
-    const points = withCoords.map((p: any) => ({
+
+    // CASO 1: Si solo hay 1 proveedor, auto-seleccionar, abrir preview y encuadrar
+    if (withCoords.length === 1) {
+      if (userDeselectedProviderCategoryRef.current === selectedCategory.slug) {
+        return;
+      }
+      const singleProvider = withCoords[0];
+      setSelectedProvider(singleProvider);
+      const previewPayload = {
+        provider: singleProvider,
+        providers: [singleProvider],
+        selectedIndex: 0,
+      };
+      if (activeRef.current === 'provider_preview') {
+        updateRef.current?.(previewPayload);
+      } else {
+        logTransitionRequest({
+          from: activeRef.current,
+          to: 'provider_preview',
+          origin: 'AUTO_SINGLE_PROVIDER',
+          reason: 'single_provider_match',
+        });
+        presentRef.current?.('provider_preview', previewPayload);
+      }
+
+      const points: RouteCoordinate[] = [
+        { latitude: singleProvider.lat, longitude: singleProvider.lng },
+      ];
+      if (
+        location?.coords?.latitude != null &&
+        location?.coords?.longitude != null &&
+        Number.isFinite(location.coords.latitude) &&
+        Number.isFinite(location.coords.longitude)
+      ) {
+        points.push({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+      }
+      fitToRoute(points, { force: true, reason: 'single_provider_auto_fit' });
+      return;
+    }
+
+    // CASO 2: Múltiples proveedores -> encuadrar todos para exploración general
+    const points: RouteCoordinate[] = withCoords.map((p: any) => ({
       latitude: p.lat,
       longitude: p.lng,
     }));
-    if (location?.coords) {
-      points.push({ latitude: location.coords.latitude, longitude: location.coords.longitude });
+    if (
+      location?.coords?.latitude != null &&
+      location?.coords?.longitude != null &&
+      Number.isFinite(location.coords.latitude) &&
+      Number.isFinite(location.coords.longitude)
+    ) {
+      points.push({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
     }
-    fitToRoute(points, { reason: 'category_filtered_providers' });
-  }, [filteredProviders, selectedCategory, fitToRoute, location?.coords]);
+    fitToRoute(points, { force: true, reason: 'category_filtered_providers' });
+  }, [
+    filteredProviders,
+    selectedCategory,
+    fitToRoute,
+    location?.coords?.latitude,
+    location?.coords?.longitude,
+    logTransitionRequest,
+  ]);
 
   const handleClearCategory = useCallback(() => {
+    userDeselectedProviderCategoryRef.current = null;
     setSelectedCategory(null);
     setSelectedProvider(null);
-    setRouteCoords([]);
-  }, []);
+    if (location?.coords?.latitude != null && location?.coords?.longitude != null) {
+      followCoordinate(
+        { latitude: location.coords.latitude, longitude: location.coords.longitude },
+        { force: true, animated: true, reason: 'clear_category_recenter_user' },
+      );
+    }
+  }, [location?.coords?.latitude, location?.coords?.longitude, followCoordinate]);
 
   const onClearCategoryRef = useRef<() => void>(null);
   onClearCategoryRef.current = handleClearCategory;
@@ -473,73 +687,45 @@ export const HomePage: React.FC = () => {
   const onDeselectProviderRef = useRef<() => void>(null);
 
   useEffect(() => {
-    const provider = selectedProvider;
-    const user = location?.coords;
-    const pLat = provider?.lat ?? provider?.latitude;
-    const pLng = provider?.lng ?? provider?.longitude;
-    if (!provider || pLat == null || pLng == null || !user) {
-      setRouteCoords([]);
-      return;
+    if (!selectedProvider || !activeDestinationCoords || !activeUserCoords) return;
+
+    if (routeCoords.length >= 2) {
+      fitToRoute(
+        [
+          activeUserCoords,
+          activeDestinationCoords,
+          ...routeCoords,
+        ],
+        { reason: 'provider_route_ready' },
+      );
     }
+  }, [selectedProvider, activeDestinationCoords, activeUserCoords, routeCoords, fitToRoute]);
 
-    const controller = new AbortController();
-
-    getDirections(
-      { latitude: user.latitude, longitude: user.longitude },
-      { latitude: pLat, longitude: pLng },
-      controller.signal,
-    )
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        if (result && result.coordinates.length >= 2) {
-          setRouteCoords(result.coordinates);
-          fitToRoute(
-            [
-              { latitude: user.latitude, longitude: user.longitude },
-              { latitude: pLat, longitude: pLng },
-              ...result.coordinates,
-            ],
-            { reason: 'provider_route_ready' },
-          );
-        } else {
-          setRouteCoords([]);
-          fitToRoute(
-            [
-              { latitude: user.latitude, longitude: user.longitude },
-              { latitude: pLat, longitude: pLng },
-            ],
-            { reason: 'provider_pins_no_route' },
-          );
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setRouteCoords([]);
-          fitToRoute(
-            [
-              { latitude: user.latitude, longitude: user.longitude },
-              { latitude: pLat, longitude: pLng },
-            ],
-            { reason: 'provider_pins_route_error' },
-          );
-        }
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [selectedProvider, location?.coords?.latitude, location?.coords?.longitude, fitToRoute]);
-
-  // Centra la cámara en un proveedor respetando el área útil sobre provider_preview.
+  // Centra la cámara encuadrando de Punto A a Punto B respetando el área útil sobre provider_preview.
   const animateToProvider = useCallback(
     (provider: any) => {
-      if (!provider || provider.lat == null || provider.lng == null) return;
-      followCoordinate(
-        { latitude: provider.lat, longitude: provider.lng },
-        { force: true, animated: true, reason: 'carousel_provider_select' },
-      );
+      if (!provider) return;
+      const pLat = provider.lat ?? provider.latitude;
+      const pLng = provider.lng ?? provider.longitude;
+      if (pLat == null || pLng == null) return;
+
+      const user = location?.coords;
+      if (user) {
+        fitToRoute(
+          [
+            { latitude: user.latitude, longitude: user.longitude },
+            { latitude: pLat, longitude: pLng },
+          ],
+          { force: true, reason: 'carousel_provider_select_ab' },
+        );
+      } else {
+        followCoordinate(
+          { latitude: pLat, longitude: pLng },
+          { force: true, animated: true, reason: 'carousel_provider_select' },
+        );
+      }
     },
-    [followCoordinate],
+    [fitToRoute, followCoordinate, location?.coords],
   );
 
   // Navegación desde el carrusel: selecciona proveedor, centra cámara y sincroniza el sheet
@@ -565,32 +751,20 @@ export const HomePage: React.FC = () => {
     [navigation],
   );
 
-  const selectedCategoryRef = useRef(selectedCategory);
-  selectedCategoryRef.current = selectedCategory;
-
-  const presentCategories = useCallback(() => {
-    present('categories', {
-      selectedCategory: selectedCategoryRef.current,
-    });
-  }, [present]);
-
-  const logTransitionRequest = useCallback((params: { actionId?: number; from: SheetKey | null; to: SheetKey; origin: string; reason: string }) => {
-    bottomSheetDebug('TRANSITION_REQUEST', {
-      transitionId: nextBottomSheetTransitionId(),
-      actionId: params.actionId,
-      from: params.from,
-      to: params.to,
-      origin: params.origin,
-      reason: params.reason,
-    });
-  }, []);
-
   const handleDeselectProvider = useCallback(() => {
     bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'DESELECT', owner: runtimeOwnerRef.current.ownerId });
+    userDeselectedProviderCategoryRef.current = selectedCategoryRef.current?.slug ?? null;
+    selectedCategoryRef.current = null;
     setSelectedProvider(null);
-    setRouteCoords([]);
-    presentCategories();
-  }, [presentCategories]);
+    setSelectedCategory(null);
+    presentCategories(null);
+    if (location?.coords?.latitude != null && location?.coords?.longitude != null) {
+      followCoordinate(
+        { latitude: location.coords.latitude, longitude: location.coords.longitude },
+        { force: true, animated: true, reason: 'deselect_provider_recenter_user' },
+      );
+    }
+  }, [presentCategories, location?.coords?.latitude, location?.coords?.longitude, followCoordinate]);
 
   onNavigateProviderRef.current = handleNavigateProvider;
   onViewProviderProfileRef.current = handleViewProviderProfile;
@@ -610,6 +784,7 @@ export const HomePage: React.FC = () => {
       categories: {
         SELECT_CATEGORY: (category, meta) => {
           bottomSheetDebug('FLOW_INTENT', { actionId: meta.actionId, key: 'categories', action: 'SELECT_CATEGORY', target: 'categories:selected' });
+          setSearchQuery('');
           onCategoryPressRef.current?.({
             id: category.id,
             name: category.name,
@@ -659,7 +834,7 @@ export const HomePage: React.FC = () => {
     }
 
     const payload = activePayload && typeof activePayload === 'object'
-      ? activePayload as { selectedCategory?: Category | null }
+      ? activePayload as { selectedCategory?: Category | null; searchQuery?: string }
       : null;
     const payloadSelectedCategory = payload?.selectedCategory ?? null;
 
@@ -671,8 +846,8 @@ export const HomePage: React.FC = () => {
       }
     }
 
-    update({ selectedCategory });
-  }, [active, selectedCategory, update]);
+    update({ selectedCategory, searchQuery });
+  }, [active, selectedCategory, searchQuery, update]);
 
   useEffect(() => {
     if (active !== 'provider_preview') {
@@ -815,28 +990,138 @@ export const HomePage: React.FC = () => {
     }
   }, [active, desiredMapSurface, dismiss, isFocused, logTransitionRequest, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
 
-  const handleRecenter = (source: 'gps_button' | 'user_marker' = 'gps_button') => {
-    console.log(`[MAP:INTERACTION] type=USER_LOCATION_PRESS source=${source}`);
-    if (selectedProvider && location?.coords) {
-      const pLat = selectedProvider.lat ?? selectedProvider.latitude;
-      const pLng = selectedProvider.lng ?? selectedProvider.longitude;
-      const points = [
-        { latitude: location.coords.latitude, longitude: location.coords.longitude },
-        { latitude: pLat, longitude: pLng },
-        ...routeCoords,
-      ];
-      recenterCamera({ pointsToFit: points });
-    } else if (location?.coords) {
-      recenterCamera({
-        targetCoordinate: {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        },
-      });
+  const handleNavigationMode = (source: 'nav_button' | 'user_marker' = 'nav_button') => {
+    console.log(`[MAP:INTERACTION] type=NAVIGATION_MODE_PRESS source=${source} isNavigating=${isNavigating}`);
+    if (location?.coords) {
+      const userCoord = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      if (isNavigating) {
+        exitNavigationMode(userCoord, true);
+      } else {
+        const heading = (location.coords.heading != null && Number.isFinite(location.coords.heading) && location.coords.heading >= 0)
+          ? location.coords.heading
+          : 0;
+        navigateToCoordinate(
+          userCoord,
+          {
+            heading,
+            pitch: 60,
+            animated: true,
+          },
+        );
+      }
     }
   };
 
+  const handleRecenter = (source: 'recenter_button' | 'user_marker' = 'recenter_button') => {
+    console.log(`[MAP:INTERACTION] type=RECENTER_PRESS source=${source}`);
+    if (location?.coords) {
+      followCoordinate(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        {
+          force: true,
+          animated: true,
+          reason: 'user_recenter_press',
+        },
+      );
+    }
+  };
+
+  const handleSmartFraming = () => {
+    console.log('[MAP:INTERACTION] type=SMART_FRAMING_PRESS');
+    
+    // 1. Si existe orden realtime activa no terminal
+    const order = role === 'provider'
+      ? realtime.providerActiveOrder
+      : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+
+    const isNonTerminalOrder = order?.status && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status);
+
+    if (isNonTerminalOrder) {
+      const clientLat = order.clientLat ?? (order.client as any)?.lat ?? (role === 'client' ? location?.coords?.latitude : null);
+      const clientLng = order.clientLng ?? (order.client as any)?.lng ?? (role === 'client' ? location?.coords?.longitude : null);
+      const providerLat = order.providerLat ?? (order.provider as any)?.lat ?? (role === 'provider' ? location?.coords?.latitude : null);
+      const providerLng = order.providerLng ?? (order.provider as any)?.lng ?? (role === 'provider' ? location?.coords?.longitude : null);
+
+      const points: RouteCoordinate[] = [];
+      if (clientLat != null && clientLng != null && Number.isFinite(clientLat) && Number.isFinite(clientLng)) {
+        points.push({ latitude: clientLat, longitude: clientLng });
+      }
+      if (providerLat != null && providerLng != null && Number.isFinite(providerLat) && Number.isFinite(providerLng)) {
+        points.push({ latitude: providerLat, longitude: providerLng });
+      }
+      if (routeCoords.length >= 2) {
+        points.push(...routeCoords);
+      }
+
+      if (points.length >= 2) {
+        fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_realtime_order' });
+        return;
+      }
+    }
+
+    // 2. Si hay un proveedor seleccionado con ruta
+    if (selectedProvider && location?.coords) {
+      const pLat = selectedProvider.lat ?? selectedProvider.latitude;
+      const pLng = selectedProvider.lng ?? selectedProvider.longitude;
+      if (pLat != null && pLng != null && Number.isFinite(pLat) && Number.isFinite(pLng)) {
+        const points: RouteCoordinate[] = [
+          { latitude: location.coords.latitude, longitude: location.coords.longitude },
+          { latitude: pLat, longitude: pLng },
+          ...routeCoords,
+        ];
+        fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_selected_provider' });
+        return;
+      }
+    }
+
+    // 3. Si hay una categoría seleccionada con proveedores disponibles con coordenadas
+    if (selectedCategory && orderedFilteredProviders.length > 0) {
+      const points: RouteCoordinate[] = orderedFilteredProviders.map((p: any) => ({
+        latitude: p.lat ?? p.latitude,
+        longitude: p.lng ?? p.longitude,
+      }));
+      if (location?.coords) {
+        points.push({
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        });
+      }
+      if (points.length >= 2) {
+        fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_category_providers' });
+        return;
+      }
+    }
+
+    // 4. Caso por defecto: Encuadre metropolitano (Temuco + Padre Las Casas) centrado en el usuario
+    if (location?.coords) {
+      followCoordinate(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        {
+          force: true,
+          animated: true,
+          latitudeDelta: DEFAULT_TEMUCO_PLC_REGION.latitudeDelta,
+          longitudeDelta: DEFAULT_TEMUCO_PLC_REGION.longitudeDelta,
+          reason: 'smart_framing_metropolitan_user_recenter',
+        },
+      );
+      return;
+    }
+
+    // 5. Fallback si no hay GPS disponible: Regresar a vista metropolitana (Temuco + Padre Las Casas)
+    fitToDefaultRegion(DEFAULT_TEMUCO_PLC_REGION, true);
+  };
+
   const handleMapPress = () => {
+    Keyboard.dismiss();
     console.log('[MAP:INTERACTION] type=BACKGROUND_PRESS');
   };
 
@@ -854,7 +1139,6 @@ export const HomePage: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={dynamicEdgePadding}
         >
         {location && (
           <AnimatedUserMarker 
@@ -862,51 +1146,22 @@ export const HomePage: React.FC = () => {
               latitude: location.coords.latitude, 
               longitude: location.coords.longitude 
             }} 
-            onPress={() => handleRecenter('user_marker')}
+            onPress={() => handleNavigationMode('user_marker')}
           />
         )}
-        {(() => {
-          if (__DEV__) {
-            console.log('[AUDIT:9] MapView render | clusters.length:', clusters.length, '| region:', region.latitude.toFixed(5), region.longitude.toFixed(5));
-            clusters.forEach((c: any, i: number) => {
-              console.log('[AUDIT:9]   render['+i+'] | isCluster:', c.properties.cluster, '| coords:', c.geometry.coordinates, '| key:', c.properties.cluster ? ('cluster-'+i) : ('provider-'+c.properties.provider?.id));
-            });
-          }
-          return null;
-        })()}
-        {clusters.map((cluster: any, index: number) => {
-          const [longitude, latitude] = cluster.geometry.coordinates;
-          const { cluster: isCluster, point_count, provider } = cluster.properties;
-
-          if (isCluster) {
-            return (
-              <ClusterPin
-                key={`cluster-${cluster.id || index}`}
-                coordinate={{ latitude, longitude }}
-                pointCount={point_count}
-                onPress={() => {
-                  try {
-                    const expansionZoom = superclusterRef.current.getClusterExpansionZoom(cluster.id);
-                    const zoomDelta = 360 / Math.pow(2, expansionZoom);
-                    mapRef.current?.animateToRegion({
-                      latitude,
-                      longitude,
-                      latitudeDelta: zoomDelta,
-                      longitudeDelta: zoomDelta,
-                    }, 500);
-                  } catch (e) {
-                    // Fallback if zoom calculation fails
-                  }
-                }}
-              />
-            );
-          }
+        {role === 'provider' && activeDestinationCoords && (
+          <HousePin coordinate={activeDestinationCoords} />
+        )}
+        {orderedFilteredProviders.map((provider: any) => {
+          const latitude = provider.lat ?? provider.latitude;
+          const longitude = provider.lng ?? provider.longitude;
+          if (latitude == null || longitude == null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
           const isSelected = !!(selectedProvider && String(selectedProvider.id) === String(provider.id));
 
           return (
             <ProviderPin
-              key={`provider-${provider.spId}`}
+              key={`provider-${provider.spId || provider.id}`}
               provider={provider}
               coordinate={{ latitude, longitude }}
               isSelected={isSelected}
@@ -918,6 +1173,7 @@ export const HomePage: React.FC = () => {
                   (p: any) => String(p.id) === String(provider.id),
                 );
                 setSelectedProvider(provider);
+                animateToProvider(provider);
                 const previewPayload = {
                   provider,
                   providers: orderedFilteredProviders,
@@ -937,69 +1193,91 @@ export const HomePage: React.FC = () => {
           <AnimatedPolyline
             coordinates={routeCoords}
             strokeColor={TOKENS.colors.brand500}
-            strokeWidth={4}
+            latitudeDelta={region?.latitudeDelta}
           />
         )}
       </MapView>
       )}
 
       {/* Top Floating Controls */}
-      <View style={styles.topFloatingControls}>
-        {/* Floating Location & Radius Box (Client only) */}
-        {(role === 'client' || role === 'guest') && (
-          <View style={styles.locationFloatContainer}>
-            <TouchableOpacity 
-              style={styles.locationHeaderRow} 
-              onPress={() => setIsEditingRadius(!isEditingRadius)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.locationLeft}>
-                <View style={styles.locationIconBox}>
-                  <Icon name="MapPin" size={14} color={TOKENS.colors.white} />
-                </View>
-                <Text style={styles.locationLabel}>Mi ubicación</Text>
-              </View>
-              <View style={styles.radiusBadge}>
-                <Text style={styles.radiusBadgeText}>Radio {radiusKm === 50 ? '+50' : radiusKm}km</Text>
-                <Icon name={isEditingRadius ? "ChevronUp" : "ChevronDown"} size={14} color={TOKENS.colors.brand600} />
-              </View>
-            </TouchableOpacity>
-            
-            {isEditingRadius && (
-              <View style={styles.radiusEditor}>
-                <Text style={styles.radiusEditorTitle}>Ajustar radio de búsqueda</Text>
-                <View style={styles.radiusOptions}>
-                  {[2, 5, 10, 25, 50].map((r) => (
-                    <TouchableOpacity 
-                      key={r} 
-                      style={[styles.radiusOptionBtn, radiusKm === r && styles.radiusOptionBtnActive]}
-                      onPress={() => {
-                        setRadiusKm(r);
-                        setTimeout(() => setIsEditingRadius(false), 200);
-                      }}
-                    >
-                      <Text style={[styles.radiusOptionText, radiusKm === r && styles.radiusOptionTextActive]}>
-                        {r === 50 ? '+50' : r} km
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+      <View
+        style={[
+          styles.topFloatingControls,
+          { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },
+        ]}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h > 0 && Math.abs(h - topControlsHeight) > 2) {
+            setTopControlsHeight(h);
+          }
+        }}
+        pointerEvents="box-none"
+      >
+        {/* Floating Search Bar (Client only, hidden when there is an active non-terminal order) */}
+        {(role === 'client' || role === 'guest') && !hasActiveRealtimeOrder && (
+          <View style={styles.floatingSearchContainer}>
+            <View style={styles.floatingSearchIconBox}>
+              <Icon name="Search" size={20} color={TOKENS.colors.brand500} />
+            </View>
+            <TextInput
+              style={styles.floatingSearchInput}
+              placeholder="¿Qué servicio necesitas?"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={searchQuery}
+              onChangeText={handleSearchChange}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              returnKeyType="search"
+              autoCorrect={false}
+              accessibilityLabel="Buscar servicio o categoría"
+              accessibilityRole="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                style={styles.floatingSearchClearBtn}
+                onPress={handleClearSearch}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Borrar búsqueda"
+                accessibilityRole="button"
+              >
+                <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* GPS button */}
-        <View style={styles.gpsBtnWrapper}>
+        {/* Floating Map Action Buttons (Navigation 3D & Smart Framing) */}
+        <View style={styles.floatingButtonsWrapper}>
           <TouchableOpacity
-            onPress={() => handleRecenter('gps_button')}
+            onPress={() => handleNavigationMode('nav_button')}
             activeOpacity={0.8}
-            style={styles.gpsBtn}
+            style={[styles.floatingActionBtn, isNavigating && styles.floatingActionBtnActive]}
+            accessibilityLabel="Modo navegación 3D"
           >
-            <Icon name="Crosshair" size={20} color={TOKENS.colors.dark900} />
+            <Icon
+              name="Navigation"
+              size={19}
+              color={isNavigating ? TOKENS.colors.white : TOKENS.colors.brand500}
+              fill={isNavigating ? TOKENS.colors.white : TOKENS.colors.brand500}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleSmartFraming}
+            activeOpacity={0.8}
+            style={styles.floatingActionBtn}
+            accessibilityLabel="Encuadre inteligente de mapa"
+          >
+            <Icon name="Maximize2" size={18} color={TOKENS.colors.dark900} />
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Dev Street Navigation Joystick */}
+      <DevJoystickOverlay
+        onFollowCoordinate={followCoordinate}
+        bottomOffset={bottomNavHeight + 16}
+      />
     </View>
   );
 };
@@ -1027,10 +1305,11 @@ const styles = StyleSheet.create({
     height: '100%',
     padding: 0,
   },
-  gpsBtnWrapper: {
+  floatingButtonsWrapper: {
     alignItems: 'flex-end',
+    gap: 8,
   },
-  gpsBtn: {
+  floatingActionBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -1040,6 +1319,10 @@ const styles = StyleSheet.create({
     ...TOKENS.shadows.floating,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
+  },
+  floatingActionBtnActive: {
+    backgroundColor: TOKENS.colors.brand500,
+    borderColor: TOKENS.colors.brand600,
   },
   sheetContent: { flex: 1, paddingHorizontal: TOKENS.spacing.lg, paddingTop: TOKENS.spacing.xxs },
   sheetTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },
@@ -1061,95 +1344,48 @@ const styles = StyleSheet.create({
   providerPrice: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
   topFloatingControls: {
     position: 'absolute',
-    top: TOKENS.spacing.md,
     left: TOKENS.spacing.md,
     right: TOKENS.spacing.md,
     zIndex: 50,
   },
-  locationFloatContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 16,
-    ...TOKENS.shadows.floating,
+  floatingSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    marginBottom: TOKENS.spacing.sm,
+    height: 56,
+    paddingHorizontal: 14,
+    marginBottom: TOKENS.spacing.xs,
+    ...TOKENS.shadows.floating,
   },
-  locationHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-  },
-  locationLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  locationIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: TOKENS.colors.dark900,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  locationLabel: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-  },
-  radiusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  floatingSearchIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: TOKENS.colors.brand50,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: TOKENS.colors.brand100,
-    gap: 4,
-  },
-  radiusBadgeText: {
-    fontSize: 11,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.brand600,
-  },
-  radiusEditor: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.surface100,
-  },
-  radiusEditorTitle: {
-    fontSize: TOKENS.typography.sizes.xs,
-    color: TOKENS.colors.textSubtle,
-    fontWeight: TOKENS.typography.weights.semibold,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  radiusOptions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  radiusOptionBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: TOKENS.colors.surface50,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  radiusOptionBtnActive: {
-    backgroundColor: TOKENS.colors.brand500,
-    borderColor: TOKENS.colors.brand500,
+  floatingSearchInput: {
+    flex: 1,
+    height: '100%',
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.medium,
+    color: TOKENS.colors.textMain,
+    paddingVertical: 0,
   },
-  radiusOptionText: {
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textSubtle,
-  },
-  radiusOptionTextActive: {
-    color: TOKENS.colors.white,
+  floatingSearchClearBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: TOKENS.colors.surface100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
   },
 });

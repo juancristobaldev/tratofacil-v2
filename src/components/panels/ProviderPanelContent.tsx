@@ -155,7 +155,7 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
   }
 
   return (
-    <BottomSheetScrollView style={styles.container} contentContainerStyle={styles.scrollBody} bounces={true}>
+    <View style={styles.container}>
       <View style={styles.onlineCard}>
         <View style={styles.onlineInfo}>
           <View style={[styles.statusDot, online && styles.statusDotActive]} />
@@ -223,7 +223,7 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
           </View>
         </View>
       )}
-    </BottomSheetScrollView>
+    </View>
   );
 };
 
@@ -231,12 +231,9 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 0,
     paddingTop: TOKENS.spacing.xs,
-  },
-  scrollBody: {
     paddingHorizontal: TOKENS.spacing.lg,
-    paddingTop: TOKENS.spacing.xs,
     gap: 14,
-    paddingBottom: 18,
+    paddingBottom: 8,
   },
   onlineCard: {
     flexDirection: 'row',

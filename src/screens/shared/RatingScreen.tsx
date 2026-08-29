@@ -13,10 +13,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Card, Rating } from '../../components/ui';
+import { Icon, Button, Rating } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useJobs } from '../../hooks/useJobs';
+import { containsContactInfo, maskContactInfo } from '../../utils/sanitizer';
 
 export const RatingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -45,41 +46,46 @@ export const RatingScreen: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const backAction = () => {
-      return true;
-    };
+    const backAction = () => true;
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
   }, []);
 
+  const isFormValid = reviewComment.trim().length > 0;
+
   const handleSubmit = async () => {
-    if (submitting) return;
+    if (submitting || !isFormValid) return;
     setSubmitting(true);
+    let comment = reviewComment.trim();
+    if (containsContactInfo(comment)) {
+      comment = maskContactInfo(comment);
+    }
+
     try {
       if (role === 'client' && orderRealtimeId && providerId) {
         await createProviderReview({
           rating: selectedRating,
-          comment: reviewComment || undefined,
+          comment,
           orderRealtimeId,
           providerId,
         });
       } else if (role === 'provider' && orderRealtimeId && clientId) {
         await createClientReview({
           rating: selectedRating,
-          comment: reviewComment || undefined,
+          comment,
           orderRealtimeId,
           clientId,
         });
       } else if (role === 'client' && jobId && workerId) {
         await reviewJob({
           rating: selectedRating,
-          comment: reviewComment || undefined,
+          comment,
           jobId,
           workerId,
         });
       }
     } catch (_err) {
-      // Review submission is best-effort, don't block the flow
+      // Best-effort submission
     } finally {
       setSubmitting(false);
     }
@@ -91,18 +97,18 @@ export const RatingScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Top Success Hero */}
         <View style={styles.heroBox}>
           <View style={styles.heroIconCircle}>
             <Icon name="CheckCircle" size={32} color={TOKENS.colors.brand500} />
           </View>
-          <Text style={styles.heroTitle}>¡Trabajo Terminado!</Text>
-          <Text style={styles.heroSub}>Servicio completado con éxito</Text>
+          <Text style={styles.heroTitle}>¡Servicio Finalizado!</Text>
+          <Text style={styles.heroSub}>Tu opinión es importante para la comunidad</Text>
         </View>
 
-        {/* Rating & Review Card */}
+        {/* Rating & Mandatory Review Form Card (Fondo Negro Exclusivo) */}
         <View style={styles.reviewCard}>
           {targetUser.avatar ? (
             <View style={styles.targetUserRow}>
@@ -116,7 +122,7 @@ export const RatingScreen: React.FC = () => {
             </View>
           ) : (
             <Text style={styles.reviewCardTitle}>
-              Califica a {targetUser.name || 'Profesional'}
+              Califica a {targetUser.name || (role === 'client' ? 'Profesional' : 'Cliente')}
             </Text>
           )}
 
@@ -128,66 +134,44 @@ export const RatingScreen: React.FC = () => {
             />
           </View>
 
-          <TextInput
-            placeholder="Cuéntanos tu experiencia..."
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={reviewComment}
-            onChangeText={setReviewComment}
-            multiline
-            numberOfLines={3}
-            style={styles.reviewTextarea}
-          />
-        </View>
-
-        {/* Service & Payment Summary Card */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <View style={styles.summaryHeaderLeft}>
-              <Text style={styles.summaryAddress} numberOfLines={1}>
-                {address || 'Dirección acordada'}
-              </Text>
-              {serviceDetails ? (
-                <Text style={styles.summaryService} numberOfLines={2}>
-                  {serviceDetails}
-                </Text>
-              ) : null}
+          <View style={styles.inputWrap}>
+            <TextInput
+              placeholder="Escribe tu reseña sobre el servicio aquí (obligatorio)..."
+              placeholderTextColor="#6E7187"
+              value={reviewComment}
+              onChangeText={setReviewComment}
+              multiline
+              numberOfLines={4}
+              style={styles.reviewTextarea}
+            />
+            <View style={styles.helperRow}>
+              {reviewComment.trim().length === 0 ? (
+                <Text style={styles.requiredHelperText}>* La reseña escrita es obligatoria</Text>
+              ) : (
+                <Text style={styles.charCountText}>{reviewComment.trim().length} caracteres</Text>
+              )}
             </View>
-            <View style={styles.summaryIconWrap}>
-              <Icon name="MapPin" size={18} color={TOKENS.colors.brand500} />
-            </View>
-          </View>
-
-          <View style={styles.summaryFooter}>
-            <View>
-              <Text style={styles.summaryTotalLabel}>Total pagado</Text>
-              <Text style={styles.summaryPaymentMethod}>
-                {paymentMethod !== '-' ? `Método: ${paymentMethod}` : 'En efectivo / acordado'}
-              </Text>
-            </View>
-            <Text style={styles.summaryTotalPrice}>
-              ${amount > 0 ? amount.toLocaleString('es-CL') : '0'}
-            </Text>
           </View>
         </View>
 
-        {/* Action Buttons Stack */}
+        {/* Submit Button (Punto 8: sólo se habilita con reseña escrita) */}
         <View style={styles.actionStack}>
           <Button
-            title={submitting ? 'Enviando...' : 'Enviar calificación'}
+            title={submitting ? 'Enviando...' : 'Enviar reseña'}
+            icon={submitting ? undefined : 'Send'}
             onPress={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !isFormValid}
             size="lg"
-            style={styles.submitBtn}
+            style={[
+              styles.submitBtn,
+              isFormValid && styles.submitBtnActive,
+            ]}
           />
-
-          <Button
-            title="¿Necesitas ayuda con este servicio?"
-            variant="ghost"
-            size="sm"
-            icon="HelpCircle"
-            onPress={() => navigation.navigate('Support')}
-            textStyle={styles.supportBtnText}
-          />
+          {!isFormValid && (
+            <Text style={styles.disabledActionHint}>
+              Escribe un breve comentario para habilitar el envío
+            </Text>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -200,8 +184,8 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface50,
   },
   scrollContent: {
-    padding: TOKENS.spacing.md,
-    gap: TOKENS.spacing.md,
+    padding: TOKENS.spacing.lg,
+    gap: TOKENS.spacing.lg,
   },
 
   // Hero
@@ -213,65 +197,72 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: TOKENS.colors.brand100,
+    backgroundColor: TOKENS.colors.brand50,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: TOKENS.typography.weights.black,
     color: TOKENS.colors.dark900,
     letterSpacing: -0.5,
   },
   heroSub: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.medium,
     color: TOKENS.colors.textSubtle,
-    marginTop: 2,
+    marginTop: 4,
+    textAlign: 'center',
   },
 
-  // Review Card
+  // Review Form Card (Fondo Negro / Dark Surface Exclusivo)
   reviewCard: {
-    backgroundColor: TOKENS.colors.white,
-    borderRadius: 20,
-    padding: TOKENS.spacing.md,
+    backgroundColor: '#111218',
+    borderRadius: 24,
+    padding: TOKENS.spacing.lg,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    ...TOKENS.shadows.soft,
+    borderColor: '#252838',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
   },
   targetUserRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface100,
+    borderBottomColor: '#222533',
   },
   targetAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: TOKENS.colors.surface100,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#262938',
   },
   targetUserInfo: {
     flex: 1,
   },
   targetUserName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
   },
   targetUserSub: {
     fontSize: 12,
-    color: TOKENS.colors.textSubtle,
-    marginTop: 1,
+    color: '#9E9FA8',
+    marginTop: 2,
   },
   reviewCardTitle: {
     fontSize: 14,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
     textAlign: 'center',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -279,95 +270,62 @@ const styles = StyleSheet.create({
   },
   starRatingGroup: {
     alignSelf: 'center',
-    marginVertical: 12,
+    marginVertical: 16,
+  },
+  inputWrap: {
+    gap: 6,
   },
   reviewTextarea: {
-    backgroundColor: TOKENS.colors.surface50,
-    borderRadius: 14,
+    backgroundColor: '#1A1C26',
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    padding: 12,
-    fontSize: 13,
-    color: TOKENS.colors.textMain,
-    height: 84,
+    borderColor: '#2D3042',
+    padding: 14,
+    fontSize: 14,
+    color: '#FFFFFF',
+    height: 110,
     textAlignVertical: 'top',
   },
-
-  // Summary Card
-  summaryCard: {
-    backgroundColor: TOKENS.colors.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    overflow: 'hidden',
-    ...TOKENS.shadows.soft,
-  },
-  summaryHeader: {
+  helperRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: TOKENS.colors.surface100,
-  },
-  summaryHeaderLeft: {
-    flex: 1,
-    paddingRight: 8,
-  },
-  summaryAddress: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: TOKENS.colors.dark900,
-  },
-  summaryService: {
-    fontSize: 11,
-    color: TOKENS.colors.textSubtle,
+    alignItems: 'center',
     marginTop: 2,
   },
-  summaryIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: TOKENS.colors.brand50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  summaryFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: TOKENS.colors.surface50,
-  },
-  summaryTotalLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: TOKENS.colors.dark900,
-  },
-  summaryPaymentMethod: {
+  requiredHelperText: {
     fontSize: 11,
-    color: TOKENS.colors.textSubtle,
-    marginTop: 2,
+    color: TOKENS.colors.brand400,
+    fontWeight: TOKENS.typography.weights.medium,
   },
-  summaryTotalPrice: {
-    fontSize: 22,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand600,
-    letterSpacing: -0.5,
+  charCountText: {
+    fontSize: 11,
+    color: '#8A8D9E',
+    fontWeight: TOKENS.typography.weights.medium,
   },
 
   // Action Stack
   actionStack: {
-    gap: 8,
-    marginTop: 6,
+    marginTop: 4,
     width: '100%',
+    alignItems: 'center',
   },
   submitBtn: {
     width: '100%',
+    minHeight: 56,
+    borderRadius: 20,
   },
-  supportBtnText: {
+  submitBtnActive: {
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  disabledActionHint: {
     fontSize: 12,
-    color: TOKENS.colors.textSubtle,
+    color: TOKENS.colors.textMuted,
     fontWeight: TOKENS.typography.weights.medium,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

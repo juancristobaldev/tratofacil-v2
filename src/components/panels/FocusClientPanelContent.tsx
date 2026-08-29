@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards } from '../ui';
+import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards, Modal } from '../ui';
 import type { PaymentMethod } from '../ui';
 import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
@@ -44,6 +44,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
   const [counterOfferPrice, setCounterOfferPrice] = useState<number | null>(null);
   const [registering, setRegistering] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
 
   const status = activeOrder?.status || 'PENDING';
   const etaRemaining = etaLabel || '...';
@@ -52,6 +53,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
   const [serviceElapsed, setServiceElapsed] = useState('00:00');
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(activeOrder?.quotedPrice || 0);
   const [counterOfferSent, setCounterOfferSent] = useState(false);
+  const [showPaymentStep, setShowPaymentStep] = useState(false);
   const [isPayingCard, setIsPayingCard] = useState(false);
   const prevCounterOfferRef = useRef<number | null | undefined>(undefined);
   const prevNegotiatedPriceRef = useRef<number>(activeOrder?.quotedPrice || 0);
@@ -249,7 +251,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                   ? 'Contraoferta enviada • Esperando'
                   : negotiatedPrice !== (activeOrder?.quotedPrice || 0)
                     ? 'Tu contraoferta lista para enviar'
-                    : 'Cotización recibida'
+                    : 'Oferta recibida'
                 : status === 'ACCEPTED'
                   ? canStartOrder
                     ? 'Llegó al domicilio • Listo'
@@ -292,8 +294,11 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               />
             ) : (
               <Button
-                title="Pagar con Flow / Webpay"
-                onPress={handlePay}
+                title="Aceptar oferta"
+                onPress={() => {
+                  setShowPaymentStep(true);
+                  setIndex?.(1);
+                }}
                 size="md"
                 style={styles.compactActionBtn}
               />
@@ -302,10 +307,11 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
           {status === 'QUOTED' && counterOfferSent && (
             <Button
-              title="Cancelar orden"
-              variant="outline"
+              title="Contraoferta enviada"
+              variant="secondary"
               size="md"
-              onPress={handleCancel}
+              disabled
+              onPress={() => {}}
               style={styles.compactActionBtn}
             />
           )}
@@ -358,7 +364,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       style={styles.container}
       contentContainerStyle={styles.sheetBody}
       showsVerticalScrollIndicator={true}
-      bounces={true}
+      bounces={false}
     >
       {/* QUOTED — Quote recibida */}
       {status === 'QUOTED' && (
@@ -402,118 +408,147 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             </View>
           )}
 
-          {/* Bloque integrado de Cotización y Contraoferta */}
-          <View style={styles.pricingCard}>
-            <View style={styles.priceHeaderRow}>
-              <Text style={styles.priceLabel}>Cotización del profesional</Text>
-              <Text style={styles.priceValue}>${(activeOrder?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
-            </View>
-
-            {counterOfferSent ? (
-              <View style={styles.waitingContainerCompact}>
-                <Icon name="Clock" size={32} color={TOKENS.colors.brand500} />
-                <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
-                <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
-                <Button title="Cancelar orden" variant="outline" onPress={handleCancel} style={styles.cancelOrderBtn} />
+          {/* Bloque integrado de Oferta y Contraoferta (Paso 1: Oferta / Negociación | Paso 2: Método de Pago) */}
+          {showPaymentStep ? (
+            <View style={styles.paymentStepContainer}>
+              <View style={styles.paymentStepHeader}>
+                <TouchableOpacity
+                  onPress={() => setShowPaymentStep(false)}
+                  style={styles.paymentBackBtn}
+                  accessibilityLabel="Volver a revisar oferta"
+                  accessibilityRole="button"
+                >
+                  <Icon name="ArrowLeft" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+                <Text style={styles.paymentStepTitle}>Método de Pago</Text>
               </View>
-            ) : (
-              <>
-                <View style={styles.negotiateRowCompact}>
-                  <Text style={styles.negotiateLabel}>Tu contraoferta</Text>
-                  <View style={styles.adjusterRowCompact}>
-                    <TouchableOpacity
-                      onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
-                      style={styles.adjusterBtnSmall}
-                      accessibilityLabel="Disminuir monto de contraoferta"
-                      accessibilityHint="Resta 1000 pesos a tu propuesta"
-                      accessibilityRole="button"
-                    >
-                      <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
-                    </TouchableOpacity>
-                    <Text style={styles.adjusterPriceCompact}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
-                    <TouchableOpacity
-                      onPress={() => setNegotiatedPrice((p) => p + 1000)}
-                      style={styles.adjusterBtnSmall}
-                      accessibilityLabel="Aumentar monto de contraoferta"
-                      accessibilityHint="Suma 1000 pesos a tu propuesta"
-                      accessibilityRole="button"
-                    >
-                      <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
-                    </TouchableOpacity>
-                  </View>
+
+              <View style={styles.acceptedSummaryCard}>
+                <Text style={styles.acceptedSummaryLabel}>Total a pagar</Text>
+                <Text style={styles.acceptedSummaryPrice}>
+                  ${(activeOrder?.quotedPrice || negotiatedPrice).toLocaleString('es-CL')}
+                </Text>
+                <Text style={styles.acceptedSummaryDetail}>
+                  {activeOrder?.quotedHours || 1}h de trabajo • {activeOrder?.quotedTransport || 0}km traslado
+                </Text>
+              </View>
+
+              <PaymentActionCards
+                hasCard={hasCard}
+                cardBrand={cardBrand}
+                cardLast4={cardLast4}
+                onPayWithSavedCard={handlePaySavedCard}
+                onRegisterCard={handleRegisterCard}
+                onPayWithFlow={handlePay}
+                isProcessing={isPayingCard || registering}
+                activeAction={isPayingCard ? 'saved_card' : registering ? 'register_card' : null}
+              />
+
+              <Button
+                title="Volver a revisar oferta"
+                variant="ghost"
+                size="sm"
+                onPress={() => setShowPaymentStep(false)}
+                style={{ marginTop: 8 }}
+                textStyle={{ color: '#CBD5E1' }}
+              />
+            </View>
+          ) : (
+            <View style={styles.pricingCard}>
+              <View style={styles.priceHeaderRow}>
+                <Text style={styles.priceLabel}>Oferta del profesional</Text>
+                <Text style={styles.priceValue}>${(activeOrder?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
+              </View>
+
+              {counterOfferSent ? (
+                <View style={styles.waitingContainerCompact}>
+                  <Icon name="Clock" size={32} color={TOKENS.colors.brand500} />
+                  <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
+                  <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
                 </View>
+              ) : (
+                <>
+                  <View style={styles.negotiateRowCompact}>
+                    <Text style={styles.negotiateLabelCompact}>Tu contraoferta</Text>
+                    <View style={styles.adjusterRowCompact}>
+                      <TouchableOpacity
+                        onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Disminuir monto de contraoferta"
+                        accessibilityHint="Resta 1000 pesos a tu propuesta"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Minus" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
+                      <Text style={styles.adjusterPriceCompact}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
+                      <TouchableOpacity
+                        onPress={() => setNegotiatedPrice((p) => p + 1000)}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Aumentar monto de contraoferta"
+                        accessibilityHint="Suma 1000 pesos a tu propuesta"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Plus" size={16} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
 
-                <View style={styles.actionsContainerCompact}>
-                  {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
-                    <>
-                      <Button
-                        title="Enviar contraoferta"
-                        onPress={async () => {
-                          const actionId = nextBottomSheetActionId();
-                          bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
-                          if (!activeOrder?.id || !realtime?.clientCounterOffer) {
-                            bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
-                            return;
-                          }
-                          bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
-                          try {
-                            await realtime.clientCounterOffer(
-                              activeOrder.id,
-                              negotiatedPrice,
-                              activeOrder.quotedHours || 1,
-                              activeOrder.quotedTransport || 0,
-                            );
-                            setCounterOfferSent(true);
-                          } catch {
-                            showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
-                          }
-                        }}
-                        style={styles.payBtn}
-                      />
-                      <Button
-                        title="Cancelar orden"
-                        variant="subtle"
-                        size="md"
-                        onPress={handleCancel}
-                        style={{ marginTop: 8 }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <PaymentActionCards
-                        hasCard={hasCard}
-                        cardBrand={cardBrand}
-                        cardLast4={cardLast4}
-                        onPayWithSavedCard={handlePaySavedCard}
-                        onRegisterCard={handleRegisterCard}
-                        onPayWithFlow={handlePay}
-                        isProcessing={isPayingCard || registering}
-                        activeAction={isPayingCard ? 'saved_card' : registering ? 'register_card' : null}
-                      />
-
-                      <View style={styles.quotedSecondaryActionsStack}>
+                  <View style={styles.actionsContainerCompact}>
+                    {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
+                      <>
                         <Button
-                          title="Rechazar cotización"
+                          title="Enviar contraoferta"
+                          onPress={async () => {
+                            const actionId = nextBottomSheetActionId();
+                            bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
+                            if (!activeOrder?.id || !realtime?.clientCounterOffer) {
+                              bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+                              return;
+                            }
+                            bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
+                            try {
+                              await realtime.clientCounterOffer(
+                                activeOrder.id,
+                                negotiatedPrice,
+                                activeOrder.quotedHours || 1,
+                                activeOrder.quotedTransport || 0,
+                              );
+                              setCounterOfferSent(true);
+                            } catch {
+                              showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
+                            }
+                          }}
+                          style={styles.payBtn}
+                        />
+                        <Button
+                          title="Rechazar oferta"
                           variant="subtle"
                           size="md"
-                          disabled={isPayingCard || registering}
-                          onPress={handleRejectQuote}
+                          onPress={() => setShowRejectModal(true)}
+                          style={{ marginTop: 8 }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          title="Aceptar oferta"
+                          onPress={() => setShowPaymentStep(true)}
+                          style={styles.payBtn}
                         />
                         <Button
-                          title="Cancelar orden"
-                          variant="ghost"
-                          size="sm"
-                          disabled={isPayingCard || registering}
-                          onPress={handleCancel}
-                          textStyle={{ color: TOKENS.colors.error600 }}
+                          title="Rechazar oferta"
+                          variant="subtle"
+                          size="md"
+                          onPress={() => setShowRejectModal(true)}
+                          style={{ marginTop: 8 }}
                         />
-                      </View>
-                    </>
-                  )}
-                </View>
-              </>
-            )}
-          </View>
+                      </>
+                    )}
+                  </View>
+                </>
+              )}
+            </View>
+          )}
         </View>
       )}
 
@@ -527,11 +562,16 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               <Text style={styles.arrivalSubtitle}>El profesional se encuentra en tu dirección.</Text>
               <Button title="Confirmar inicio de servicio" onPress={handleStartOrder} style={styles.confirmStartBtn} />
               <Button
-                title="Cancelar orden"
-                variant="subtle"
+                title="Abrir Chat"
+                variant="secondary"
+                icon="MessageCircle"
                 size="md"
-                onPress={handleCancel}
-                style={{ marginTop: 8 }}
+                onPress={() => {
+                  const actionId = nextBottomSheetActionId();
+                  bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
+                  setShowChat(true);
+                }}
+                style={{ marginTop: 8, width: '100%' }}
               />
             </View>
           ) : (
@@ -568,11 +608,16 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               </View>
 
               <Button
-                title="Cancelar servicio"
-                variant="subtle"
+                title="Abrir Chat"
+                variant="secondary"
+                icon="MessageCircle"
                 size="md"
-                onPress={handleCancel}
-                style={{ marginTop: 8 }}
+                onPress={() => {
+                  const actionId = nextBottomSheetActionId();
+                  bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
+                  setShowChat(true);
+                }}
+                style={{ marginTop: 8, width: '100%' }}
               />
             </>
           )}
@@ -600,15 +645,46 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             }}
             style={styles.chatActionBtn}
           />
-          <Button
-            title="Cancelar servicio"
-            variant="subtle"
-            size="md"
-            onPress={handleCancel}
-            style={{ marginTop: 8 }}
-          />
         </View>
       )}
+
+      {/* Modal de confirmación al rechazar oferta */}
+      <Modal
+        visible={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        showCloseButton={true}
+      >
+        <View style={styles.rejectModalContent}>
+          <View style={styles.rejectModalIconCircle}>
+            <Icon name="HelpCircle" size={28} color={TOKENS.colors.brand500} />
+          </View>
+          <Text style={styles.rejectModalTitle}>Rechazar oferta</Text>
+          <Text style={styles.rejectModalDesc}>
+            ¿Deseas cancelar la orden o hacer una contraoferta?
+          </Text>
+          <View style={styles.rejectModalButtonsStack}>
+            <Button
+              title="Crear contraoferta"
+              variant="primary"
+              size="md"
+              onPress={() => {
+                setShowRejectModal(false);
+              }}
+              style={styles.modalActionBtn}
+            />
+            <Button
+              title="Cancelar orden"
+              variant="danger-outline"
+              size="md"
+              onPress={() => {
+                setShowRejectModal(false);
+                handleCancel();
+              }}
+              style={styles.modalActionBtn}
+            />
+          </View>
+        </View>
+      </Modal>
     </BottomSheetScrollView>
   );
 };
@@ -621,7 +697,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: 36,
+    paddingBottom: 12,
   },
   providerCardHeader: {
     flexDirection: 'row',
@@ -737,12 +813,12 @@ const styles = StyleSheet.create({
   priceLabel: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
   },
   priceValue: {
     fontSize: TOKENS.typography.sizes.xl,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand800,
+    color: TOKENS.colors.brand500,
   },
   payBtn: {
     width: '100%',
@@ -953,7 +1029,7 @@ const styles = StyleSheet.create({
     marginBottom: TOKENS.spacing.md,
     paddingTop: TOKENS.spacing.xs,
   },
-  negotiateLabel: {
+  negotiateLabelCompact: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.dark900,
@@ -1048,9 +1124,9 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   pricingCard: {
-    backgroundColor: TOKENS.colors.surface50,
+    backgroundColor: '#000000',
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+    borderColor: '#262936',
     borderRadius: 16,
     padding: 12,
     gap: 10,
@@ -1059,12 +1135,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: TOKENS.colors.white,
+    backgroundColor: '#16181F',
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+    borderColor: '#2A2D38',
   },
   waitingContainerCompact: {
     alignItems: 'center',
@@ -1079,6 +1155,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  negotiateLabel: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#CBD5E1',
+  },
   adjusterRowCompact: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1087,19 +1168,19 @@ const styles = StyleSheet.create({
   adjusterPriceCompact: {
     fontSize: TOKENS.typography.sizes.xl,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
     minWidth: 120,
     textAlign: 'center',
   },
   adjusterBtnSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: TOKENS.colors.surface100,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#1E202B',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+    borderColor: '#2D3042',
   },
   serviceSubtitle: {
     fontSize: 11,
@@ -1110,6 +1191,59 @@ const styles = StyleSheet.create({
   quotedSecondaryActionsStack: {
     gap: 6,
     marginTop: 4,
+  },
+  paymentStepContainer: {
+    backgroundColor: '#000000',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#262936',
+    padding: 12,
+    gap: 10,
+  },
+  paymentStepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  paymentBackBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E202B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#2D3042',
+  },
+  paymentStepTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#FFFFFF',
+  },
+  acceptedSummaryCard: {
+    backgroundColor: '#16181F',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2A2D38',
+    alignItems: 'center',
+  },
+  acceptedSummaryLabel: {
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#9E9FA8',
+    textTransform: 'uppercase',
+  },
+  acceptedSummaryPrice: {
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand400,
+    marginTop: 2,
+  },
+  acceptedSummaryDetail: {
+    fontSize: 11,
+    color: '#9E9FA8',
+    marginTop: 2,
   },
   actionsContainerCompact: {
     gap: 8,
@@ -1167,10 +1301,47 @@ const styles = StyleSheet.create({
   },
   compactActionRow: {
     width: '100%',
+    marginTop: 2,
   },
   compactActionBtn: {
     width: '100%',
-    minHeight: 44,
+    minHeight: 42,
+  },
+  rejectModalContent: {
+    alignItems: 'center',
+    paddingVertical: TOKENS.spacing.sm,
+    gap: 8,
+  },
+  rejectModalIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: TOKENS.colors.brand50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.brand100,
+  },
+  rejectModalTitle: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.dark900,
+    textAlign: 'center',
+  },
+  rejectModalDesc: {
+    fontSize: TOKENS.typography.sizes.sm,
+    color: TOKENS.colors.textSubtle,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: TOKENS.spacing.md,
+    paddingHorizontal: 8,
+  },
+  rejectModalButtonsStack: {
+    width: '100%',
+    gap: 10,
+  },
+  modalActionBtn: {
+    width: '100%',
   },
 });
-

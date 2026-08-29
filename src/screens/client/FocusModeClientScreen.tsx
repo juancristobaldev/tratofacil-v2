@@ -24,6 +24,7 @@ import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMapCamera } from '../../hooks/useMapCamera';
 import type { RouteCoordinate } from '../../utils/directions';
+import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 
 export const FocusModeClientScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -61,9 +62,14 @@ export const FocusModeClientScreen: React.FC = () => {
   });
 
   const initialCenterRegion: Region = useMemo(() => {
-    const lat = clientCoords?.latitude ?? providerCoords?.latitude ?? -33.4489;
-    const lng = clientCoords?.longitude ?? providerCoords?.longitude ?? -70.6693;
-    return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+    const lat = clientCoords?.latitude ?? providerCoords?.latitude ?? DEFAULT_TEMUCO_PLC_REGION.latitude;
+    const lng = clientCoords?.longitude ?? providerCoords?.longitude ?? DEFAULT_TEMUCO_PLC_REGION.longitude;
+    return {
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: DEFAULT_TEMUCO_PLC_REGION.latitudeDelta,
+      longitudeDelta: DEFAULT_TEMUCO_PLC_REGION.longitudeDelta,
+    };
   }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
   // Actualización de cámara basada en ruta y pins
@@ -242,7 +248,6 @@ export const FocusModeClientScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={dynamicEdgePadding}
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 
@@ -257,7 +262,6 @@ export const FocusModeClientScreen: React.FC = () => {
             <AnimatedPolyline
               coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
-              strokeWidth={4}
             />
           )}
         </MapView>

@@ -97,73 +97,6 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
     );
   }
 
-  const currentItem = clampedProviders[activeIndex] || clampedProviders[0];
-  const userCoords = location?.coords;
-  const pLat = currentItem.lat ?? currentItem.latitude;
-  const pLng = currentItem.lng ?? currentItem.longitude;
-  let compactEtaText = '12 min';
-  let compactDistText = '';
-  if (userCoords && pLat != null && pLng != null) {
-    const distM = getMetersBetween(userCoords.latitude, userCoords.longitude, pLat, pLng);
-    compactEtaText = formatEtaFromMeters(distM);
-    compactDistText = distM < 1000 ? `${Math.round(distM)}m` : `${(distM / 1000).toFixed(1)} km`;
-  }
-
-  if (isCollapsed) {
-    return (
-      <View style={styles.compactContainer}>
-        <View style={styles.compactCardRow}>
-          <TouchableOpacity
-            style={styles.compactProviderInfo}
-            onPress={() => setIndex?.(1)}
-            activeOpacity={0.8}
-            accessibilityLabel="Expandir perfil de profesional"
-            accessibilityRole="button"
-          >
-            <Avatar uri={currentItem.avatar} name={currentItem.name || currentItem.providerName || ''} size={36} />
-            <View style={styles.compactDetailsCol}>
-              <Text style={styles.compactName} numberOfLines={1}>
-                {currentItem.name || currentItem.providerName || 'Mario R.'}
-              </Text>
-              <View style={styles.compactRatingAndEta}>
-                <Icon name="Star" size={11} color={TOKENS.colors.starActive} />
-                <Text style={styles.compactRatingText}>{(currentItem.rating || 4.9).toFixed(1)}</Text>
-                <Text style={styles.compactDot}>•</Text>
-                <Text style={styles.compactEtaText}>{compactEtaText}</Text>
-                {Boolean(compactDistText) && (
-                  <Text style={styles.compactDistText}>({compactDistText})</Text>
-                )}
-              </View>
-            </View>
-          </TouchableOpacity>
-
-          <View style={styles.compactActionsRight}>
-            <Button
-              title="Ver perfil"
-              size="sm"
-              onPress={() => {
-                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_PANEL' });
-                dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', currentItem, 'PROVIDER_PREVIEW_PANEL');
-              }}
-              style={styles.compactProfileBtn}
-            />
-            <IconButton
-              icon="X"
-              size="sm"
-              variant="ghost"
-              accessibilityLabel="Cancelar selección de servicio"
-              onPress={() => {
-                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_PANEL' });
-                dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_PANEL');
-              }}
-              style={styles.compactDismissBtn}
-            />
-          </View>
-        </View>
-      </View>
-    );
-  }
-
   const showDots = clampedProviders.length > 1;
 
   const renderItem = ({ item }: { item: ProviderPreviewItem }) => {
@@ -180,12 +113,7 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
     }
 
     return (
-      <View
-        style={styles.card}
-        onTouchStart={() => {
-          if (__DEV__) console.log(`[UI:TOUCH_START] sheet=provider_preview action=CARD requestId=${requestId ?? 'null'}`);
-        }}
-      >
+      <View style={styles.card}>
         <View style={styles.previewCard}>
           {/* Top Row: Provider identity + Rating/ETA + Close affordance */}
           <View style={styles.cardTopRow}>
@@ -476,5 +404,4 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface100,
   },
 });
-
 

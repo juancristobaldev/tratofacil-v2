@@ -112,4 +112,94 @@ describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
 
     expect(mockPresent).toHaveBeenCalledWith('focus_client', expect.anything());
   });
+
+  it('Deseleccionar un proveedor único no reinicia bucle de auto-selección', async () => {
+    mockRole = 'client';
+    mockRealtime.activeOrder = null;
+
+    let actionHandlers: any = {};
+    const mockBindRuntimeActionHandlers = jest.fn((owner, handlers) => {
+      actionHandlers = handlers;
+    });
+
+    jest.spyOn(require('../../bottom-sheet/core/useBottomSheet'), 'useBottomSheet').mockImplementation(() => ({
+      present: mockPresent,
+      dismiss: mockDismiss,
+      update: mockUpdate,
+      active: 'provider_preview',
+      activePayload: { provider: { id: 99, name: 'Mario' } },
+      setMapFlowActive: mockSetMapFlowActive,
+      bindRuntimeActionHandlers: mockBindRuntimeActionHandlers,
+      unbindRuntimeActionHandlers: jest.fn(),
+    }));
+
+    await render(<HomePage />);
+
+    expect(mockBindRuntimeActionHandlers).toHaveBeenCalled();
+    const deselectHandler = actionHandlers.provider_preview?.DESELECT;
+    expect(typeof deselectHandler).toBe('function');
+
+    // Deseleccionar no debe fallar y debe llamar a presentCategories
+    deselectHandler({}, { actionId: 1 });
+    expect(mockPresent).toHaveBeenCalledWith('categories', expect.anything());
+  });
+
+  describe('Search Bar Visibility Invariant with Non-Terminal Orders', () => {
+    it('Cliente sin orden -> input de búsqueda de servicios es VISIBLE', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = null;
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).not.toBeNull();
+    });
+
+    it('Cliente con orden terminal COMPLETED/CANCELLED -> input de búsqueda es VISIBLE', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = { id: 101, status: 'COMPLETED' };
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).not.toBeNull();
+    });
+
+    it('Cliente con orden no terminal PENDING -> input de búsqueda NO debe aparecer', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = { id: 101, status: 'PENDING' };
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
+    });
+
+    it('Cliente con orden no terminal QUOTED -> input de búsqueda NO debe aparecer', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = { id: 101, status: 'QUOTED' };
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
+    });
+
+    it('Cliente con orden no terminal ACCEPTED -> input de búsqueda NO debe aparecer', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = { id: 101, status: 'ACCEPTED' };
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
+    });
+
+    it('Cliente con orden no terminal IN_PROGRESS -> input de búsqueda NO debe aparecer', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = { id: 101, status: 'IN_PROGRESS' };
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
+    });
+
+    it('Proveedor -> input de búsqueda nunca debe aparecer', async () => {
+      mockRole = 'provider';
+      mockRealtime.providerActiveOrder = null;
+
+      const { queryByPlaceholderText } = await render(<HomePage />);
+      expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
+    });
+  });
 });
+

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TOKENS } from '../../../theme';
 import { Icon, Avatar, IconButton } from '../../../components/ui';
+import { containsContactInfo, maskContactInfo } from '../../../utils/sanitizer';
 
 interface FocusChatOverlayProps {
   chatUser: any;
@@ -15,6 +16,7 @@ interface FocusChatOverlayProps {
 export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ chatUser, activeOrder, realtime, role, onClose }) => {
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [typedMessage, setTypedMessage] = useState('');
+  const [contactWarning, setContactWarning] = useState(false);
   const chatScrollRef = useRef<ScrollView | null>(null);
 
   useEffect(() => {
@@ -40,11 +42,21 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
     return () => { socket.off('chat:received', handler); };
   }, [activeOrder?.id, realtime.clientId, role]);
 
+  // Chat sólo disponible entre estados Pagado (ACCEPTED / EN_CAMINO / ARRIVED) e Iniciado (IN_PROGRESS)
+  const isChatAvailable = ['ACCEPTED', 'PAID', 'EN_CAMINO', 'ARRIVED', 'IN_PROGRESS'].includes(activeOrder?.status);
+  const isNotYetPaid = ['PENDING', 'QUOTED', 'WAITING_CLIENT_RESPONSE', 'WAITING_PROVIDER_RESPONSE'].includes(activeOrder?.status);
   const isTerminal = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(activeOrder?.status);
 
   const handleSendMessage = () => {
-    if (isTerminal || !typedMessage.trim() || !activeOrder?.id) return;
-    const text = typedMessage;
+    if (!isChatAvailable || !typedMessage.trim() || !activeOrder?.id) return;
+    
+    let text = typedMessage.trim();
+    if (containsContactInfo(text)) {
+      text = maskContactInfo(text);
+      setContactWarning(true);
+      setTimeout(() => setContactWarning(false), 4000);
+    }
+    
     setTypedMessage('');
     setChatMessages((prev) => [...prev, {
       id: Date.now().toString(), sender: role, text,
@@ -106,10 +118,26 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
           })}
         </ScrollView>
 
+        {contactWarning && (
+          <View style={styles.warningBanner}>
+            <Icon name="ShieldAlert" size={14} color={TOKENS.colors.warning600} />
+            <Text style={styles.warningBannerText}>
+              Por seguridad y protección de garantía, la información de contacto externa es protegida.
+            </Text>
+          </View>
+        )}
+
         {isTerminal ? (
           <View style={styles.chatClosedBar}>
             <Icon name="Lock" size={16} color={TOKENS.colors.textSubtle} />
             <Text style={styles.chatClosedText}>Servicio finalizado • Chat cerrado</Text>
+          </View>
+        ) : isNotYetPaid ? (
+          <View style={styles.chatClosedBar}>
+            <Icon name="Info" size={16} color={TOKENS.colors.brand600} />
+            <Text style={styles.chatClosedText}>
+              El chat se habilita una vez pagado el servicio y mientras esté en curso.
+            </Text>
           </View>
         ) : (
           <View style={styles.chatInputBar}>
@@ -252,5 +280,21 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.xs,
     color: TOKENS.colors.textSubtle,
     fontWeight: TOKENS.typography.weights.bold,
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.warning50,
+    borderTopWidth: 1,
+    borderColor: TOKENS.colors.warning200,
+    paddingHorizontal: TOKENS.spacing.md,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  warningBannerText: {
+    flex: 1,
+    fontSize: 10,
+    color: TOKENS.colors.warning800,
+    fontWeight: '500',
   },
 });

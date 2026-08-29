@@ -262,11 +262,12 @@ const AdModal = ({ isOpen = false, onClose = () => {}, data = null }: { isOpen?:
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginVertical: 12,
+    marginVertical: 4,
   },
   container: {
     width: '100%',
-    aspectRatio: 16 / 6,
+    aspectRatio: 16 / 7.5,
+    minHeight: 140,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: TOKENS.colors.surface50,

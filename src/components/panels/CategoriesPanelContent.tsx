@@ -4,9 +4,11 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Keyboard,
   useWindowDimensions,
 } from 'react-native';
-import { BottomSheetTextInput, BottomSheetFlatList } from '../../bottom-sheet/primitives';
+import { TouchableOpacity as RNGHTouchableOpacity } from 'react-native-gesture-handler';
+import { BottomSheetFlatList, SheetHeader } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
 import { Icon, RotatingHorizontalAd, EmptyState } from '../ui';
 import { useCategories } from '../../context/CategoriesContext';
@@ -25,7 +27,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
   setIndex,
 }) => {
   const { dispatchBottomSheetAction } = useBottomSheet();
-  const [panelState, setPanelState] = usePanelState(sheetKey, { searchQuery: '', showOffline: false });
+  const [panelState, setPanelState] = usePanelState(sheetKey, { showOffline: false });
   // DEV-only measurement probe (Fase 0) — no layout change
   const rootRef = useRef<View>(null);
   const { height: winH } = useWindowDimensions();
@@ -38,8 +40,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
     };
   }, [requestId, sheetKey]);
   
-  const searchQuery = panelState.searchQuery;
-  const setSearchQuery = (text: string) => setPanelState({ ...panelState, searchQuery: text });
+  const searchQuery = payload.searchQuery ?? '';
   
   const showOffline = panelState.showOffline;
   const setShowOffline = (val: boolean) => setPanelState({ ...panelState, showOffline: val });
@@ -62,11 +63,12 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
   const { horizontal, getTransitionDuration } = useAds();
 
   const visibleNodes = useMemo(() => {
-    if (!searchQuery.trim()) return categoryTree;
+    const tree = categoryTree || [];
+    if (!searchQuery.trim()) return tree;
     const q = searchQuery.trim().toLowerCase();
     const results: TreeNode[] = [];
-    for (const node of categoryTree) {
-      for (const service of node.services) {
+    for (const node of tree) {
+      for (const service of (node.services || [])) {
         if (service.name.toLowerCase().includes(q)) {
           const sps = service.serviceProviders || [];
           results.push({
@@ -89,6 +91,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
 
   const handleNodePress = useCallback(
     (node: TreeNode) => {
+      Keyboard.dismiss();
       bottomSheetDebug('PANEL_PRESS', { key: 'categories', requestId, action: 'SELECT_CATEGORY', origin: 'CATEGORIES_PANEL' });
       dispatchBottomSheetAction('categories', 'SELECT_CATEGORY', {
         id: String(node.id),
@@ -107,18 +110,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
 
   const renderNodeCard = useCallback(
     ({ item }: { item: TreeNode }) => (
-      <View
-        onTouchStart={() => {
-          if (__DEV__) console.log(`[UI:TOUCH_START] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
-        }}
-      >
-      <TouchableOpacity
-        onPressIn={() => {
-          if (__DEV__) console.log(`[UI:BUTTON_PRESS_IN] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
-        }}
-        onPressOut={() => {
-          if (__DEV__) console.log(`[UI:BUTTON_PRESS_OUT] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
-        }}
+      <RNGHTouchableOpacity
         onPress={() => {
           if (__DEV__) console.log(`[UI:BUTTON_PRESS] sheet=categories action=SELECT_CATEGORY requestId=${requestId ?? 'null'} node=${item.slug}`);
           handleNodePress(item);
@@ -166,8 +158,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
             color={TOKENS.colors.textMuted}
           />
         </View>
-      </TouchableOpacity>
-      </View>
+      </RNGHTouchableOpacity>
     ),
     [handleNodePress, requestId],
   );
@@ -207,36 +198,106 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
           </View>
         ) : (
           <TouchableOpacity
-            style={styles.compactSearchBar}
+            style={styles.compactPromoCard}
             onPress={() => setIndex?.(1)}
             activeOpacity={0.8}
-            accessibilityLabel="Buscar servicios o categorías"
+            accessibilityLabel="Expandir catálogo de servicios"
             accessibilityRole="button"
           >
-            <Icon
-              name="Search"
-              size={16}
-              color={TOKENS.colors.brand500}
-              style={styles.compactSearchIcon}
-            />
-            <Text style={searchQuery ? styles.compactSearchTextFilled : styles.compactSearchTextPlaceholder} numberOfLines={1}>
-              {searchQuery || '¿Qué servicio necesitas?'}
-            </Text>
-            {searchQuery ? (
-              <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                style={styles.compactClearSearchBtn}
-                accessibilityLabel="Borrar texto de búsqueda"
-                accessibilityRole="button"
-              >
-                <Icon name="X" size={14} color={TOKENS.colors.textSubtle} />
-              </TouchableOpacity>
-            ) : (
-              <Icon name="ChevronUp" size={18} color={TOKENS.colors.textMuted} />
-            )}
+            <View style={styles.compactPromoLeft}>
+              <View style={styles.compactPromoIconCircle}>
+                <Icon name={searchQuery ? 'Search' : 'Grid'} size={15} color={TOKENS.colors.brand500} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.compactPromoText} numberOfLines={1}>
+                  {searchQuery ? `Buscando "${searchQuery}"` : 'Explorar servicios y categorías'}
+                </Text>
+                <Text style={styles.compactPromoSubtext} numberOfLines={1}>
+                  {searchQuery
+                    ? `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`
+                    : 'Toca para ver el catálogo'}
+                </Text>
+              </View>
+            </View>
+            <Icon name="ChevronUp" size={18} color={TOKENS.colors.textMuted} />
           </TouchableOpacity>
         )}
       </View>
+    );
+  }
+
+  const renderSearchHeader = () => (
+    <View style={styles.searchStickyHeader}>
+      <SheetHeader
+        title={isLoading ? 'Buscando...' : `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`}
+        subtitle={searchQuery ? `Servicios para "${searchQuery}"` : undefined}
+        trailing={
+          <TouchableOpacity
+            style={[
+              styles.toggleBtn,
+              showOffline && styles.toggleBtnActive,
+            ]}
+            onPress={() => setShowOffline(!showOffline)}
+            activeOpacity={0.8}
+            accessibilityLabel="Filtrar profesionales online"
+          >
+            <Text
+              style={[
+                styles.toggleBtnText,
+                showOffline && styles.toggleBtnTextActive,
+              ]}
+            >
+              {showOffline ? 'Solo Online' : 'Todos'}
+            </Text>
+          </TouchableOpacity>
+        }
+      />
+    </View>
+  );
+
+  if (showSearch) {
+    return (
+      <BottomSheetFlatList
+        ref={rootRef as any}
+        collapsable={false}
+        style={styles.searchList}
+        showsVerticalScrollIndicator={true}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.searchListContent}
+        data={hasError || isLoading ? [] : visibleNodes}
+        renderItem={renderNodeCard}
+        keyExtractor={(node) => `node-${node.type}-${node.id}`}
+        extraData={visibleNodes}
+        ListHeaderComponent={renderSearchHeader}
+        stickyHeaderIndices={[0]}
+        ListEmptyComponent={
+          hasError ? (
+            <EmptyState
+              icon="AlertTriangle"
+              title="Error al cargar"
+              description="No se pudieron cargar las categorías."
+            />
+          ) : isLoading ? (
+            <EmptyState icon="Inbox" title="Buscando..." description="" />
+          ) : (
+            <EmptyState
+              icon="Search"
+              title="Sin resultados"
+              description="No se encontraron categorías ni servicios con ese nombre."
+            />
+          )
+        }
+        onLayout={() => {
+          if (!__DEV__) return;
+          console.log('[BS:MEASURE]', {
+            key: sheetKey,
+            mode: 'search_list',
+            navTop: winH - navHeight,
+            windowHeight: winH,
+          });
+        }}
+      />
     );
   }
 
@@ -244,7 +305,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
     <View
       ref={rootRef}
       collapsable={false}
-      style={[styles.container]}
+      style={styles.container}
       onLayout={() => {
         if (!__DEV__) return;
         rootRef.current?.measureInWindow((x, y, w, h) => {
@@ -260,33 +321,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
         });
       }}
     >
-      <View style={showSearch ? styles.contentFlex : styles.content}>
-        <View style={styles.searchBar}>
-          <Icon
-            name="Search"
-            size={18}
-            color={TOKENS.colors.brand500}
-            style={styles.searchIcon}
-          />
-          <BottomSheetTextInput
-            placeholder="¿Qué servicio necesitas?"
-            placeholderTextColor={TOKENS.colors.textMuted}
-            value={searchQuery}
-            onChangeText={(text) => {
-              if (selectedCategory && text) {
-                dispatchBottomSheetAction('categories', 'CLEAR_CATEGORY', undefined, 'CATEGORIES_SEARCH');
-              }
-              setSearchQuery(text);
-            }}
-            style={styles.searchInput}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchBtn}>
-              <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
+      <View style={styles.content}>
         {hasError ? (
           <EmptyState
             icon="AlertTriangle"
@@ -313,61 +348,13 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
               </TouchableOpacity>
             </View>
           </View>
-        ) : !showSearch ? (
+        ) : (
           <View style={styles.promoSection}>
-            <Text style={styles.sheetTitle}>Promociones y destacados</Text>
             <RotatingHorizontalAd
               images={horizontal}
               transitionDuration={getTransitionDuration('marketing', 'HORIZONTAL', 6000)}
             />
           </View>
-        ) : (
-          <>
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsTitle}>
-                {isLoading
-                  ? 'Buscando...'
-                  : `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`}
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.toggleBtn,
-                  showOffline && styles.toggleBtnActive,
-                ]}
-                onPress={() => setShowOffline(!showOffline)}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    styles.toggleBtnText,
-                    showOffline && styles.toggleBtnTextActive,
-                  ]}
-                >
-                  {showOffline ? 'Solo Online' : 'Todos'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {isLoading && visibleNodes.length === 0 ? (
-              <EmptyState icon="Inbox" title="Buscando..." description="" />
-            ) : visibleNodes.length === 0 ? (
-              <EmptyState
-                icon="Search"
-                title="Sin resultados"
-                description="No se encontraron categorías ni servicios con ese nombre."
-              />
-            ) : (
-              <BottomSheetFlatList
-                style={styles.list}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.listContent}
-                data={visibleNodes}
-                renderItem={renderNodeCard}
-                keyExtractor={(node) => `node-${node.type}-${node.id}`}
-                extraData={visibleNodes}
-              />
-            )}
-          </>
         )}
       </View>
     </View>
@@ -381,11 +368,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: TOKENS.spacing.lg,
-    paddingBottom: 20,
-  },
-  contentFlex: {
-    paddingHorizontal: TOKENS.spacing.lg,
-    paddingBottom: 20,
+    paddingBottom: 8,
   },
   promoSection: {
     paddingBottom: 24,
@@ -396,32 +379,6 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.dark900,
     marginBottom: TOKENS.spacing.sm,
     letterSpacing: -0.3,
-  },
-  searchBar: {
-    height: 50,
-    backgroundColor: TOKENS.colors.surface100,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: TOKENS.spacing.md,
-    marginBottom: TOKENS.spacing.md,
-    marginTop: 2,
-  },
-  searchIcon: {
-    marginRight: TOKENS.spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    color: TOKENS.colors.dark900,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
-    height: '100%',
-    padding: 0,
-  },
-  clearSearchBtn: {
-    padding: 6,
   },
 
   // Selected state
@@ -521,11 +478,18 @@ const styles = StyleSheet.create({
   },
 
   // Node cards
-  list: {
-    flex: 1,
+  searchStickyHeader: {
+    backgroundColor: TOKENS.colors.white,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: TOKENS.colors.surface200,
+    zIndex: 10,
   },
-  listContent: {
-    paddingBottom: 36,
+  searchList: {
+    flexGrow: 0,
+  },
+  searchListContent: {
+    paddingHorizontal: TOKENS.spacing.lg,
+    paddingBottom: 4,
     paddingTop: 4,
   },
   nodeCard: {
@@ -661,32 +625,44 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.brand700,
   },
-  compactSearchBar: {
-    height: 44,
+  compactPromoCard: {
+    height: 50,
     backgroundColor: TOKENS.colors.surface100,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: TOKENS.spacing.md,
+    paddingBottom:10
   },
-  compactSearchIcon: {
-    marginRight: TOKENS.spacing.sm,
-  },
-  compactSearchTextPlaceholder: {
+  compactPromoLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     flex: 1,
-    color: TOKENS.colors.textMuted,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
+    marginRight: 8,
   },
-  compactSearchTextFilled: {
-    flex: 1,
+  compactPromoIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  compactPromoText: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.bold,
     color: TOKENS.colors.dark900,
-    fontSize: TOKENS.typography.sizes.sm,
-    fontWeight: TOKENS.typography.weights.medium,
   },
-  compactClearSearchBtn: {
-    padding: 6,
+  compactPromoSubtext: {
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.medium,
+    color: TOKENS.colors.textSubtle,
+    marginTop: 1,
   },
 });

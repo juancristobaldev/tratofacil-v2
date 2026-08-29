@@ -6,7 +6,7 @@ import { BottomSheetContext, type Present } from './useBottomSheet';
 import { BottomSheetHost } from './BottomSheetHost';
 import { isSheetAllowedForRole, registry } from './bottomSheet.registry';
 import { bottomSheetDebug, nextBottomSheetActionId, nextBottomSheetTransitionId } from './bottomSheet.debug';
-import { getBottomNavHeight } from '../../components/layout/bottomNavMetrics';
+import { getBottomSheetGeometry } from './bottomSheetGeometry';
 import type {
   BottomSheetActionName,
   BottomSheetActionPayload,
@@ -715,7 +715,11 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
 
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const NAVBAR_HEIGHT = getBottomNavHeight(insets.bottom);
+  const bottomSheetGeometry = useMemo(() => getBottomSheetGeometry({
+    windowHeight,
+    safeTopInset: insets.top,
+    safeBottomInset: insets.bottom,
+  }), [insets.bottom, insets.top, windowHeight]);
 
   const sheetMetrics = useMemo(() => {
     if (!activeRequest || stateRef.current === 'CLOSED') {
@@ -727,18 +731,18 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
       };
     }
     const descriptor = registry[activeRequest.key];
-    const isCollapsed = sheetIndex === 0;
+    const isCollapsed = descriptor && (descriptor.snapPoints?.length ?? 0) > 1 ? sheetIndex === 0 : false;
     const collapsedH = descriptor?.collapsedHeight ?? 88;
     const computedContentH = contentLayoutHeight > 0 ? contentLayoutHeight : (collapsedH ? collapsedH * 2.5 : 320);
-    const height = isCollapsed ? collapsedH : computedContentH;
-    const sheetTop = Math.max(0, windowHeight - NAVBAR_HEIGHT - height);
+    const height = isCollapsed ? collapsedH : Math.min(computedContentH, bottomSheetGeometry.maxDynamicContentSize);
+    const sheetTop = Math.max(bottomSheetGeometry.topClearance, windowHeight - bottomSheetGeometry.navbarHeight - height);
     return {
       sheetTop,
       sheetHeight: height,
       isCollapsed,
       index: sheetIndex,
     };
-  }, [activeRequest, contentLayoutHeight, sheetIndex, windowHeight, NAVBAR_HEIGHT]);
+  }, [activeRequest, bottomSheetGeometry, contentLayoutHeight, sheetIndex, windowHeight]);
 
   const value = useMemo(
     () => ({

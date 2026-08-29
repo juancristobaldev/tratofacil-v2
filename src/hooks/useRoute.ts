@@ -9,12 +9,17 @@ import {
 } from '../utils/directions';
 
 export type RouteStatus = 'idle' | 'loading' | 'ready' | 'refreshing' | 'error';
+export type RouteSemantic = 'FULL_ROUTE';
 
 export interface UseRoutePolylineReturn {
   routeCoords: RouteCoordinate[];
   routeDuration: number | null; // segundos
   routeDistance: number | null; // metros
   routeProvider: RouteProvider | null;
+  routeSemantic: RouteSemantic;
+  routeCalculatedAt: number | null;
+  routeOrigin: RouteCoordinate | null;
+  routeDestination: RouteCoordinate | null;
   loading: boolean;
   status: RouteStatus;
   error: RouteError | null;
@@ -48,6 +53,9 @@ export function useRoutePolyline(
   const [routeDuration, setRouteDuration] = useState<number | null>(null);
   const [routeDistance, setRouteDistance] = useState<number | null>(null);
   const [routeProvider, setRouteProvider] = useState<RouteProvider | null>(null);
+  const [routeCalculatedAt, setRouteCalculatedAt] = useState<number | null>(null);
+  const [routeOrigin, setRouteOrigin] = useState<RouteCoordinate | null>(null);
+  const [routeDestination, setRouteDestination] = useState<RouteCoordinate | null>(null);
   const [status, setStatus] = useState<RouteStatus>('idle');
   const [error, setError] = useState<RouteError | null>(null);
 
@@ -111,6 +119,9 @@ export function useRoutePolyline(
           setRouteDuration(result.durationSeconds);
           setRouteDistance(result.distanceMeters);
           setRouteProvider(result.provider);
+          setRouteCalculatedAt(result.calculatedAt);
+          setRouteOrigin({ ...orig });
+          setRouteDestination({ ...destination });
           setStatus('ready');
           setError(null);
 
@@ -177,6 +188,9 @@ export function useRoutePolyline(
     setRouteDuration(null);
     setRouteDistance(null);
     setRouteProvider(null);
+    setRouteCalculatedAt(null);
+    setRouteOrigin(null);
+    setRouteDestination(null);
     setStatus('error');
   };
 
@@ -194,6 +208,9 @@ export function useRoutePolyline(
       setRouteDuration(null);
       setRouteDistance(null);
       setRouteProvider(null);
+      setRouteCalculatedAt(null);
+      setRouteOrigin(null);
+      setRouteDestination(null);
       setStatus('idle');
       setError(null);
       lastGoodRouteRef.current = null;
@@ -279,6 +296,10 @@ export function useRoutePolyline(
     routeDuration,
     routeDistance,
     routeProvider,
+    routeSemantic: 'FULL_ROUTE',
+    routeCalculatedAt,
+    routeOrigin,
+    routeDestination,
     loading: status === 'loading' || status === 'refreshing',
     status,
     error,

@@ -37,6 +37,7 @@ export interface ProviderPreviewItem {
 export interface CategoriesPayload {
   categories?: Array<{ id: number; name: string; slug: string }>;
   selectedCategory?: CategoryHit | null;
+  searchQuery?: string;
 }
 
 export interface ProviderPreviewPayload {
@@ -188,6 +189,7 @@ export interface SheetDescriptor<K extends SheetKey> {
   collapsedHeight?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
+  contentMode?: 'view' | 'scroll' | 'list' | 'mixed';
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
   replaceFrom?: readonly SheetKey[];

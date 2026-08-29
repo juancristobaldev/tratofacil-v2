@@ -103,14 +103,14 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     };
   });
 
-  it('QUOTED: muestra la cotización del profesional, avatar y opciones de negociación', async () => {
+  it('QUOTED: muestra la oferta del profesional, avatar y opciones de negociación', async () => {
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
     expect(view.getByText('Mario Profesional')).toBeTruthy();
-    expect(view.getByText('Cotización del profesional')).toBeTruthy();
-    expect(view.getAllByText('Pagar con Flow / Webpay').length).toBeGreaterThanOrEqual(1);
-    expect(view.getByText('Rechazar cotización')).toBeTruthy();
-    expect(view.getByText('Cancelar orden')).toBeTruthy();
+    expect(view.getByText('Oferta del profesional')).toBeTruthy();
+    expect(view.getByText('Aceptar oferta')).toBeTruthy();
+    expect(view.getByText('Rechazar oferta')).toBeTruthy();
+    expect(view.queryByText('Cancelar servicio')).toBeNull();
   });
 
   it('NEGOTIATION: ajustar monto cambia la acción a Enviar contraoferta', async () => {
@@ -129,22 +129,30 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     await waitFor(() => {
       expect(mockClientCounterOffer).toHaveBeenCalledWith(101, 34000, 2, 5000);
       expect(view.getByText('Contraoferta enviada')).toBeTruthy();
-      expect(view.getByText('Esperando respuesta del profesional...')).toBeTruthy();
     });
   });
 
-  it('REJECT: permite rechazar la cotización recibida', async () => {
+  it('REJECT: al presionar rechazar oferta abre el modal y permite cancelar la orden', async () => {
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
-    const rejectBtn = view.getByText('Rechazar cotización');
+    const rejectBtn = view.getByText('Rechazar oferta');
     fireEvent.press(rejectBtn);
 
     await waitFor(() => {
-      expect(mockRejectQuote).toHaveBeenCalledWith(101);
+      expect(view.getByText('¿Deseas cancelar la orden o hacer una contraoferta?')).toBeTruthy();
+      expect(view.getByText('Crear contraoferta')).toBeTruthy();
+      expect(view.getByText('Cancelar orden')).toBeTruthy();
+    });
+
+    const cancelModalBtn = view.getByText('Cancelar orden');
+    fireEvent.press(cancelModalBtn);
+
+    await waitFor(() => {
+      expect(mockCancelOrder).toHaveBeenCalledWith(101);
     });
   });
 
-  it('ACCEPTED: muestra estado en camino si la distancia > 300m', async () => {
+  it('ACCEPTED: muestra estado en camino y botón de chat si la distancia > 5m (sin botón de cancelar)', async () => {
     mockSessionValue.activeOrder.status = 'ACCEPTED';
     mockSessionValue.distanceToProviderKm = 1.2;
 
@@ -153,10 +161,11 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     expect(view.getByText('Llegada estimada')).toBeTruthy();
     expect(view.getByText('8 min')).toBeTruthy();
     expect(view.getByText('A 1200m de tu ubicación')).toBeTruthy();
-    expect(view.getByText('Cancelar servicio')).toBeTruthy();
+    expect(view.getByText('Abrir Chat')).toBeTruthy();
+    expect(view.queryByText('Cancelar servicio')).toBeNull();
   });
 
-  it('QUOTED: realiza pago directo con tarjeta guardada cuando el usuario la tiene vinculada', async () => {
+  it('QUOTED: al aceptar oferta pasa al paso de pago y permite pagar con tarjeta guardada', async () => {
     mockUser = {
       id: 1,
       cardActive: true,
@@ -166,9 +175,16 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
-    expect(view.getByText('MASTERCARD •••• 9876')).toBeTruthy();
-    expect(view.getByText('1-CLICK')).toBeTruthy();
-    expect(view.getByText('Pagar con Webpay / Flow')).toBeTruthy();
+    expect(view.getByText('Aceptar oferta')).toBeTruthy();
+    const acceptOfferBtn = view.getByText('Aceptar oferta');
+    fireEvent.press(acceptOfferBtn);
+
+    await waitFor(() => {
+      expect(view.getByText('Método de Pago')).toBeTruthy();
+      expect(view.getByText('MASTERCARD •••• 9876')).toBeTruthy();
+      expect(view.getByText('1-CLICK')).toBeTruthy();
+      expect(view.getByText('Pagar con Webpay / Flow')).toBeTruthy();
+    });
 
     const payCardBtn = view.getByText('MASTERCARD •••• 9876');
     fireEvent.press(payCardBtn);
@@ -183,9 +199,9 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     });
   });
 
-  it('ACCEPTED: muestra botón de confirmar inicio cuando el profesional llegó (<= 300m)', async () => {
+  it('ACCEPTED: muestra botón de confirmar inicio cuando el profesional llegó (<= 5m)', async () => {
     mockSessionValue.activeOrder.status = 'ACCEPTED';
-    mockSessionValue.distanceToProviderKm = 0.05;
+    mockSessionValue.distanceToProviderKm = 0.003;
 
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
@@ -200,5 +216,3 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     });
   });
 });
-
-

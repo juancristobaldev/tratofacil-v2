@@ -72,21 +72,21 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
     };
   });
 
-  it('PENDING (VIEW_REQUEST): muestra datos de cliente, cotizador y botones Enviar cotización / Rechazar', async () => {
+  it('PENDING (VIEW_REQUEST): muestra datos de cliente, panel de oferta y botones Enviar oferta / Rechazar', async () => {
     const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
 
     expect(view.getByText('Carlos Cliente')).toBeTruthy();
     expect(view.getByText('Instalación de enchufe trifásico')).toBeTruthy();
-    expect(view.getByText('Cotización del servicio')).toBeTruthy();
-    expect(view.getByText('Enviar cotización')).toBeTruthy();
+    expect(view.getByText('Oferta del servicio')).toBeTruthy();
+    expect(view.getByText('Enviar oferta')).toBeTruthy();
     expect(view.getByText('Rechazar solicitud')).toBeTruthy();
   });
 
-  it('SEND_QUOTE: envía la cotización con horas y transporte calculados', async () => {
+  it('SEND_QUOTE: envía la oferta con horas y transporte calculados', async () => {
     mockQuoteOrder.mockResolvedValueOnce(undefined);
     const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
 
-    const sendBtn = view.getByText('Enviar cotización');
+    const sendBtn = view.getByText('Enviar oferta');
     fireEvent.press(sendBtn);
 
     await waitFor(() => {
@@ -136,15 +136,15 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
     });
   });
 
-  it('WAITING_CLIENT_RESPONSE: muestra cotización enviada y opción de actualizar o cancelar', async () => {
+  it('WAITING_CLIENT_RESPONSE: muestra oferta enviada y opción de actualizar o cancelar', async () => {
     mockSessionValue.orderState = 'WAITING_CLIENT_RESPONSE';
     mockSessionValue.activeOrder.counterOfferPrice = null;
 
     const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
 
-    expect(view.getByText('Cotización enviada')).toBeTruthy();
+    expect(view.getByText('Oferta enviada')).toBeTruthy();
     expect(view.getByText('Esperando confirmación o respuesta del cliente...')).toBeTruthy();
-    expect(view.getByText('Actualizar Cotización')).toBeTruthy();
+    expect(view.getByText('Actualizar Oferta')).toBeTruthy();
     expect(view.getByText('Cancelar orden')).toBeTruthy();
   });
 
@@ -163,5 +163,16 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
     expect(view.getByText('Propuesta: 2h / 3km')).toBeTruthy();
     expect(view.getByText('Aceptar')).toBeTruthy();
     expect(view.getByText('Rechazar')).toBeTruthy();
+  });
+
+  it('EN_CAMINO: muestra botón de chat y no permite cancelar la orden una vez pagada', async () => {
+    mockSessionValue.orderState = 'EN_CAMINO';
+    mockSessionValue.activeOrder.status = 'ACCEPTED';
+
+    const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
+
+    expect(view.getByText('DIRIGIÉNDOSE AL CLIENTE')).toBeTruthy();
+    expect(view.getByText('Abrir Chat')).toBeTruthy();
+    expect(view.queryByText('Cancelar orden')).toBeNull();
   });
 });

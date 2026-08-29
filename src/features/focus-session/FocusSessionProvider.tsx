@@ -198,10 +198,10 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [etaRemaining, setEtaRemaining] = useState('...');
 
   const providerClientCoords = useMemo<FocusGeoPoint | null>(() => {
-    const lat = providerOrder?.clientLat ?? location?.coords?.latitude;
-    const lng = providerOrder?.clientLng ?? location?.coords?.longitude;
+    const lat = providerOrder?.clientLat;
+    const lng = providerOrder?.clientLng;
     return toPoint(lat, lng);
-  }, [providerOrder?.clientLat, providerOrder?.clientLng, location?.coords?.latitude, location?.coords?.longitude]);
+  }, [providerOrder?.clientLat, providerOrder?.clientLng]);
 
   const liveProviderCoords = useMemo<FocusGeoPoint | null>(() => {
     const lat = location?.coords?.latitude ?? providerOrder?.providerLat;
@@ -275,24 +275,36 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
     const mapped = STATUS_MAP[r.status];
     if (mapped && mapped !== orderState) {
+      // Si el estado local ya avanzó a 'ARRIVED' debido a geofencing (<100m)
+      // y el backend sigue en 'ACCEPTED' (mapped a 'EN_CAMINO'), preservamos 'ARRIVED'
+      // para evitar bucles de sobrescritura en cada tick de GPS o evento de socket.
+      if (mapped === 'EN_CAMINO' && orderState === 'ARRIVED') {
+        return;
+      }
       setOrderState(mapped);
     }
   }, [realtime?.providerActiveOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const hasNotifiedArrivalRef = useRef<{ orderId: number; notified: boolean } | null>(null);
+
   // Notificaciones por transición de estado del servicio.
   useEffect(() => {
+    const currentOrderId = providerOrder?.id ?? 0;
     if (orderState === 'EN_CAMINO') {
       showNotification({ title: 'Nueva Orden de Trabajo', message: 'Dirígete a la ubicación del cliente para iniciar el servicio.', type: 'info' });
     } else if (orderState === 'ARRIVED') {
-      showNotification({ title: 'Llegada a Destino', message: 'Has llegado a la ubicación del cliente.', type: 'success' });
+      if (hasNotifiedArrivalRef.current?.orderId !== currentOrderId || !hasNotifiedArrivalRef.current?.notified) {
+        hasNotifiedArrivalRef.current = { orderId: currentOrderId, notified: true };
+        showNotification({ title: 'Llegada a Destino', message: 'Has llegado a la ubicación del cliente.', type: 'success' });
+      }
     } else if (orderState === 'IN_PROGRESS') {
       showNotification({ title: 'Servicio Iniciado', message: 'Cronómetro activo.', type: 'info' });
     } else if (orderState === 'COMPLETED') {
       showNotification({ title: 'Trabajo Completado', message: 'Has finalizado el servicio.', type: 'success' });
     }
-  }, [orderState, showNotification]);
+  }, [orderState, providerOrder?.id, showNotification]);
 
-  // Detección de llegada (< 100m) durante el traslado.
+  // Detección de llegada (<= 5m) durante el traslado.
   useEffect(() => {
     if (orderState !== 'EN_CAMINO' || !liveProviderCoords || !providerClientCoords) return;
     const m = getMetersBetween(
@@ -301,7 +313,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       providerClientCoords.latitude,
       providerClientCoords.longitude,
     );
-    if (m < 100) {
+    if (m <= 5) {
       setOrderState('ARRIVED');
     }
   }, [orderState, liveProviderCoords?.latitude, liveProviderCoords?.longitude, providerClientCoords?.latitude, providerClientCoords?.longitude]); // eslint-disable-line react-hooks/exhaustive-deps

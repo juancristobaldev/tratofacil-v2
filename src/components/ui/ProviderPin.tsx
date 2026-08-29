@@ -95,78 +95,91 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
     >
       <View style={styles.wrapper}>
         {/* Floating Card Body */}
-        <View
-          style={[
-            styles.card,
-            isSelected && styles.cardSelected,
-          ]}
-        >
-          {/* Avatar with Status & Verified Badges */}
-          <View style={styles.avatarContainer}>
-            {provider.avatar && !imageError ? (
-              <Image
-                source={{ uri: provider.avatar }}
-                style={styles.avatar}
-                onLoad={() => {
-                  triggerWarmup(250);
-                }}
-                onError={() => {
-                  setImageError(true);
-                  triggerWarmup(250);
-                }}
-              />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarInitials}>{initials}</Text>
-              </View>
-            )}
+        {isSelected ? (
+          <View style={[styles.card, styles.cardSelected]}>
+            {/* Avatar with Status & Verified Badges */}
+            <View style={styles.avatarContainer}>
+              {provider.avatar && !imageError ? (
+                <Image
+                  source={{ uri: provider.avatar }}
+                  style={styles.avatar}
+                  onLoad={() => triggerWarmup(250)}
+                  onError={() => {
+                    setImageError(true);
+                    triggerWarmup(250);
+                  }}
+                />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarInitials}>{initials}</Text>
+                </View>
+              )}
 
-            {/* Realtime Active Glowing Dot */}
-            {isRealtimeActive && <View style={styles.onlineDot} />}
+              {/* Realtime Active Glowing Dot */}
+              {isRealtimeActive && <View style={styles.onlineDot} />}
 
-            {/* Verified Badge */}
-            {isVerified && (
-              <View style={styles.verifiedBadge}>
-                <Icon name="Check" size={7} color={TOKENS.colors.white} />
-              </View>
-            )}
-          </View>
+              {/* Verified Badge */}
+              {isVerified && (
+                <View style={styles.verifiedBadge}>
+                  <Icon name="Check" size={7} color={TOKENS.colors.white} />
+                </View>
+              )}
+            </View>
 
-          {/* Provider Detailed Information */}
-          <View style={styles.info}>
-            {/* 1. Provider Name */}
-            <Text style={styles.name} numberOfLines={1}>
-              {displayName}
-            </Text>
-
-            {/* 2. Service Underneath the Name */}
-            {serviceName ? (
-              <Text style={styles.serviceUnderName} numberOfLines={1}>
-                {serviceName}
+            {/* Provider Detailed Information */}
+            <View style={styles.info}>
+              {/* 1. Provider Name */}
+              <Text style={styles.name} numberOfLines={1}>
+                {displayName}
               </Text>
-            ) : null}
 
-            {/* 3. Bottom Row: Rating, Reviews Count, and Price */}
-            <View style={styles.metaRow}>
-              <View style={styles.ratingBadge}>
-                <Icon name="Star" size={10} color="#F59E0B" fill="#F59E0B" />
-                <Text style={styles.ratingText}>{ratingValue.toFixed(1)}</Text>
-                {reviewsCount > 0 && (
-                  <Text style={styles.reviewsCountText}>({reviewsCount})</Text>
+              {/* 2. Service Underneath the Name */}
+              {serviceName ? (
+                <Text style={styles.serviceUnderName} numberOfLines={1}>
+                  {serviceName}
+                </Text>
+              ) : null}
+
+              {/* 3. Bottom Row: Rating, Reviews Count, and Price */}
+              <View style={styles.metaRow}>
+                <View style={styles.ratingBadge}>
+                  <Icon name="Star" size={10} color="#F59E0B" fill="#F59E0B" />
+                  <Text style={styles.ratingText}>{ratingValue.toFixed(1)}</Text>
+                  {reviewsCount > 0 && (
+                    <Text style={styles.reviewsCountText}>({reviewsCount})</Text>
+                  )}
+                </View>
+
+                {priceValue > 0 && (
+                  <>
+                    <Text style={styles.separatorDot}>•</Text>
+                    <Text style={styles.price}>
+                      ${priceValue.toLocaleString('es-CL')}
+                    </Text>
+                  </>
                 )}
               </View>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.compactCard}>
+            {/* 1. Precio arriba */}
+            <Text style={styles.compactPrice}>
+              {priceValue > 0 ? `$${priceValue.toLocaleString('es-CL')}` : 'Consultar'}
+            </Text>
 
-              {priceValue > 0 && (
-                <>
-                  <Text style={styles.separatorDot}>•</Text>
-                  <Text style={styles.price}>
-                    ${priceValue.toLocaleString('es-CL')}
-                  </Text>
-                </>
+            {/* 2. Rating abajo */}
+            <View style={styles.compactRatingRow}>
+              <Icon name="Star" size={9} color="#F59E0B" fill="#F59E0B" />
+              <Text style={styles.compactRatingText}>
+                {ratingValue > 0 ? ratingValue.toFixed(1) : 'Nuevo'}
+              </Text>
+              {reviewsCount > 0 && (
+                <Text style={styles.compactReviewsText}>({reviewsCount})</Text>
               )}
             </View>
           </View>
-        </View>
+        )}
 
         {/* Pointer Triangle Needle */}
         <View style={styles.arrowContainer}>
@@ -198,6 +211,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 5,
+  },
+  compactCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 4,
+    minWidth: 58,
+  },
+  compactPrice: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: TOKENS.colors.brand700,
+    letterSpacing: -0.2,
+  },
+  compactRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 1,
+  },
+  compactRatingText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: TOKENS.colors.textMain,
+    marginLeft: 2,
+  },
+  compactReviewsText: {
+    fontSize: 8,
+    fontWeight: '500',
+    color: TOKENS.colors.textSubtle,
+    marginLeft: 1,
   },
   cardSelected: {
     borderColor: TOKENS.colors.brand500,

@@ -10,6 +10,7 @@ import { useMapCamera } from '../../hooks/useMapCamera';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 import type { RouteCoordinate } from '../../utils/directions';
+import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,9 +42,14 @@ export const FocusModeProviderScreen: React.FC = () => {
   });
 
   const initialCenterRegion: Region = useMemo(() => {
-    const lat = providerCoords?.latitude ?? clientCoords?.latitude ?? -33.4489;
-    const lng = providerCoords?.longitude ?? clientCoords?.longitude ?? -70.6693;
-    return { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 };
+    const lat = providerCoords?.latitude ?? clientCoords?.latitude ?? DEFAULT_TEMUCO_PLC_REGION.latitude;
+    const lng = providerCoords?.longitude ?? clientCoords?.longitude ?? DEFAULT_TEMUCO_PLC_REGION.longitude;
+    return {
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: DEFAULT_TEMUCO_PLC_REGION.latitudeDelta,
+      longitudeDelta: DEFAULT_TEMUCO_PLC_REGION.longitudeDelta,
+    };
   }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
   useEffect(() => {
@@ -100,7 +106,6 @@ export const FocusModeProviderScreen: React.FC = () => {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
-          mapPadding={dynamicEdgePadding}
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 
@@ -110,7 +115,6 @@ export const FocusModeProviderScreen: React.FC = () => {
             <AnimatedPolyline
               coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
-              strokeWidth={4}
             />
           )}
         </MapView>

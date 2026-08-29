@@ -58,11 +58,67 @@ export interface UsableMapRectParams {
   verticalSafety?: number;
 }
 
+export const DEFAULT_TEMUCO_PLC_REGION = {
+  latitude: -38.7530,
+  longitude: -72.5950,
+  latitudeDelta: 0.098,
+  longitudeDelta: 0.098,
+};
+
+export const NAVIGATION_LATITUDE_DELTA = 0.0035;
+export const NAVIGATION_LONGITUDE_DELTA = 0.0035;
+export const NAVIGATION_PITCH = 60;
+export const NAVIGATION_ZOOM_LEVEL = 18;
+export const NAVIGATION_ALTITUDE = 300;
+
 export const MIN_LATITUDE_DELTA = 0.003;
 export const MIN_LONGITUDE_DELTA = 0.003;
 export const DEFAULT_HORIZONTAL_PADDING = 24;
 export const DEFAULT_VERTICAL_PADDING = 16;
+export const ROUTE_FIT_HORIZONTAL_PADDING = 36;
+export const ROUTE_FIT_VERTICAL_PADDING = 48;
+export const PROVIDER_PIN_CARD_WIDTH = 180;
+export const PROVIDER_PIN_CARD_HEIGHT = 58;
+export const FLOATING_CONTROL_CLEARANCE = 20;
+export const ROUTE_FIT_TOP_CLEARANCE = 55;
+export const ROUTE_FIT_BOTTOM_CLEARANCE = 28;
+export const ROUTE_FIT_HORIZONTAL_CLEARANCE = 28;
+export const ROUTE_FIT_ZOOM_SCALE = 1.15;
 export const ROUTE_CHANGE_ENDPOINT_THRESHOLD_METERS = 20;
+
+export interface AdaptivePolylineWidth {
+  strokeWidth: number;
+  glowWidth: number;
+}
+
+/**
+ * Calcula el ancho adaptativo del trazo y halo de la Polyline según el nivel de zoom (latitudeDelta).
+ *
+ * Niveles:
+ * - Zoom muy cercano / calle (latitudeDelta <= 0.003): strokeWidth: 10-11px, glowWidth: 16-17px (cubre la calzada)
+ * - Zoom barrio / medio (0.003 < latitudeDelta <= 0.015): strokeWidth: 7-9px, glowWidth: 12-14px
+ * - Zoom ciudad / intermedio (0.015 < latitudeDelta <= 0.04): strokeWidth: 5-6px, glowWidth: 9-10px
+ * - Zoom amplio / general (latitudeDelta > 0.04): strokeWidth: 4px, glowWidth: 7px
+ */
+export function getAdaptivePolylineWidth(latitudeDelta?: number | null): AdaptivePolylineWidth {
+  if (latitudeDelta == null || !Number.isFinite(latitudeDelta) || latitudeDelta <= 0) {
+    return { strokeWidth: 6, glowWidth: 11 };
+  }
+
+  if (latitudeDelta <= 0.0025) {
+    return { strokeWidth: 11, glowWidth: 17 };
+  }
+  if (latitudeDelta <= 0.006) {
+    return { strokeWidth: 9, glowWidth: 14 };
+  }
+  if (latitudeDelta <= 0.015) {
+    return { strokeWidth: 7, glowWidth: 12 };
+  }
+  if (latitudeDelta <= 0.04) {
+    return { strokeWidth: 5, glowWidth: 9 };
+  }
+  return { strokeWidth: 4, glowWidth: 7 };
+}
 
 function getDistanceMeters(p1: RouteCoordinate, p2: RouteCoordinate): number {
   const R = 6371e3;
@@ -297,6 +353,24 @@ export function isPointInSafeRect(
 }
 
 /**
+ * Calcula la latitud desplazada visualmente para que la coordenada geográfica
+ * aparezca centrada exactamente en el punto medio del área útil (usableMapRect)
+ * entre el header/controles superiores y el sheetTop/bottomNav.
+ */
+export function calculateShiftedLatitude(
+  latitude: number,
+  latitudeDelta: number,
+  padding: { top: number; bottom: number },
+  windowHeight: number,
+): number {
+  if (!windowHeight || windowHeight <= 0 || !Number.isFinite(latitude) || !Number.isFinite(latitudeDelta)) {
+    return latitude;
+  }
+  const verticalOffsetRatio = (padding.bottom - padding.top) / windowHeight;
+  return latitude - (verticalOffsetRatio * latitudeDelta * 0.5);
+}
+
+/**
  * Calcula dinámicamente el edgePadding para MapView.fitToCoordinates
  * considerando la altura no visible del Header y del BottomSheet.
  */
@@ -312,7 +386,7 @@ export function calculateDynamicEdgePadding(params: DynamicPaddingParams): Dynam
     horizontalPadding = DEFAULT_HORIZONTAL_PADDING,
   } = params;
 
-  const top = Math.max(0, headerBottom + topSafety);
+  let top = Math.max(0, headerBottom + topSafety);
 
   let bottomSpaceBlocked: number;
   if (typeof sheetTop === 'number' && Number.isFinite(sheetTop) && sheetTop > 0 && sheetTop < windowHeight) {
@@ -321,7 +395,15 @@ export function calculateDynamicEdgePadding(params: DynamicPaddingParams): Dynam
     bottomSpaceBlocked = bottomNavHeight;
   }
 
-  const bottom = Math.max(0, bottomSpaceBlocked + bottomSafety);
+  let bottom = Math.max(0, bottomSpaceBlocked + bottomSafety);
+
+  // Clamping de seguridad para evitar que la suma de padding vertical consuma toda la pantalla
+  const maxTotalVertical = windowHeight * 0.68;
+  if (top + bottom > maxTotalVertical && windowHeight > 0) {
+    const scale = maxTotalVertical / (top + bottom);
+    top = Math.round(top * scale);
+    bottom = Math.round(bottom * scale);
+  }
 
   return {
     top,

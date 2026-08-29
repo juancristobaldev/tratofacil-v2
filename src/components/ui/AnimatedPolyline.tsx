@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { Polyline } from 'react-native-maps';
 import { TOKENS } from '../../theme';
+import { getAdaptivePolylineWidth } from '../../utils/mapGeometry';
 
 export interface LatLng {
   latitude: number;
@@ -13,14 +14,18 @@ export interface AnimatedPolylineProps {
   coordinates: LatLng[];
   /** Color del trazo principal (default: TOKENS.colors.brand500) */
   strokeColor?: string;
-  /** Ancho del trazo principal en px (default: 4) */
+  /** Ancho del trazo principal en px (si no se especifica y hay latitudeDelta, se calcula adaptativamente) */
   strokeWidth?: number;
   /** Si debe tener patrón de línea punteada estilo ui-kit (default: true) */
   dashed?: boolean;
   /** Color del resplandor/halo exterior (default: rgba(230, 0, 126, 0.22)) */
   glowColor?: string;
-  /** Ancho del halo exterior en px (default: strokeWidth + 4) */
+  /** Ancho del halo exterior en px (si no se especifica, se calcula proporcionalmente) */
   glowWidth?: number;
+  /** Nivel de zoom o delta de latitud actual del mapa para adaptar el ancho a la calle */
+  latitudeDelta?: number;
+  /** Si debe calcular automáticamente el ancho adaptativo según latitudeDelta (default: true) */
+  adaptiveWidth?: boolean;
   /** Duración de la animación en ms (default: 1000) */
   duration?: number;
   /** Si la animación progresiva debe ejecutarse al recibir una nueva ruta (default: true) */
@@ -157,15 +162,27 @@ function easeOutCubic(x: number): number {
 export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
   coordinates,
   strokeColor = TOKENS.colors.brand500,
-  strokeWidth = 4,
+  strokeWidth,
   dashed = true,
   glowColor = 'rgba(230, 0, 126, 0.22)',
   glowWidth,
+  latitudeDelta,
+  adaptiveWidth = true,
   duration = 1000,
   animate = true,
   onAnimationComplete,
   zIndex = 900,
 }) => {
+  const adaptiveDimensions = useMemo(() => {
+    if (adaptiveWidth && latitudeDelta != null) {
+      return getAdaptivePolylineWidth(latitudeDelta);
+    }
+    return null;
+  }, [adaptiveWidth, latitudeDelta]);
+
+  const effectiveStrokeWidth = strokeWidth ?? adaptiveDimensions?.strokeWidth ?? 4;
+  const effectiveGlowWidth = glowWidth ?? adaptiveDimensions?.glowWidth ?? (effectiveStrokeWidth + 4);
+
   const [displayedCoords, setDisplayedCoords] = useState<LatLng[]>(() => {
     if (!coordinates || coordinates.length < 2) return [];
     // Si animate está activo, iniciamos en los primeros puntos para no parpadear
@@ -306,15 +323,13 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
     return null;
   }
 
-  const calculatedGlowWidth = glowWidth ?? strokeWidth + 4;
-
   return (
     <>
       {/* 1. Capa de resplandor / aura exterior (Glow Halo) */}
       <Polyline
         coordinates={displayedCoords}
         strokeColor={glowColor}
-        strokeWidth={calculatedGlowWidth}
+        strokeWidth={effectiveGlowWidth}
         lineDashPattern={[0]}
         zIndex={zIndex}
       />
@@ -322,7 +337,7 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
       <Polyline
         coordinates={displayedCoords}
         strokeColor={strokeColor}
-        strokeWidth={strokeWidth}
+        strokeWidth={effectiveStrokeWidth}
         lineDashPattern={dashed ? [8, 5] : [0]}
         zIndex={zIndex + 1}
       />

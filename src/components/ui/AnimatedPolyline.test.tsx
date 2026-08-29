@@ -203,4 +203,41 @@ describe('AnimatedPolyline Component Lifecycle & Concurrency', () => {
       });
     }).not.toThrow();
   });
+
+  it('computes adaptive strokeWidth and glowWidth when latitudeDelta is provided', () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline
+          coordinates={[p1, p2]}
+          latitudeDelta={0.002}
+          animate={false}
+        />,
+      );
+    });
+
+    const polylines = renderer!.root.children as any[];
+    expect(polylines.length).toBe(2);
+    // Glow layer (first Polyline)
+    expect(polylines[0].props.strokeWidth).toBe(17);
+    // Main stroke layer (second Polyline)
+    expect(polylines[1].props.strokeWidth).toBe(11);
+  });
+
+  it('allows explicit strokeWidth override over adaptive calculations', () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline
+          coordinates={[p1, p2]}
+          latitudeDelta={0.002}
+          strokeWidth={8}
+          animate={false}
+        />,
+      );
+    });
+
+    const polylines = renderer!.root.children as any[];
+    expect(polylines[1].props.strokeWidth).toBe(8);
+  });
 });

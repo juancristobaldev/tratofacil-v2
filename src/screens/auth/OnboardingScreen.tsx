@@ -25,7 +25,7 @@ const SLIDES: Slide[] = [
   {
     id: 2,
     title: 'TratoDirecto y Seguro',
-    description: 'Conversa en tiempo real con los proveedores, recibe cotizaciones formales y realiza tus pagos de forma segura.',
+    description: 'Conversa en tiempo real con los proveedores, recibe ofertas formales y realiza tus pagos de forma segura.',
     icon: 'MessageCircle',
   },
   {

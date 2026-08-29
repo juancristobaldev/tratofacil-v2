@@ -450,7 +450,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       } else if (payload.status === 'ACCEPTED' && currentRole === 'provider') {
         notifyRef.current({ title: 'Servicio Aceptado', message: 'El cliente ha aceptado el trato.', type: 'success' });
       } else if (payload.status === 'NEGOTIATING' && currentRole === 'client') {
-        notifyRef.current({ title: 'Cotización Recibida', message: 'El profesional ha enviado una cotización.', type: 'info' });
+        notifyRef.current({ title: 'Oferta Recibida', message: 'El profesional ha enviado una oferta.', type: 'info' });
       }
 
       _setLocalActiveOrder((prev: any) => {
@@ -581,6 +581,31 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     socket.on('provider:connect-requested', (payload) => {
       logSocketIn('provider:connect-requested', payload);
       refetch();
+    });
+
+    socket.on('review:received', (payload: {
+      id: number;
+      rating: number;
+      comment?: string | null;
+      orderRealtimeId: number;
+      type: 'CLIENT_REVIEW' | 'PROVIDER_REVIEW';
+      authorName?: string;
+      createdAt: string;
+    }) => {
+      logSocketIn('review:received', payload);
+      if (notifyRef.current) {
+        const stars = '★'.repeat(Math.max(1, Math.min(5, payload.rating || 5)));
+        notifyRef.current({
+          title: 'Nueva reseña recibida',
+          message: `${payload.authorName ? `${payload.authorName}: ` : ''}${stars} (${payload.rating}/5)${payload.comment ? ` - "${payload.comment}"` : ''}`,
+          type: 'success',
+        });
+      }
+      refetch();
+      refetchClientOrders();
+      try {
+        apolloClient.refetchQueries({ include: ['Me', 'GetMyRealtimeOrdersAsClient', 'GetMyRealtimeOrdersAsProvider'] });
+      } catch {}
     });
 
     const appStateHandler = (nextAppState: AppStateStatus) => {

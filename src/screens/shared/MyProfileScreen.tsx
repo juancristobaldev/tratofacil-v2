@@ -1,10 +1,21 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Text, Alert, RefreshControl, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Input, Button, Badge, SettingsMenuCard, SegmentedTabs } from '../../components';
+import {
+  Icon,
+  Avatar,
+  Input,
+  Button,
+  Badge,
+  SettingsMenuCard,
+  SegmentedTabs,
+  EmptyState,
+  ReviewCard,
+  RatingDistribution,
+} from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../hooks/useProfile';
 import { useRefresh } from '../../context/RefreshContext';
@@ -68,6 +79,58 @@ export const MyProfileScreen: React.FC = () => {
 
   const providerData = user?.provider;
   const identity = user?.identitys?.[0]?.status;
+
+  // Reviews metrics for client
+  const clientReviews = useMemo(() => user?.reviewsReceived || [], [user?.reviewsReceived]);
+  const clientReviewCount = clientReviews.length;
+  const clientAvgRating = useMemo(() => {
+    if (!clientReviewCount) return 5.0;
+    const sum = clientReviews.reduce((s: number, r: any) => s + (r.rating || 5), 0);
+    return sum / clientReviewCount;
+  }, [clientReviews, clientReviewCount]);
+
+  // Reviews metrics for provider
+  const providerAllReviews = useMemo(() => {
+    const p = user?.provider;
+    if (!p) return [];
+    const realtimeRevs = (p.realtimeReviews || []).map((r: any) => ({
+      id: `rt-${r.id}`,
+      userName: r.client?.displayName || 'Cliente',
+      rating: r.rating,
+      comment: r.comment || 'Servicio en tiempo real finalizado.',
+      date: r.createdAt
+        ? new Date(r.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' })
+        : 'Reciente',
+      isVerifiedJob: true,
+    }));
+    const standardRevs = (p.reviews || []).map((r: any) => ({
+      id: `p-${r.id}`,
+      userName: r.client?.displayName || 'Cliente',
+      rating: r.rating,
+      comment: r.comment || 'Excelente atención.',
+      date: r.createdAt
+        ? new Date(r.createdAt).toLocaleDateString('es-CL', { year: 'numeric', month: 'short', day: 'numeric' })
+        : 'Reciente',
+      isVerifiedJob: true,
+    }));
+    return [...realtimeRevs, ...standardRevs];
+  }, [user?.provider]);
+
+  const providerReviewCount = providerAllReviews.length;
+  const { providerAvgRating, providerDistribution } = useMemo(() => {
+    const dist = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    if (!providerReviewCount) return { providerAvgRating: 5.0, providerDistribution: dist };
+    let sum = 0;
+    providerAllReviews.forEach((r) => {
+      sum += r.rating;
+      const star = Math.min(Math.max(Math.round(r.rating || 5), 1), 5) as 1 | 2 | 3 | 4 | 5;
+      dist[star] = (dist[star] || 0) + 1;
+    });
+    return {
+      providerAvgRating: sum / providerReviewCount,
+      providerDistribution: dist,
+    };
+  }, [providerAllReviews, providerReviewCount]);
 
   const handleContactSave = async () => {
     if (!user) return;
@@ -184,9 +247,10 @@ export const MyProfileScreen: React.FC = () => {
 
   const tabs = [
     { id: 0, label: 'Mi Empresa', icon: 'Store' },
-    { id: 1, label: 'Banco', icon: 'Landmark' },
-    { id: 2, label: 'Certificados', icon: 'FileText' },
-    { id: 3, label: 'Contacto', icon: 'Phone' },
+    { id: 1, label: 'Reseñas', icon: 'Star' },
+    { id: 2, label: 'Banco', icon: 'Landmark' },
+    { id: 3, label: 'Certificados', icon: 'FileText' },
+    { id: 4, label: 'Contacto', icon: 'Phone' },
   ];
 
   return (
@@ -215,6 +279,32 @@ export const MyProfileScreen: React.FC = () => {
               <Text style={styles.heroTitle} numberOfLines={1}>{role === 'provider' ? (providerName || name) : name}</Text>
               <View style={styles.heroBadges}>
                 {statusBadge}
+
+                {/* Rating Badge */}
+                {role === 'provider' ? (
+                  <TouchableOpacity
+                    style={[styles.statusPill, styles.ratingPill]}
+                    onPress={() => setProviderTab(1)}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
+                    <Text style={styles.ratingPillText}>
+                      {providerAvgRating.toFixed(1)} ({providerReviewCount} {providerReviewCount === 1 ? 'reseña' : 'reseñas'})
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.statusPill, styles.ratingPill]}
+                    onPress={() => navigation.navigate('ReviewsList', { role: 'client' })}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="Star" size={13} color={TOKENS.colors.starActive} />
+                    <Text style={styles.ratingPillText}>
+                      {clientAvgRating.toFixed(1)} ({clientReviewCount} {clientReviewCount === 1 ? 'reseña' : 'reseñas'})
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
                 {role === 'provider' && !!providerLocation && (
                   <View style={styles.locationPill}>
                     <Icon name="MapPin" size={12} color={TOKENS.colors.textSubtle} />
@@ -232,6 +322,16 @@ export const MyProfileScreen: React.FC = () => {
             {/* Quick Navigation Card matching ui-kit.html */}
             <SettingsMenuCard
               items={[
+                {
+                  icon: 'Star',
+                  iconColor: '#ca8a04',
+                  iconBgColor: '#fefce8',
+                  title: 'Mis Reseñas de Servicios',
+                  subtitle: clientReviewCount > 0 ? `${clientReviewCount} opiniones de profesionales` : 'Ver opiniones y calificaciones',
+                  badge: clientReviewCount > 0 ? `${clientAvgRating.toFixed(1)} ★` : undefined,
+                  badgeTone: 'warning',
+                  onPress: () => navigation.navigate('ReviewsList', { role: 'client' }),
+                },
                 {
                   icon: 'ShieldCheck',
                   iconColor: '#2563eb',
@@ -312,6 +412,48 @@ export const MyProfileScreen: React.FC = () => {
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
+                      <Icon name="Star" size={20} color={TOKENS.colors.starActive} />
+                    </View>
+                    <View style={styles.cardHeaderText}>
+                      <Text style={styles.cardTitle}>Mis Reseñas y Calificaciones</Text>
+                      <Text style={styles.cardSubtitle}>Opiniones recibidas de tus clientes en tiempo real.</Text>
+                    </View>
+                  </View>
+                  <View style={styles.formSection}>
+                    {providerReviewCount > 0 ? (
+                      <>
+                        <RatingDistribution
+                          averageRating={providerAvgRating}
+                          totalReviews={providerReviewCount}
+                          distribution={providerDistribution}
+                          style={{ marginBottom: TOKENS.spacing.md }}
+                        />
+                        {providerAllReviews.map((rev) => (
+                          <ReviewCard
+                            key={rev.id}
+                            userName={rev.userName}
+                            rating={rev.rating}
+                            comment={rev.comment || 'Excelente atención.'}
+                            date={rev.date}
+                            isVerifiedJob={rev.isVerifiedJob}
+                          />
+                        ))}
+                      </>
+                    ) : (
+                      <EmptyState
+                        icon="MessageSquare"
+                        title="Sin reseñas aún"
+                        description="Tus calificaciones en órdenes en tiempo real aparecerán aquí a medida que completes servicios."
+                      />
+                    )}
+                  </View>
+                </>
+              )}
+
+              {providerTab === 2 && (
+                <>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.cardIconBox}>
                       <Icon name="Landmark" size={20} color={TOKENS.colors.brand500} />
                     </View>
                     <View style={styles.cardHeaderText}>
@@ -329,7 +471,7 @@ export const MyProfileScreen: React.FC = () => {
                 </>
               )}
 
-              {providerTab === 2 && (
+              {providerTab === 3 && (
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
@@ -360,7 +502,7 @@ export const MyProfileScreen: React.FC = () => {
                 </>
               )}
 
-              {providerTab === 3 && (
+              {providerTab === 4 && (
                 <>
                   <View style={styles.cardHeader}>
                     <View style={styles.cardIconBox}>
@@ -474,6 +616,8 @@ const styles = StyleSheet.create({
   statusPendingText: { fontSize: 11, fontWeight: '700', color: '#b45309' },
   statusNeutral: { backgroundColor: TOKENS.colors.surface100, borderColor: TOKENS.colors.surface200 },
   statusNeutralText: { fontSize: 11, fontWeight: '700', color: TOKENS.colors.textSubtle },
+  ratingPill: { backgroundColor: '#fefce8', borderColor: '#fef08a' },
+  ratingPillText: { fontSize: 11, fontWeight: '700', color: '#a16207' },
 
   locationPill: {
     flexDirection: 'row',

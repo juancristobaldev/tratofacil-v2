@@ -7,6 +7,7 @@ import {
   ViewStyle,
   Animated,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { TOKENS, MOTION } from '../../theme';
 import { IconButton } from './IconButton';
 
@@ -55,36 +56,41 @@ export const Modal: React.FC<ModalProps> = ({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-        <Animated.View
-          style={[
-            styles.dialog,
-            contentStyle,
-            {
-              opacity,
-              transform: [{ scale }],
-            },
-          ]}
-        >
-          {showCloseButton && (
-            <IconButton
-              icon="X"
-              size="sm"
-              variant="surface"
-              accessibilityLabel="Cerrar modal"
-              onPress={onClose}
-              style={styles.closeBtn}
-            />
-          )}
-          {children}
-        </Animated.View>
-      </View>
+      <GestureHandlerRootView style={styles.gestureRoot}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+          <Animated.View
+            style={[
+              styles.dialog,
+              contentStyle,
+              {
+                opacity,
+                transform: [{ scale }],
+              },
+            ]}
+          >
+            {showCloseButton && (
+              <IconButton
+                icon="X"
+                size="sm"
+                variant="surface"
+                accessibilityLabel="Cerrar modal"
+                onPress={onClose}
+                style={styles.closeBtn}
+              />
+            )}
+            {children}
+          </Animated.View>
+        </View>
+      </GestureHandlerRootView>
     </RNModal>
   );
 };
 
 const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
     backgroundColor: TOKENS.colors.backdrop,

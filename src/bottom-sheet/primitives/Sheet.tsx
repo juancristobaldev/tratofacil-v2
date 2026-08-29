@@ -7,7 +7,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import type { SheetModalRef } from '../core/bottomSheet.types';
-import { getBottomNavHeight } from '../../components/layout/bottomNavMetrics';
+import { getBottomSheetGeometry } from '../core/bottomSheetGeometry';
+import { resolveSheetInitialIndex, resolveSheetSnapPoints } from '../core/bottomSheetSnapPoints';
 
 interface SheetProps {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ interface SheetProps {
   initialIndex?: number;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
+  contentMode?: 'view' | 'scroll' | 'list' | 'mixed';
   keyboardBehavior?: 'interactive' | 'extend' | 'fillParent';
   keyboardBlurBehavior?: 'none' | 'restore';
   onDismiss?: () => void;
@@ -33,6 +35,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
     initialIndex: providedInitialIndex,
     enableDynamicSizing = true,
     maxDynamicContentSize,
+    contentMode = 'view',
     keyboardBehavior = 'interactive',
     keyboardBlurBehavior = 'restore',
     onDismiss,
@@ -43,25 +46,24 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
     const insets = useSafeAreaInsets();
     const { height: windowHeight } = useWindowDimensions();
 
-    const NAVBAR_HEIGHT = getBottomNavHeight(insets.bottom);
-    const HEADER_HEIGHT = 60 + insets.top;
-    const TOP_GAP = 16;
-    const computedMaxDynamicContentSize = Math.max(
-      240,
-      windowHeight - HEADER_HEIGHT - TOP_GAP - NAVBAR_HEIGHT,
-    );
+    const geometry = getBottomSheetGeometry({
+      windowHeight,
+      safeTopInset: insets.top,
+      safeBottomInset: insets.bottom,
+    });
+    const computedMaxDynamicContentSize = geometry.maxDynamicContentSize;
 
-    const activeSnapPoints = useMemo(() => {
-      if (snapPoints && snapPoints.length > 0) {
-        return snapPoints.map((point) => {
-          if (point === 'MAX') return computedMaxDynamicContentSize;
-          return point;
-        });
-      }
-      return [88, computedMaxDynamicContentSize];
-    }, [computedMaxDynamicContentSize, snapPoints]);
+    const activeSnapPoints = useMemo(() => resolveSheetSnapPoints({
+      snapPoints,
+      enableDynamicSizing,
+      maxDynamicContentSize: computedMaxDynamicContentSize,
+    }), [computedMaxDynamicContentSize, enableDynamicSizing, snapPoints]);
 
-    const initialIndex = providedInitialIndex ?? (activeSnapPoints.length > 1 ? 1 : 0);
+    const initialIndex = resolveSheetInitialIndex({
+      requestedIndex: providedInitialIndex,
+      resolvedSnapPoints: activeSnapPoints,
+      enableDynamicSizing,
+    });
 
     if (__DEV__) {
       console.log('[BS:SHEET_CONFIG]', {
@@ -69,20 +71,20 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
         enableDynamicSizing,
         snapPoints: activeSnapPoints ?? 'DYNAMIC_UNSET',
         maxDynamicContentSize: maxDynamicContentSize ?? computedMaxDynamicContentSize,
-        topInset: HEADER_HEIGHT,
-        bottomInset: NAVBAR_HEIGHT,
+        topInset: insets.top,
+        bottomInset: geometry.navbarHeight,
         windowHeight,
         index: initialIndex,
       });
       console.log('[BS:GEOMETRY]', {
         key: sheetKey ?? null,
         windowHeight,
-        headerBottom: HEADER_HEIGHT,
-        bottomNavTop: windowHeight - NAVBAR_HEIGHT,
-        bottomNavHeight: NAVBAR_HEIGHT,
-        topGap: TOP_GAP,
+        encuadreBottom: geometry.encuadreBottomOffset,
+        topClearance: geometry.topClearance,
+        bottomNavTop: geometry.bottomNavTop,
+        bottomNavHeight: geometry.navbarHeight,
         computedMaxDynamicContentSize,
-        availableHeight: windowHeight - HEADER_HEIGHT - TOP_GAP - NAVBAR_HEIGHT,
+        availableHeight: geometry.availableHeight,
       });
     }
 
@@ -114,6 +116,8 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
         maxDynamicContentSize={maxDynamicContentSize ?? computedMaxDynamicContentSize}
         enableHandlePanningGesture={true}
         enablePanDownToClose={false}
+        enableBlurKeyboardOnGesture={true}
+        android_keyboardInputMode="adjustResize"
         onChange={handleSheetChanges}
         onAnimate={(fromIndex, toIndex) => {
           if (__DEV__) console.log('[BS:ANIMATE]', { fromIndex, toIndex });
@@ -126,33 +130,38 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
         containerStyle={styles.container}
         backgroundStyle={styles.background}
         handleIndicatorStyle={styles.indicator}
-        bottomInset={NAVBAR_HEIGHT}
-        topInset={HEADER_HEIGHT}
+        bottomInset={geometry.navbarHeight}
+        topInset={insets.top}
         keyboardBehavior={keyboardBehavior}
         keyboardBlurBehavior={keyboardBlurBehavior}
       >
-        <BottomSheetView
-          onLayout={(event) => {
-            const { width, height } = event.nativeEvent.layout;
-            onContentHeightChange?.(height);
-            if (__DEV__) {
-              const contentBottom = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
-              console.log('[BS:CONTENT_LAYOUT]', { width, height });
-              console.log('[BS:SAFE_CONTENT]', {
-                key: sheetKey ?? null,
-                contentHeight: height,
-                animatedTop: contentBottom ?? null,
-                safeBottom: windowHeight - NAVBAR_HEIGHT,
-                overlapPx:
-                  typeof contentBottom === 'number'
-                    ? contentBottom + HANDLE_CHROME_ESTIMATE + height - (windowHeight - NAVBAR_HEIGHT)
-                    : null,
-              });
-            }
-          }}
-        >
-          {children}
-        </BottomSheetView>
+        {contentMode === 'view' ? (
+          <BottomSheetView
+            style={{ maxHeight: maxDynamicContentSize ?? computedMaxDynamicContentSize }}
+            onLayout={(event) => {
+              const { width, height } = event.nativeEvent.layout;
+              onContentHeightChange?.(height);
+              if (__DEV__) {
+                const contentBottom = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
+                console.log('[BS:CONTENT_LAYOUT]', { width, height });
+                console.log('[BS:SAFE_CONTENT]', {
+                  key: sheetKey ?? null,
+                  contentHeight: height,
+                  animatedTop: contentBottom ?? null,
+                  safeBottom: geometry.bottomNavTop,
+                  overlapPx:
+                    typeof contentBottom === 'number'
+                      ? contentBottom + HANDLE_CHROME_ESTIMATE + height - geometry.bottomNavTop
+                      : null,
+                });
+              }
+            }}
+          >
+            {children}
+          </BottomSheetView>
+        ) : (
+          children
+        )}
       </BottomSheetModal>
     );
   }

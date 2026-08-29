@@ -192,7 +192,16 @@ jest.mock('../primitives', () => {
     BottomSheetTextInput: ({ ...props }: any) => React.createElement(TextInput, props),
     Sheet: View,
     SheetContent: View,
-    SheetHeader: View,
+    SheetHeader: ({ title, subtitle, trailing }: any) => {
+      const { Text } = require('react-native');
+      return React.createElement(
+        View,
+        null,
+        title ? React.createElement(Text, null, title) : null,
+        subtitle ? React.createElement(Text, null, subtitle) : null,
+        trailing || null,
+      );
+    },
   };
 });
 
@@ -213,7 +222,16 @@ jest.mock('../../bottom-sheet/primitives', () => {
     BottomSheetTextInput: ({ ...props }: any) => React.createElement(TextInput, props),
     Sheet: View,
     SheetContent: View,
-    SheetHeader: View,
+    SheetHeader: ({ title, subtitle, trailing }: any) => {
+      const { Text } = require('react-native');
+      return React.createElement(
+        View,
+        null,
+        title ? React.createElement(Text, null, title) : null,
+        subtitle ? React.createElement(Text, null, subtitle) : null,
+        trailing || null,
+      );
+    },
   };
 });
 
@@ -250,12 +268,12 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       );
 
       expect(view.getByText('Camila Silva')).toBeTruthy();
-      expect(view.getByText('Cotización del servicio')).toBeTruthy();
+      expect(view.getByText('Oferta del servicio')).toBeTruthy();
       expect(view.getByText('Horas de servicio')).toBeTruthy();
       expect(view.getByText('Km de transporte')).toBeTruthy();
       expect(view.getByText('Detalles del problema')).toBeTruthy();
       expect(view.getByText('Fuga bajo lavaplatos')).toBeTruthy();
-      expect(view.getByText('Enviar cotización')).toBeTruthy();
+      expect(view.getByText('Enviar oferta')).toBeTruthy();
       expect(view.getByText('Rechazar solicitud')).toBeTruthy();
     });
 
@@ -274,9 +292,9 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       );
 
       expect(view.getByText('Camila Silva')).toBeTruthy();
-      expect(view.getByText('Solicitud de cotización')).toBeTruthy();
+      expect(view.getByText('Solicitud de oferta')).toBeTruthy();
       expect(view.getByText('$20.000')).toBeTruthy();
-      expect(view.getByText('Enviar cotización')).toBeTruthy();
+      expect(view.getByText('Enviar oferta')).toBeTruthy();
       // Expanded-only elements are NOT in compact mode
       expect(view.queryByText('Horas de servicio')).toBeNull();
       expect(view.queryByText('Km de transporte')).toBeNull();
@@ -300,7 +318,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       );
 
       // 2. Adjust quote hours: 1h -> 2h (+ $20.000)
-      await fireEvent.press(view.getByLabelText('Aumentar horas de cotización'));
+      await fireEvent.press(view.getByLabelText('Aumentar horas de oferta'));
 
       // Adjust transport: 0km -> 1km (+ $1.000)
       await fireEvent.press(view.getByLabelText('Aumentar transporte en kilómetros'));
@@ -324,7 +342,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
 
       // Compact view displays the adjusted total!
       expect(view.getByText('$41.000')).toBeTruthy();
-      expect(view.getByText('Solicitud de cotización')).toBeTruthy();
+      expect(view.getByText('Solicitud de oferta')).toBeTruthy();
 
       // 4. User drags up -> Sheet becomes OPEN again
       await view.rerender(
@@ -360,7 +378,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
         </BottomSheetProvider>,
       );
 
-      const sendBtn = view.getByText('Enviar cotización');
+      const sendBtn = view.getByText('Enviar oferta');
       fireEvent.press(sendBtn);
 
       expect(mockQuoteOrder).toHaveBeenCalledWith({
@@ -410,9 +428,9 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       );
 
       expect(view.getByText('Roberto Gasfiter')).toBeTruthy();
-      expect(view.getByText('Cotización del profesional')).toBeTruthy();
+      expect(view.getByText('Oferta del profesional')).toBeTruthy();
       expect(view.getByText('Tu contraoferta')).toBeTruthy();
-      expect(view.getAllByText('Pagar con Flow / Webpay').length).toBeGreaterThanOrEqual(1);
+      expect(view.getByText('Aceptar oferta')).toBeTruthy();
     });
 
     it('renders compact summary and payment CTA when COLLAPSED in QUOTED state', async () => {
@@ -430,12 +448,13 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       );
 
       expect(view.getByText('Roberto Gasfiter')).toBeTruthy();
-      expect(view.getByText('Cotización recibida')).toBeTruthy();
+      expect(view.getByText('Oferta recibida')).toBeTruthy();
       expect(view.getByText('$35.000')).toBeTruthy();
-      expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
+      expect(view.getByText('Aceptar oferta')).toBeTruthy();
     });
 
-    it('triggers identical initPayment when pressing pay CTA in compact mode', async () => {
+    it('triggers expansion and transitions to payment step when pressing Aceptar oferta in compact mode', async () => {
+      const mockSetIndex = jest.fn();
       const view = await render(
         <BottomSheetProvider>
           <FocusClientPanelContent
@@ -443,16 +462,16 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
             requestId={2}
             payload={{ orderId: 701 }}
             dismiss={jest.fn()}
-            setIndex={jest.fn()}
+            setIndex={mockSetIndex}
             isCollapsed={true}
           />
         </BottomSheetProvider>,
       );
 
-      const payBtn = view.getByText('Pagar con Flow / Webpay');
-      fireEvent.press(payBtn);
+      const acceptBtn = view.getByText('Aceptar oferta');
+      fireEvent.press(acceptBtn);
 
-      expect(mockInitPayment).toHaveBeenCalledWith(701, expect.stringContaining('type=realtime'));
+      expect(mockSetIndex).toHaveBeenCalledWith(1);
     });
   });
 
@@ -465,7 +484,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       { id: 10, name: 'Pedro Electricista', rating: 5.0, reviewsCount: 8, serviceName: 'Electricidad' },
     ];
 
-    it('renders full carousel when OPEN', async () => {
+    it('renders full card with all details and CTA cleanly as a low-height content-driven sheet', async () => {
       const view = await render(
         <BottomSheetProvider>
           <ProviderPreviewPanelContent
@@ -481,24 +500,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
 
       expect(view.getByText('Pedro Electricista')).toBeTruthy();
       expect(view.getAllByLabelText('Ver perfil del profesional').length).toBeGreaterThan(0);
-    });
-
-    it('renders compact single-row card with Ver perfil CTA when COLLAPSED', async () => {
-      const view = await render(
-        <BottomSheetProvider>
-          <ProviderPreviewPanelContent
-            sheetKey="provider_preview"
-            requestId={3}
-            payload={{ providers: mockProviders, selectedIndex: 0 }}
-            dismiss={jest.fn()}
-            setIndex={jest.fn()}
-            isCollapsed={true}
-          />
-        </BottomSheetProvider>,
-      );
-
-      expect(view.getByText('Pedro Electricista')).toBeTruthy();
-      expect(view.getByText('Ver perfil')).toBeTruthy();
+      expect(view.getByLabelText('Cancelar selección de servicio')).toBeTruthy();
     });
   });
 
@@ -507,7 +509,7 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       mockRole = 'client';
     });
 
-    it('renders full search & promo when OPEN', async () => {
+    it('renders full promos & filter when OPEN', async () => {
       const view = await render(
         <BottomSheetProvider>
           <CategoriesPanelContent
@@ -527,7 +529,6 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
         </BottomSheetProvider>,
       );
 
-      expect(view.getByPlaceholderText('¿Qué servicio necesitas?')).toBeTruthy();
       expect(view.getByText('Gasfitería Express')).toBeTruthy();
       expect(view.getByText('Limpiar')).toBeTruthy();
     });

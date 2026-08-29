@@ -46,6 +46,15 @@ export const ME_QUERY = gql`
       reviewsReceived {
         id
         rating
+        comment
+        createdAt
+        providerId
+        orderRealtimeId
+        provider {
+          id
+          name
+          logoImage { id cdnUrl }
+        }
       }
       provider {
         id
@@ -89,11 +98,22 @@ export const ME_QUERY = gql`
           rating
           comment
           clientId
+          orderRealtimeId
           createdAt
+          client {
+            id
+            displayName
+          }
         }
         reviews {
           id
           rating
+          comment
+          createdAt
+          client {
+            id
+            displayName
+          }
         }
       }
       wallet {

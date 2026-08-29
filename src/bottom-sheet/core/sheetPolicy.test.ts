@@ -27,14 +27,14 @@ describe('Domain: BottomSheet Surface & Map Policy (Flujo 4 & 20)', () => {
       },
       {
         description:
-          'CRÍTICO (Flujo 4): Cliente en PENDING esperando cotización -> NO_SHEET_BY_DESIGN',
+          'CRÍTICO (Flujo 4): Cliente en PENDING esperando oferta -> NO_SHEET_BY_DESIGN',
         role: 'client',
         clientOrder: { id: 10, status: 'PENDING', provider: { name: 'Mario' } },
         expected: { kind: 'NO_SHEET_BY_DESIGN', reason: 'WAITING_PROVIDER_QUOTE' },
       },
       {
         description:
-          'Cliente con orden QUOTED -> muestra focus_client para evaluar cotización',
+          'Cliente con orden QUOTED -> muestra focus_client para evaluar oferta',
         role: 'client',
         clientOrder: { id: 10, status: 'QUOTED', provider: { name: 'Mario' } },
         expected: {
@@ -65,7 +65,7 @@ describe('Domain: BottomSheet Surface & Map Policy (Flujo 4 & 20)', () => {
       },
       {
         description:
-          'Proveedor con orden PENDING -> muestra focus_provider para responder/cotizar',
+          'Proveedor con orden PENDING -> muestra focus_provider para responder/ofertar',
         role: 'provider',
         providerOrder: { id: 10, status: 'PENDING' },
         expected: {

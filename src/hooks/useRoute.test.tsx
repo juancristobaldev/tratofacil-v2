@@ -63,6 +63,10 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     expect(hookValue.routeCoords).toEqual([origin, dest]);
     expect(hookValue.routeDistance).toBe(1000);
     expect(hookValue.routeDuration).toBe(120);
+    expect(hookValue.routeSemantic).toBe('FULL_ROUTE');
+    expect(hookValue.routeOrigin).toEqual(origin);
+    expect(hookValue.routeDestination).toEqual(dest);
+    expect(hookValue.routeCalculatedAt).toBe(mockRoute.calculatedAt);
   });
 
   it('should ignore GPS jitter (< 20m) and not fire unnecessary requests', async () => {
@@ -146,6 +150,10 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     // Critical: routeCoords was NOT destroyed to []
     expect(hookValue.routeCoords).toEqual([origin1, dest]);
     expect(hookValue.status).toBe('error');
+    expect(hookValue.routeSemantic).toBe('FULL_ROUTE');
+    expect(hookValue.routeOrigin).toEqual(origin1);
+    expect(hookValue.routeDestination).toEqual(dest);
+    expect(hookValue.routeCalculatedAt).toBe(mockRoute1.calculatedAt);
   });
 
   it('should atomically swap to new route when refresh succeeds', async () => {
@@ -203,6 +211,9 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     expect(hookValue.routeDistance).toBe(750);
     expect(hookValue.routeDuration).toBe(90);
     expect(hookValue.status).toBe('ready');
+    expect(hookValue.routeOrigin).toEqual(origin2);
+    expect(hookValue.routeDestination).toEqual(dest);
+    expect(hookValue.routeCalculatedAt).toBe(mockRoute2.calculatedAt);
   });
 
   it('should handle race conditions with latest-wins (Request A cannot overwrite newer Request B)', async () => {
@@ -358,5 +369,9 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
 
     expect(hookValue.routeCoords).toEqual([]);
     expect(hookValue.status).toBe('idle');
+    expect(hookValue.routeSemantic).toBe('FULL_ROUTE');
+    expect(hookValue.routeOrigin).toBeNull();
+    expect(hookValue.routeDestination).toBeNull();
+    expect(hookValue.routeCalculatedAt).toBeNull();
   });
 });

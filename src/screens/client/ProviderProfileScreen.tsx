@@ -8,6 +8,8 @@ import {
   TextInput,
   TouchableOpacity,
   Dimensions,
+  Image,
+  Modal,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +38,7 @@ export const ProviderProfileScreen: React.FC = () => {
   const [description, setDescription] = useState('¡Necesito tu servicio ahora!');
   const [submitting, setSubmitting] = useState(false);
   const [selectedServiceIndex, setSelectedServiceIndex] = useState(0);
+  const [activePhotoModalIndex, setActivePhotoModalIndex] = useState<number | null>(null);
 
   const {
     publicProfile: profileData,
@@ -73,6 +76,22 @@ export const ProviderProfileScreen: React.FC = () => {
       // Solo incluir certificados con verified === true (sin fileImage requerido)
       const verifiedCertificates = (p.certificates || []).filter((c: any) => c.verified === true);
 
+      // Galería de 5 fotos del proveedor (trabajos realizados / portafolio)
+      const rawGallery = p.portfolio || p.gallery || p.workImages || [];
+      const defaultPhotos = [
+        'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=800&q=80',
+        'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
+      ];
+      const gallery = rawGallery.length > 0
+        ? rawGallery.slice(0, 5).map((img: any) => getImageUrl(img?.cdnUrl || img?.url || img))
+        : defaultPhotos;
+
+      // Monto acordado/aceptado si proviene de orden previa o parámetro
+      const acceptedPrice = route.params?.acceptedPrice || p.acceptedPrice || p.acceptedQuotePrice || null;
+
       return {
         id: String(p.id),
         name: p.name,
@@ -84,6 +103,7 @@ export const ProviderProfileScreen: React.FC = () => {
         isRealtimeActive: p.isRealtimeActive || false,
         description: p.bio || 'Profesional verificado en TratoFácil con experiencia en el rubro.',
         pricePerHour: firstSp?.price || 0,
+        acceptedPrice,
         serviceProviderId: firstSp?.id,
         city: p.location || 'Santiago',
         serviceName: firstSp?.service?.name || firstSp?.description || 'Servicio Profesional',
@@ -91,6 +111,7 @@ export const ProviderProfileScreen: React.FC = () => {
         allServices: p.services || [],
         completedOrdersCount: p.completedOrdersCount || Math.max(allReviews.length * 3, 24),
         certificates: verifiedCertificates,
+        gallery,
         distribution,
         reviews: allReviews.map((r: any) => ({
           id: String(r.id),
@@ -102,7 +123,7 @@ export const ProviderProfileScreen: React.FC = () => {
       };
     }
     return null;
-  }, [profileData, selectedServiceIndex]);
+  }, [profileData, selectedServiceIndex, route.params?.acceptedPrice]);
 
   const handleBooking = async () => {
     if (!provider) return;
@@ -130,7 +151,7 @@ export const ProviderProfileScreen: React.FC = () => {
         lat: location.coords.latitude,
         lng: location.coords.longitude,
       });
-      showNotification({ title: 'Solicitud enviada', message: `Espera la cotización de ${provider.name}`, type: 'success' });
+      showNotification({ title: 'Solicitud enviada', message: `Espera la oferta de ${provider.name}`, type: 'success' });
       navigation.navigate('MainApp', { screen: 'Home' });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo enviar la solicitud.', type: 'error' });
@@ -190,16 +211,13 @@ export const ProviderProfileScreen: React.FC = () => {
             </Text>
 
             {/* Badges */}
-            <View style={styles.badgesRow}>
-              <View style={styles.topProBadge}>
-                <Text style={styles.topProBadgeText}>Top Pro</Text>
-              </View>
-              {provider.verified && (
+            {provider.verified && (
+              <View style={styles.badgesRow}>
                 <View style={styles.verifiedBadge}>
                   <Text style={styles.verifiedBadgeText}>Verificado</Text>
                 </View>
-              )}
-            </View>
+              </View>
+            )}
 
             {/* Stats Resumen */}
             <StatsOverviewCard
@@ -240,6 +258,24 @@ export const ProviderProfileScreen: React.FC = () => {
         {/* TAB 1: SERVICIOS */}
         {activeTab === 'servicios' && (
           <View style={styles.tabContentSection}>
+            {/* Monto Aceptado / Tarifa Acordada (Punto 10) */}
+            {provider.acceptedPrice != null && (
+              <View style={styles.acceptedPriceCard}>
+                <View style={styles.acceptedPriceIconCircle}>
+                  <Icon name="CheckCircle" size={20} color={TOKENS.colors.statusSuccess} />
+                </View>
+                <View style={styles.acceptedPriceCol}>
+                  <Text style={styles.acceptedPriceLabel}>Monto Aceptado por el Profesional</Text>
+                  <Text style={styles.acceptedPriceVal}>
+                    ${Number(provider.acceptedPrice).toLocaleString('es-CL')}
+                  </Text>
+                </View>
+                <View style={styles.acceptedPill}>
+                  <Text style={styles.acceptedPillText}>Acordado</Text>
+                </View>
+              </View>
+            )}
+
             <Text style={styles.sectionHeaderTitle}>Servicio de interés</Text>
 
             {/* Servicio Seleccionado (Destacado) */}
@@ -250,6 +286,8 @@ export const ProviderProfileScreen: React.FC = () => {
               <Text style={styles.selectedServiceTitle}>{provider.serviceName}</Text>
               <Text style={styles.selectedServiceDesc}>
                 {provider.allServices[selectedServiceIndex]?.description ||
+                  provider.allServices[selectedServiceIndex]?.service?.description ||
+                  provider.description ||
                   'Atención garantizada, diagnóstico en terreno y materiales incluidos según acuerdo.'}
               </Text>
               <View style={styles.selectedServicePriceRow}>
@@ -306,13 +344,43 @@ export const ProviderProfileScreen: React.FC = () => {
           </View>
         )}
 
-        {/* TAB 2: SOBRE MÍ (PERFIL Y CERTIFICADOS) */}
+        {/* TAB 2: SOBRE MÍ (PERFIL, GALERÍA DE 5 FOTOS Y CERTIFICADOS) */}
         {activeTab === 'sobre_mi' && (
           <View style={styles.tabContentSection}>
             {/* Biografía */}
             <View style={styles.aboutCard}>
               <Text style={styles.aboutTitle}>Acerca del profesional</Text>
               <Text style={styles.aboutText}>{provider.description}</Text>
+            </View>
+
+            {/* Galería de 5 Fotos (Punto 14) */}
+            <View style={styles.galleryCard}>
+              <View style={styles.galleryHeaderRow}>
+                <Text style={styles.sectionHeaderTitle}>Galería de Trabajos</Text>
+                <View style={styles.galleryCountBadge}>
+                  <Icon name="Camera" size={13} color={TOKENS.colors.brand700} />
+                  <Text style={styles.galleryCountText}>{provider.gallery.length} fotos</Text>
+                </View>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.galleryScroll}
+              >
+                {provider.gallery.map((imgUri: string, idx: number) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.galleryThumbCard}
+                    activeOpacity={0.85}
+                    onPress={() => setActivePhotoModalIndex(idx)}
+                  >
+                    <Image source={{ uri: imgUri }} style={styles.galleryThumbImg} />
+                    <View style={styles.galleryThumbBadge}>
+                      <Text style={styles.galleryThumbBadgeText}>{idx + 1}/5</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
             {/* Validaciones de Confianza y Certificados */}
@@ -394,36 +462,71 @@ export const ProviderProfileScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* CTA INFERIOR FIJO */}
+      {/* CTA INFERIOR FIJO - Foco Máximo en Solicitar Oferta */}
       <View style={[styles.footerBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <View style={styles.footerInner}>
+        <TouchableOpacity
+          style={[styles.ctaBtn, submitting && styles.ctaBtnDisabled]}
+          onPress={handleBooking}
+          disabled={submitting}
+          activeOpacity={0.85}
+          accessibilityLabel="Solicitar servicio"
+          accessibilityRole="button"
+        >
+          <Text style={styles.ctaBtnText}>
+            {submitting ? 'Enviando solicitud...' : 'Solicitar Oferta'}
+          </Text>
+          <Icon name="ArrowRight" size={20} color={TOKENS.colors.white} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Lightbox Modal para Galería de Fotos (Punto 14) */}
+      <Modal
+        visible={activePhotoModalIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActivePhotoModalIndex(null)}
+      >
+        <View style={styles.modalOverlay}>
           <TouchableOpacity
-            style={styles.chatBtn}
-            onPress={() => {
-              showNotification({ title: 'Chat directo', message: 'Envía tu solicitud para coordinar por chat.', type: 'info' });
-            }}
+            style={[styles.modalCloseBtn, { top: Math.max(insets.top, 20) }]}
+            onPress={() => setActivePhotoModalIndex(null)}
             activeOpacity={0.8}
-            accessibilityLabel="Chat con el profesional"
-            accessibilityRole="button"
           >
-            <Icon name="MessageSquare" size={22} color={TOKENS.colors.dark900} />
+            <Icon name="X" size={24} color={TOKENS.colors.white} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.ctaBtn, submitting && styles.ctaBtnDisabled]}
-            onPress={handleBooking}
-            disabled={submitting}
-            activeOpacity={0.85}
-            accessibilityLabel="Solicitar servicio"
-            accessibilityRole="button"
-          >
-            <Text style={styles.ctaBtnText}>
-              {submitting ? 'Enviando solicitud...' : 'Solicitar Cotización'}
-            </Text>
-            <Icon name="ArrowRight" size={18} color={TOKENS.colors.white} />
-          </TouchableOpacity>
+          {activePhotoModalIndex !== null && (
+            <View style={styles.modalImageWrapper}>
+              <Image
+                source={{ uri: provider.gallery[activePhotoModalIndex] }}
+                style={styles.modalFullImage}
+                resizeMode="contain"
+              />
+              <View style={styles.modalCounterBadge}>
+                <Text style={styles.modalCounterText}>
+                  {activePhotoModalIndex + 1} / {provider.gallery.length}
+                </Text>
+              </View>
+              <View style={styles.modalNavRow}>
+                <TouchableOpacity
+                  style={[styles.modalNavBtn, activePhotoModalIndex === 0 && { opacity: 0.3 }]}
+                  disabled={activePhotoModalIndex === 0}
+                  onPress={() => setActivePhotoModalIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev))}
+                >
+                  <Icon name="ChevronLeft" size={26} color={TOKENS.colors.white} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalNavBtn, activePhotoModalIndex === provider.gallery.length - 1 && { opacity: 0.3 }]}
+                  disabled={activePhotoModalIndex === provider.gallery.length - 1}
+                  onPress={() => setActivePhotoModalIndex((prev) => (prev !== null && prev < provider.gallery.length - 1 ? prev + 1 : prev))}
+                >
+                  <Icon name="ChevronRight" size={26} color={TOKENS.colors.white} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
-      </View>
+      </Modal>
     </View>
   );
 };
@@ -512,20 +615,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 10,
-  },
-  topProBadge: {
-    backgroundColor: TOKENS.colors.brand500,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    ...TOKENS.shadows.soft,
-  },
-  topProBadgeText: {
-    color: TOKENS.colors.white,
-    fontSize: 10,
-    fontWeight: TOKENS.typography.weights.bold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
   },
   verifiedBadge: {
     backgroundColor: '#eff6ff',
@@ -631,9 +720,9 @@ const styles = StyleSheet.create({
 
   // SERVICIOS
   selectedServiceCard: {
-    backgroundColor: TOKENS.colors.brand50,
-    borderWidth: 2,
-    borderColor: TOKENS.colors.brand500,
+    backgroundColor: TOKENS.colors.white,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.surface200,
     borderRadius: 20,
     padding: 16,
     position: 'relative',
@@ -670,20 +759,20 @@ const styles = StyleSheet.create({
   },
   selectedServicePriceRow: {
     borderTopWidth: 1,
-    borderTopColor: TOKENS.colors.brand100,
+    borderTopColor: TOKENS.colors.surface200,
     paddingTop: 10,
   },
   priceEstimateLabel: {
     fontSize: 10,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.brand600,
+    color: TOKENS.colors.textSubtle,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   priceEstimateVal: {
     fontSize: 20,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand700,
+    color: TOKENS.colors.dark900,
     marginTop: 1,
   },
   priceEstimateUnit: {
@@ -987,7 +1076,174 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // FOOTER BAR
+  // ACCEPTED PRICE CARD
+  acceptedPriceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.success50,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.statusSuccess,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
+  },
+  acceptedPriceIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptedPriceCol: {
+    flex: 1,
+  },
+  acceptedPriceLabel: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.statusSuccess,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  acceptedPriceVal: {
+    fontSize: 18,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.dark900,
+    marginTop: 1,
+  },
+  acceptedPill: {
+    backgroundColor: TOKENS.colors.statusSuccess,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  acceptedPillText: {
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.white,
+    textTransform: 'uppercase',
+  },
+
+  // GALLERY SECTION (5 PHOTOS)
+  galleryCard: {
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+    marginBottom: 16,
+  },
+  galleryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  galleryCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: TOKENS.colors.brand50,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  galleryCountText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand700,
+  },
+  galleryScroll: {
+    gap: 10,
+    paddingRight: 8,
+  },
+  galleryThumbCard: {
+    width: 100,
+    height: 100,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: TOKENS.colors.surface100,
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  galleryThumbImg: {
+    width: '100%',
+    height: '100%',
+  },
+  galleryThumbBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  galleryThumbBadgeText: {
+    color: TOKENS.colors.white,
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+
+  // LIGHTBOX MODAL
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImageWrapper: {
+    width: '100%',
+    height: '80%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalFullImage: {
+    width: '94%',
+    height: '85%',
+    borderRadius: 12,
+  },
+  modalCounterBadge: {
+    marginTop: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  modalCounterText: {
+    color: TOKENS.colors.white,
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  modalNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '80%',
+    position: 'absolute',
+  },
+  modalNavBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // FOOTER BAR - PROMINENT PRIMARY CTA
   footerBar: {
     position: 'absolute',
     bottom: 0,
@@ -1000,39 +1256,29 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     ...TOKENS.shadows.floating,
   },
-  footerInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  chatBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-    backgroundColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   ctaBtn: {
-    flex: 1,
+    width: '100%',
     height: 52,
     borderRadius: 16,
-    backgroundColor: TOKENS.colors.brand700,
+    backgroundColor: TOKENS.colors.brand500,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    ...TOKENS.shadows.soft,
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   ctaBtnDisabled: {
     opacity: 0.6,
   },
   ctaBtnText: {
     color: TOKENS.colors.white,
-    fontSize: 15,
-    fontWeight: TOKENS.typography.weights.bold,
+    fontSize: 16,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    letterSpacing: 0.3,
   },
 });
 

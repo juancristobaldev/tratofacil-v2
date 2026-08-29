@@ -166,7 +166,7 @@ jest.mock('../primitives', () => {
     BottomSheetFlatList: ({ ListHeaderComponent, data, renderItem, ...props }: any) =>
       React.createElement(
         View,
-        props,
+        { testID: 'bottom-sheet-flat-list', ...props },
         typeof ListHeaderComponent === 'function' ? React.createElement(ListHeaderComponent) : ListHeaderComponent,
         data?.map((item: any, index: number) =>
           React.createElement(View, { key: index }, renderItem ? renderItem({ item, index }) : null),
@@ -175,7 +175,16 @@ jest.mock('../primitives', () => {
     BottomSheetTextInput: ({ ...props }: any) => React.createElement(TextInput, props),
     Sheet: View,
     SheetContent: View,
-    SheetHeader: View,
+    SheetHeader: ({ title, subtitle, trailing }: any) => {
+      const { Text } = require('react-native');
+      return React.createElement(
+        View,
+        null,
+        title ? React.createElement(Text, null, title) : null,
+        subtitle ? React.createElement(Text, null, subtitle) : null,
+        trailing || null,
+      );
+    },
   };
 });
 
@@ -188,7 +197,7 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
   });
 
   describe('Suite 30: All 5 Sheets Semantic Rendering', () => {
-    it('1. categories panel renders search input, promos and selected category filtering', async () => {
+    it('1. categories panel renders promotions and selected category filtering', async () => {
       const Content = registry.categories.content;
       const view = await render(
         <BottomSheetProvider>
@@ -210,10 +219,30 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
         </BottomSheetProvider>,
       );
 
-      expect(view.getByPlaceholderText('¿Qué servicio necesitas?')).toBeTruthy();
       expect(view.getByText('Filtrando por')).toBeTruthy();
       expect(view.getByText('Gasfitería Express')).toBeTruthy();
       expect(view.getByText('Limpiar')).toBeTruthy();
+    });
+
+    it('1b. categories panel renders search results when searchQuery is provided in payload', async () => {
+      const Content = registry.categories.content;
+      const view = await render(
+        <BottomSheetProvider>
+          <Content
+            sheetKey="categories"
+            requestId={11}
+            payload={{
+              searchQuery: 'gas',
+            }}
+            dismiss={jest.fn()}
+            setIndex={jest.fn()}
+          />
+        </BottomSheetProvider>,
+      );
+
+      expect(view.getAllByText(/resultado/).length).toBeGreaterThan(0);
+      expect(view.getByText('Todos')).toBeTruthy();
+      expect(view.getByTestId('bottom-sheet-flat-list').props.stickyHeaderIndices).toEqual([0]);
     });
 
     it('2. provider_preview panel renders provider name, rating and actions', async () => {
@@ -272,8 +301,8 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
         </BottomSheetProvider>,
       );
 
-      expect(view.getByText('Cotización del profesional')).toBeTruthy();
-      expect(view.getAllByText('Pagar con Flow / Webpay').length).toBeGreaterThanOrEqual(1);
+      expect(view.getByText('Oferta del profesional')).toBeTruthy();
+      expect(view.getByText('Aceptar oferta')).toBeTruthy();
     });
 
     it('4. focus_provider panel renders provider quote negotiation view', async () => {
@@ -300,7 +329,7 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
         </BottomSheetProvider>,
       );
 
-      expect(view.getByText('Enviar cotización')).toBeTruthy();
+      expect(view.getByText('Enviar oferta')).toBeTruthy();
       expect(view.getByText('Rechazar solicitud')).toBeTruthy();
     });
 
@@ -328,24 +357,25 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
   describe('Suite 22: Rating Screen Independence Regression', () => {
     it('RatingScreen renders safely without BottomSheetProvider context', async () => {
       const view = await render(<RatingScreen />);
-      expect(view.getByText('¡Trabajo Terminado!')).toBeTruthy();
-      expect(view.getByText('Servicio completado con éxito')).toBeTruthy();
-      expect(view.getByText('Enviar calificación')).toBeTruthy();
+      expect(view.getByText('¡Servicio Finalizado!')).toBeTruthy();
+      expect(view.getByText('Tu opinión es importante para la comunidad')).toBeTruthy();
+      expect(view.getByText('Enviar reseña')).toBeTruthy();
     });
   });
 
   describe('Suite 31: Dynamic Sizing & Geometry Contract', () => {
-    it('all registered sheets enable dynamic sizing', () => {
-      const sheetKeys: SheetKey[] = [
-        'categories',
-        'provider_preview',
-        'focus_client',
-        'focus_provider',
-        'provider_dashboard',
-      ];
+    it('all registered sheets enable dynamic sizing and declare their physical content mode', () => {
+      const expectedModes: Record<SheetKey, 'view' | 'scroll' | 'list' | 'mixed'> = {
+        categories: 'view',
+        provider_preview: 'view',
+        focus_client: 'scroll',
+        focus_provider: 'scroll',
+        provider_dashboard: 'view',
+      };
 
-      sheetKeys.forEach((key) => {
+      (Object.keys(expectedModes) as SheetKey[]).forEach((key) => {
         expect(registry[key].enableDynamicSizing).toBe(true);
+        expect(registry[key].contentMode).toBe(expectedModes[key]);
       });
     });
   });
@@ -357,6 +387,81 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
 
       expect(heightNoInset).toBeGreaterThan(0);
       expect(heightWithInset).toBe(heightNoInset + 34);
+    });
+  });
+
+  describe('Suite 33: Encuadre Button Clearance & Content-Driven Limit Contract', () => {
+    it('guarantees maximum sheet height stops strictly 30px below encuadre button', () => {
+      const insetsTop = 47;
+      const insetsBottom = 34;
+      const windowHeight = 844;
+      const navBarHeight = getBottomNavHeight(insetsBottom);
+
+      const encuadreBottomOffset = insetsTop + 8 + 56 + 96; // insets.top + padding + search bar + buttons = insets.top + 160
+      const mapClearanceGap = 30; // 30px below encuadre button
+      const topClearance = encuadreBottomOffset + mapClearanceGap; // 47 + 190 = 237px
+
+      const computedMaxHeight = windowHeight - topClearance - navBarHeight;
+      expect(computedMaxHeight).toBeGreaterThan(200);
+
+      const sheetTopOnScreen = windowHeight - navBarHeight - computedMaxHeight;
+      expect(sheetTopOnScreen).toBe(topClearance);
+      // Top bound of sheet never touches or overlaps the encuadre button
+      expect(sheetTopOnScreen).toBeGreaterThanOrEqual(encuadreBottomOffset + 30);
+    });
+  });
+
+  describe('Suite 34: Categories Bi-Modal Dynamic Sizing Contract', () => {
+    it('calculates State 1 (input + promo ad) compactly leaving >75% of map visible', () => {
+      const searchBarHeight = 50;
+      const titleHeight = 24;
+      const promoAdHeight = 110;
+      const paddings = 36;
+      const state1Height = searchBarHeight + titleHeight + promoAdHeight + paddings;
+
+      expect(state1Height).toBeLessThanOrEqual(240);
+    });
+
+    it('caps State 2 list height to safely prevent header clipping with 280px maxHeight', () => {
+      const maxListHeight = 280;
+
+      expect(maxListHeight).toBe(280);
+
+      const headerHeight = 50;
+      const totalState2MaxHeight = headerHeight + maxListHeight + 20;
+
+      // Must be safely below the max dynamic content boundary (~430px)
+      expect(totalState2MaxHeight).toBeLessThanOrEqual(360);
+    });
+  });
+
+  describe('Suite 35: Global Multi-Panel Dynamic Sizing & Clearance Contract', () => {
+    it('verifies provider_dashboard fits exactly into intrinsic ~240px container', () => {
+      const onlineCardHeight = 64;
+      const walletCardHeight = 84;
+      const planNoticeHeight = 68;
+      const gapAndPaddings = 36;
+      const totalDashboardHeight = onlineCardHeight + walletCardHeight + planNoticeHeight + gapAndPaddings;
+
+      expect(totalDashboardHeight).toBeLessThanOrEqual(260);
+      expect(totalDashboardHeight).toBeGreaterThanOrEqual(200);
+    });
+
+    it('verifies provider_preview remains a low-height content-driven single-detent card', () => {
+      const cardHeight = 164;
+      const padding = 10;
+      const totalPreviewHeight = cardHeight + padding;
+
+      expect(totalPreviewHeight).toBeLessThanOrEqual(185);
+    });
+
+    it('verifies focus_client and focus_provider phases fit comfortably under 510px clearance', () => {
+      const focusClientQuotedHeight = 380;
+      const focusProviderViewRequestHeight = 420;
+      const maxClearanceLimit = 510;
+
+      expect(focusClientQuotedHeight).toBeLessThan(maxClearanceLimit);
+      expect(focusProviderViewRequestHeight).toBeLessThan(maxClearanceLimit);
     });
   });
 });

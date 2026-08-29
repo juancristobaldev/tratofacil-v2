@@ -2,6 +2,14 @@ import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
 import { useMapCamera, type UseMapCameraOptions } from './useMapCamera';
 import type { RouteCoordinate } from '../utils/directions';
+import {
+  DEFAULT_HORIZONTAL_PADDING,
+  DEFAULT_VERTICAL_PADDING,
+  ROUTE_FIT_BOTTOM_CLEARANCE,
+  ROUTE_FIT_HORIZONTAL_CLEARANCE,
+  ROUTE_FIT_TOP_CLEARANCE,
+  ROUTE_FIT_ZOOM_SCALE,
+} from '../utils/mapGeometry';
 
 describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
   let hookValue: ReturnType<typeof useMapCamera>;
@@ -234,6 +242,71 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(mockMapRef.current.fitToCoordinates).toHaveBeenCalledTimes(1);
   });
 
+  it('FIT_ROUTE: applies provider-card safe padding around floating controls', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={160}
+          sheetTop={500}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const route: RouteCoordinate[] = [
+      { latitude: -38.75, longitude: -72.60 },
+      { latitude: -38.74, longitude: -72.58 },
+    ];
+
+    act(() => {
+      hookValue.fitToRoute(route, { reason: 'provider_card_non_occlusion' });
+    });
+
+    expect(mockMapRef.current.fitToCoordinates).toHaveBeenCalledTimes(1);
+    expect(mockMapRef.current.fitToCoordinates).toHaveBeenCalledWith(route, {
+      animated: true,
+      edgePadding: {
+        top: 160 + DEFAULT_VERTICAL_PADDING,
+        bottom: 844 - 500 + DEFAULT_VERTICAL_PADDING,
+        left: DEFAULT_HORIZONTAL_PADDING,
+        right: DEFAULT_HORIZONTAL_PADDING,
+      },
+    });
+  });
+
+  it('FIT_ROUTE: mathematical fallback uses route fit zoom scale', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={160}
+          sheetTop={500}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const point: RouteCoordinate = { latitude: -38.75, longitude: -72.60 };
+
+    act(() => {
+      hookValue.fitToRoute([point], {
+        animated: false,
+        minDelta: { latitudeDelta: 0.01, longitudeDelta: 0.02 },
+        reason: 'single_point_route_fit',
+      });
+    });
+
+    expect(mockMapRef.current.animateToRegion).toHaveBeenCalledTimes(1);
+    expect(mockMapRef.current.animateToRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        latitudeDelta: 0.01 * ROUTE_FIT_ZOOM_SCALE,
+        longitudeDelta: 0.02 * ROUTE_FIT_ZOOM_SCALE,
+      }),
+      0,
+    );
+  });
+
   it('USER_EXPLORING: ignores background GPS updates when user is exploring with onPanDrag', async () => {
     act(() => {
       ReactTestRenderer.create(
@@ -256,5 +329,226 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
 
     expect(mockMapRef.current.animateToRegion).not.toHaveBeenCalled();
     expect(hookValue.isUserExploring).toBe(true);
+  });
+
+  it('NAVIGATION_MODE: navigateToCoordinate applies pitch 60, heading and close zoom to user coordinate', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const userCoord: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+
+    act(() => {
+      hookValue.navigateToCoordinate(userCoord, { heading: 90, pitch: 60, animated: true });
+    });
+
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        heading: 90,
+        pitch: 60,
+        zoom: 18,
+        altitude: 300,
+      }),
+      { duration: 800 },
+    );
+    expect(hookValue.isFollowing).toBe(true);
+    expect(hookValue.isNavigating).toBe(true);
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+  });
+
+  it('NAVIGATION_TOGGLE: toggleNavigationMode activates 3D navigation and deactivates to 2D on second click', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const userCoord: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+
+    // 1. Primer click: Activar modo navegación 3D
+    act(() => {
+      hookValue.toggleNavigationMode(userCoord, { heading: 45, pitch: 60 });
+    });
+
+    expect(hookValue.isNavigating).toBe(true);
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({ pitch: 60, heading: 45 }),
+      expect.any(Object),
+    );
+
+    mockMapRef.current.animateCamera.mockClear();
+
+    // 2. Segundo click: Desactivar modo navegación y volver a 2D plano (pitch: 0, heading: 0)
+    act(() => {
+      hookValue.toggleNavigationMode(userCoord);
+    });
+
+    expect(hookValue.isNavigating).toBe(false);
+    expect(hookValue.cameraMode).toBe('FOLLOW_USER');
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({ pitch: 0, heading: 0 }),
+      expect.any(Object),
+    );
+  });
+
+  it('NAVIGATION_FOLLOW_STREAM: followCoordinate in navigation mode updates 3D camera and dynamic heading', async () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const coord1: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+    act(() => {
+      hookValue.navigateToCoordinate(coord1, { heading: 0, pitch: 60 });
+    });
+    mockMapRef.current.animateCamera.mockClear();
+
+    // Stream GPS actualiza coordenada y rumbo a 120°
+    const coord2: RouteCoordinate = { latitude: -38.746, longitude: -72.596 };
+    await act(async () => {
+      await hookValue.followCoordinate(coord2, { heading: 120, animated: true });
+    });
+
+    expect(hookValue.isNavigating).toBe(true);
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        heading: 120,
+        pitch: 60,
+        zoom: 18,
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('HEADING_SANITIZATION: negative heading (-1) is normalized to 0 without causing flip loops', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    act(() => {
+      hookValue.navigateToCoordinate({ latitude: -38.745, longitude: -72.595 }, { heading: -1 });
+    });
+
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        heading: 0,
+        pitch: 60,
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('NAVIGATION_EXCLUSIVITY: passive fitToRoute does NOT override active navigation mode', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    // 1. Activar navegación
+    act(() => {
+      hookValue.navigateToCoordinate({ latitude: -38.745, longitude: -72.595 }, { heading: 45 });
+    });
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+
+    // 2. Intento de fitToRoute pasivo de fondo (sin force)
+    act(() => {
+      hookValue.fitToRoute([
+        { latitude: -38.745, longitude: -72.595 },
+        { latitude: -38.750, longitude: -72.600 },
+      ]);
+    });
+
+    // fitToCoordinates no debe ser invocado, preservando la cámara en NAVIGATION
+    expect(mockMapRef.current.fitToCoordinates).not.toHaveBeenCalled();
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+  });
+
+  it('GESTURE_RELEASE: pan drag immediately cancels navigation mode and enters USER_EXPLORING', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    // 1. Activar navegación
+    act(() => {
+      hookValue.navigateToCoordinate({ latitude: -38.745, longitude: -72.595 });
+    });
+    expect(hookValue.isNavigating).toBe(true);
+
+    // 2. Usuario arrastra la pantalla
+    act(() => {
+      hookValue.handlePanDrag();
+    });
+
+    expect(hookValue.isNavigating).toBe(false);
+    expect(hookValue.isFollowing).toBe(false);
+    expect(hookValue.isUserExploring).toBe(true);
+    expect(hookValue.cameraMode).toBe('USER_EXPLORING');
+  });
+
+  it('DEFAULT_REGION_FIT: fitToDefaultRegion animates camera to default Temuco + Padre Las Casas bounds', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+        />
+      );
+    });
+
+    act(() => {
+      hookValue.fitToDefaultRegion();
+    });
+
+    expect(mockMapRef.current.animateToRegion).toHaveBeenCalledTimes(1);
+    expect(mockMapRef.current.animateToRegion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        longitude: -72.595,
+        latitudeDelta: 0.098,
+        longitudeDelta: 0.098,
+      }),
+      800,
+    );
+    expect(hookValue.isFollowing).toBe(false);
   });
 });

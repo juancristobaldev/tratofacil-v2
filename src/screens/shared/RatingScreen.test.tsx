@@ -87,12 +87,12 @@ describe('RatingScreen component', () => {
     const view = await render(<RatingScreen />);
 
     expect(await view.findByText('Mario Gasfiter')).toBeTruthy();
-    expect(await view.findByText('$25.000')).toBeTruthy();
+    expect(await view.findByText('* La reseña escrita es obligatoria')).toBeTruthy();
 
-    const commentInput = view.getByPlaceholderText('Cuéntanos tu experiencia...');
+    const commentInput = view.getByPlaceholderText('Escribe tu reseña sobre el servicio aquí (obligatorio)...');
     await fireEvent.changeText(commentInput, 'Excelente servicio, muy puntual');
 
-    const submitBtn = view.getByText('Enviar calificación');
+    const submitBtn = view.getByText('Enviar reseña');
     await fireEvent.press(submitBtn);
 
     await waitFor(() => {
@@ -117,10 +117,10 @@ describe('RatingScreen component', () => {
 
     const view = await render(<RatingScreen />);
 
-    const commentInput = view.getByPlaceholderText('Cuéntanos tu experiencia...');
+    const commentInput = view.getByPlaceholderText('Escribe tu reseña sobre el servicio aquí (obligatorio)...');
     await fireEvent.changeText(commentInput, 'Cliente muy amable');
 
-    const submitBtn = view.getByText('Enviar calificación');
+    const submitBtn = view.getByText('Enviar reseña');
     await fireEvent.press(submitBtn);
 
     await waitFor(() => {
@@ -145,13 +145,16 @@ describe('RatingScreen component', () => {
 
     const view = await render(<RatingScreen />);
 
-    const submitBtn = view.getByText('Enviar calificación');
+    const commentInput = view.getByPlaceholderText('Escribe tu reseña sobre el servicio aquí (obligatorio)...');
+    await fireEvent.changeText(commentInput, 'Trabajo impecable');
+
+    const submitBtn = view.getByText('Enviar reseña');
     await fireEvent.press(submitBtn);
 
     await waitFor(() => {
       expect(mockReviewJob).toHaveBeenCalledWith({
         rating: 5,
-        comment: undefined,
+        comment: 'Trabajo impecable',
         jobId: 55,
         workerId: 66,
       });

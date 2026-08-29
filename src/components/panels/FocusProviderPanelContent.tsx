@@ -78,7 +78,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       : 'NONE';
   const sendQuoteVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
   const rejectVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
-  const cancelVisible = orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'EN_CAMINO' || orderState === 'ARRIVED';
+  const cancelVisible = orderState === 'WAITING_CLIENT_RESPONSE';
   const acceptCounterVisible = order?.counterOfferPrice != null && (orderState === 'VIEW_REQUEST' || orderState === 'WAITING_CLIENT_RESPONSE');
   const updateQuoteVisible = orderState === 'WAITING_CLIENT_RESPONSE';
 
@@ -109,7 +109,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       });
       setOrderState('WAITING_CLIENT_RESPONSE');
     } catch {
-      showNotification({ title: 'Error', message: 'No se pudo enviar la cotización.', type: 'error' });
+      showNotification({ title: 'Error', message: 'No se pudo enviar la oferta.', type: 'error' });
     }
   };
 
@@ -229,7 +229,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             </View>
             <Text style={styles.compactStatusText} numberOfLines={1}>
               {derivedPhase === 'REQUEST_CREATED'
-                ? 'Solicitud de cotización'
+                ? 'Solicitud de oferta'
                 : derivedPhase === 'WAITING_PROVIDER_RESPONSE'
                   ? 'Contraoferta recibida'
                   : orderState === 'WAITING_CLIENT_RESPONSE'
@@ -251,7 +251,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
         <View style={styles.compactActionRow}>
           {sendQuoteVisible && (
             <Button
-              title="Enviar cotización"
+              title="Enviar oferta"
               onPress={handleSendQuote}
               size="md"
               style={styles.compactActionBtn}
@@ -278,7 +278,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
 
           {orderState === 'WAITING_CLIENT_RESPONSE' && !acceptCounterVisible && (
             <Button
-              title="Actualizar Cotización"
+              title="Actualizar Oferta"
               variant="secondary"
               size="md"
               onPress={handleSendQuote}
@@ -324,7 +324,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       style={styles.container}
       contentContainerStyle={styles.sheetBody}
       showsVerticalScrollIndicator={true}
-      bounces={true}
+      bounces={false}
     >
       <View
         collapsable={false}
@@ -380,7 +380,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               <>
                 <View style={styles.quoteCard}>
                   <View style={styles.quoteCardHeader}>
-                    <Text style={styles.priceAdjusterLabel}>Cotización del servicio</Text>
+                    <Text style={styles.priceAdjusterLabel}>Oferta del servicio</Text>
                     <View style={styles.totalBadge}>
                       <Text style={styles.totalBadgeLabel}>Total a Cobrar</Text>
                       <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
@@ -396,19 +396,19 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
                           style={styles.adjusterBtnSmall}
-                          accessibilityLabel="Disminuir horas de cotización"
+                          accessibilityLabel="Disminuir horas de oferta"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
+                          <Icon name="Minus" size={16} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteHours}h</Text>
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
                           style={styles.adjusterBtnSmall}
-                          accessibilityLabel="Aumentar horas de cotización"
+                          accessibilityLabel="Aumentar horas de oferta"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
+                          <Icon name="Plus" size={16} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -425,7 +425,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Disminuir transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={16} color={TOKENS.colors.dark900} />
+                          <Icon name="Minus" size={16} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                         <Text style={styles.quoteFieldValue}>{quoteTransport}km</Text>
                         <TouchableOpacity
@@ -434,7 +434,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                           accessibilityLabel="Aumentar transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={16} color={TOKENS.colors.dark900} />
+                          <Icon name="Plus" size={16} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -463,7 +463,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                   }}
                 >
                   <Button
-                    title="Enviar cotización"
+                    title="Enviar oferta"
                     onPress={handleSendQuote}
                     style={styles.actionBtn}
                   />
@@ -506,10 +506,10 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             ) : (
               <>
                 <Icon name="Clock" size={40} color={TOKENS.colors.brand500} />
-                <Text style={styles.waitingTitle}>Cotización enviada</Text>
+                <Text style={styles.waitingTitle}>Oferta enviada</Text>
                 <Text style={styles.waitingDesc}>Esperando confirmación o respuesta del cliente...</Text>
                 <Button
-                  title="Actualizar Cotización"
+                  title="Actualizar Oferta"
                   variant="secondary"
                   onPress={handleSendQuote}
                   style={styles.actionBtn}
@@ -547,11 +547,12 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             <Text style={styles.guideText}>Conduce hacia la ubicación del cliente para iniciar el servicio.</Text>
 
             <Button
-              title="Cancelar orden"
-              variant="subtle"
+              title="Abrir Chat"
+              variant="secondary"
+              icon="MessageCircle"
               size="md"
-              onPress={handleCancelOrder}
-              style={{ marginTop: 8 }}
+              onPress={handleOpenChat}
+              style={{ marginTop: 12 }}
             />
           </>
         )}
@@ -585,11 +586,12 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             </View>
 
             <Button
-              title="Cancelar orden"
-              variant="subtle"
+              title="Abrir Chat"
+              variant="secondary"
+              icon="MessageCircle"
               size="md"
-              onPress={handleCancelOrder}
-              style={{ marginTop: 8 }}
+              onPress={handleOpenChat}
+              style={{ marginTop: 12 }}
             />
           </>
         )}
@@ -612,14 +614,6 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               icon="MessageCircle"
               onPress={handleOpenChat}
               style={styles.actionBtn}
-            />
-
-            <Button
-              title="Cancelar Orden"
-              variant="subtle"
-              size="md"
-              onPress={handleCancelOrder}
-              style={{ marginTop: 8 }}
             />
           </>
         )}
@@ -671,7 +665,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: 36,
+    paddingBottom: 12,
   },
   stateHeader: {
     flexDirection: 'row',
@@ -818,8 +812,8 @@ const styles = StyleSheet.create({
   priceAdjusterLabel: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textMain,
-    marginBottom: 16,
+    color: '#FFFFFF',
+    marginBottom: 0,
   },
   priceAdjusterRow: {
     flexDirection: 'row',
@@ -830,7 +824,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: TOKENS.colors.surface100,
+    backgroundColor: '#262936',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -857,11 +851,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: TOKENS.colors.white,
+    backgroundColor: '#16181F',
     padding: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+    borderColor: '#2A2D38',
   },
   quoteFieldInfo: {
     flex: 1,
@@ -870,17 +864,17 @@ const styles = StyleSheet.create({
   quoteFieldTitle: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
   },
   quoteFieldSub: {
     fontSize: 10,
-    color: TOKENS.colors.textSubtle,
+    color: '#9E9FA8',
     marginTop: 1,
   },
   quoteFieldValue: {
     fontSize: TOKENS.typography.sizes.md,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.dark900,
+    color: '#FFFFFF',
     minWidth: 44,
     textAlign: 'center',
   },
@@ -932,10 +926,10 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   quoteCard: {
-    backgroundColor: TOKENS.colors.surface50,
+    backgroundColor: '#000000',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
+    borderColor: '#262936',
     padding: 12,
     gap: 10,
   },
@@ -945,24 +939,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   totalBadge: {
-    backgroundColor: TOKENS.colors.brand50,
+    backgroundColor: '#16181F',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
+    borderColor: TOKENS.colors.brand500,
     alignItems: 'flex-end',
   },
   totalBadgeLabel: {
     fontSize: 8,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.brand600,
+    color: TOKENS.colors.brand400,
     textTransform: 'uppercase',
   },
   totalBadgeValue: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand700,
+    color: '#FFFFFF',
   },
   primaryActionStack: {
     gap: 8,
@@ -1089,10 +1083,11 @@ const styles = StyleSheet.create({
   },
   compactActionRow: {
     width: '100%',
+    marginTop: 2,
   },
   compactActionBtn: {
     width: '100%',
-    minHeight: 44,
+    minHeight: 42,
   },
   compactActionGroup: {
     flexDirection: 'row',
@@ -1101,7 +1096,7 @@ const styles = StyleSheet.create({
   },
   compactGroupBtn: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 42,
   },
   compactWaitingRow: {
     width: '100%',

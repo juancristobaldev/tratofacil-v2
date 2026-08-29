@@ -4,6 +4,7 @@ import { Sheet } from '../primitives/Sheet';
 import { registry } from './bottomSheet.registry';
 import { useBottomSheet } from './useBottomSheet';
 import { bottomSheetDebug } from './bottomSheet.debug';
+import { resolveSheetInitialIndex } from './bottomSheetSnapPoints';
 import type {
   BottomSheetRequest,
   BottomSheetTransitionOperation,
@@ -69,6 +70,14 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
         mapFlowActive: isMapFlowActive,
       });
       modalRef.current?.present();
+      const targetIndex = resolveSheetInitialIndex({
+        requestedIndex: registry[request.key]?.initialIndex,
+        resolvedSnapPoints: registry[request.key]?.snapPoints,
+        enableDynamicSizing: registry[request.key]?.enableDynamicSizing,
+      });
+      if (targetIndex > 0) {
+        modalRef.current?.snapToIndex(targetIndex);
+      }
     });
   }, [isMapFlowActive, modalRef, onPresent, operation, request]);
 
@@ -77,7 +86,8 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     return null;
   }
 
-  const isCollapsed = currentIndex === 0;
+  const isCollapsed =
+    Boolean(descriptor.snapPoints && descriptor.snapPoints.length > 0) ? currentIndex === 0 : false;
   const presentationState = isCollapsed ? 'collapsed' : 'content';
 
   const handleIndexChange = (index: number) => {
@@ -173,13 +183,23 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     }
   };
 
+  const isSearchActive =
+    request.key === 'categories' && Boolean((request.payload as any)?.searchQuery?.trim());
+
+  const resolvedContentMode = isSearchActive
+    ? 'list'
+    : descriptor.contentMode ?? 'view';
+
+  const resolvedEnableDynamicSizing = descriptor.enableDynamicSizing;
+
   return (
     <Sheet
       ref={modalRef}
       sheetKey={request.key}
+      contentMode={resolvedContentMode}
       snapPoints={descriptor.snapPoints}
       initialIndex={descriptor.initialIndex}
-      enableDynamicSizing={descriptor.enableDynamicSizing}
+      enableDynamicSizing={resolvedEnableDynamicSizing}
       maxDynamicContentSize={descriptor.maxDynamicContentSize}
       keyboardBehavior={descriptor.keyboardBehavior}
       keyboardBlurBehavior={descriptor.keyboardBlurBehavior}

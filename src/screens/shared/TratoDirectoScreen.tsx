@@ -13,6 +13,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Input } from '../../components/ui';
@@ -279,37 +280,39 @@ export const TratoDirectoScreen: React.FC = () => {
         </View>
 
         <RNModal visible={showCategoryPicker} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Selecciona una categoría</Text>
-                <TouchableOpacity onPress={() => setShowCategoryPicker(false)} style={styles.closeBtn}>
-                  <Icon name="X" size={24} color={TOKENS.colors.textMain} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                      styles.categoryOption,
-                      selectedCategory === cat.id && styles.categoryOptionActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedCategory(cat.id);
-                      setSelectedCategoryName(cat.name);
-                      setShowCategoryPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.categoryOptionText, selectedCategory === cat.id && styles.categoryOptionTextActive]}>
-                      {cat.name}
-                    </Text>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Selecciona una categoría</Text>
+                  <TouchableOpacity onPress={() => setShowCategoryPicker(false)} style={styles.closeBtn}>
+                    <Icon name="X" size={24} color={TOKENS.colors.textMain} />
                   </TouchableOpacity>
-                ))}
-                {categoriesLoading && <Text style={styles.selectBoxText}>Cargando categorías...</Text>}
-              </ScrollView>
+                </View>
+                <ScrollView>
+                  {categories.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryOption,
+                        selectedCategory === cat.id && styles.categoryOptionActive,
+                      ]}
+                      onPress={() => {
+                        setSelectedCategory(cat.id);
+                        setSelectedCategoryName(cat.name);
+                        setShowCategoryPicker(false);
+                      }}
+                    >
+                      <Text style={[styles.categoryOptionText, selectedCategory === cat.id && styles.categoryOptionTextActive]}>
+                        {cat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {categoriesLoading && <Text style={styles.selectBoxText}>Cargando categorías...</Text>}
+                </ScrollView>
+              </View>
             </View>
-          </View>
+          </GestureHandlerRootView>
         </RNModal>
 
       </ScrollView>

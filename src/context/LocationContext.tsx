@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Platform, PermissionsAndroid, AppState } from 'react-native';
 import Geolocation, { GeoPosition } from 'react-native-geolocation-service';
+import { locationSimulator } from '../dev/joystick/locationSimulator';
 
 interface LocationContextData {
   location: GeoPosition | null;
@@ -60,16 +61,37 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
     }
   }, []);
 
+  const updateLocation = useCallback((position: GeoPosition | null) => {
+    if (__DEV__) {
+      locationSimulator.setRealPosition(position);
+      if (locationSimulator.isSimulating()) {
+        return;
+      }
+    }
+    setLocation(position);
+  }, []);
+
   const getLocation = useCallback(() => {
     Geolocation.getCurrentPosition(
       (position) => {
-        setLocation(position);
+        updateLocation(position);
       },
       (error) => {
         console.warn('Error getting location', error);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
     );
+  }, [updateLocation]);
+
+  useEffect(() => {
+    if (__DEV__) {
+      const unsubscribe = locationSimulator.subscribe((simulatedPos) => {
+        if (simulatedPos) {
+          setLocation(simulatedPos);
+        }
+      });
+      return unsubscribe;
+    }
   }, []);
 
   useEffect(() => {
@@ -93,7 +115,7 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
     try {
       watchId = Geolocation.watchPosition(
         (position) => {
-          setLocation(position);
+          updateLocation(position);
         },
         (error) => {
           console.warn('[LocationContext] Watch error:', error);
@@ -114,7 +136,7 @@ export const LocationProvider: React.FC<{children: React.ReactNode}> = ({ childr
         Geolocation.clearWatch(watchId);
       }
     };
-  }, [permissionStatus]);
+  }, [permissionStatus, updateLocation]);
 
   const value = useMemo(() => ({
     location,

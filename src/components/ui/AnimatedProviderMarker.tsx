@@ -109,6 +109,7 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
           </View>
         ) : null}
         <Animated.View style={[styles.car, { transform: [{ rotate }] }]}>
+          <View style={styles.pulseRing} />
           <View style={styles.circle}>
             <Icon name="Briefcase" size={18} color={TOKENS.colors.white} />
           </View>
@@ -120,14 +121,24 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    minWidth: 48,
+    minWidth: 52,
     alignItems: 'center',
   },
   car: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(230, 0, 126, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(230, 0, 126, 0.4)',
   },
   circle: {
     width: 36,
@@ -136,9 +147,13 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.brand500,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: TOKENS.colors.white,
-    ...TOKENS.shadows.floating,
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
   },
   label: {
     flexDirection: 'row',
@@ -146,21 +161,24 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   labelDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: TOKENS.colors.white,
     marginRight: 4,
   },
   labelTextWrap: {
-    backgroundColor: 'rgba(230, 0, 126, 0.9)',
+    backgroundColor: 'rgba(15, 17, 26, 0.92)',
     borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   labelText: {
     color: TOKENS.colors.white,
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });

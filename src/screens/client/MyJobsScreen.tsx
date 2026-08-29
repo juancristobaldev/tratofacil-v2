@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Alert, Linking } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -248,61 +249,63 @@ export const MyJobsScreen: React.FC = () => {
       </View>
 
       <RNModal visible={showCandidatesModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: insets.bottom || 24 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Candidatos Postulados</Text>
-              <TouchableOpacity onPress={() => setShowCandidatesModal(false)} style={styles.closeBtn}>
-                <Icon name="X" size={24} color={TOKENS.colors.textMain} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSubtitle}>Selecciona al profesional ideal para tu trabajo.</Text>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { paddingBottom: insets.bottom || 24 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Candidatos Postulados</Text>
+                <TouchableOpacity onPress={() => setShowCandidatesModal(false)} style={styles.closeBtn}>
+                  <Icon name="X" size={24} color={TOKENS.colors.textMain} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.modalSubtitle}>Selecciona al profesional ideal para tu trabajo.</Text>
 
-            <View style={styles.candidatesList}>
-              {jobs
-                .find((j) => j.id === selectedJobId)
-                ?.applications?.map((app) => (
-                  <TouchableOpacity
-                    key={app.id}
-                    style={[
-                      styles.candidateCard,
-                      selectedCandidate === app.worker.id && styles.candidateCardSelected,
-                    ]}
-                    onPress={() => setSelectedCandidate(app.worker.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Avatar uri={null} name={app.worker.displayName || 'U'} size={48} />
-                    <View style={styles.candidateInfo}>
-                      <Text style={styles.candidateName}>{app.worker.displayName}</Text>
-                      {app.message ? <Text style={{ fontSize: 12, color: TOKENS.colors.textSubtle }}>{app.message}</Text> : null}
-                    </View>
-                    <View style={styles.radioCircle}>
-                      {selectedCandidate === app.worker.id && <View style={styles.radioInner} />}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-            </View>
+              <View style={styles.candidatesList}>
+                {jobs
+                  .find((j) => j.id === selectedJobId)
+                  ?.applications?.map((app) => (
+                    <TouchableOpacity
+                      key={app.id}
+                      style={[
+                        styles.candidateCard,
+                        selectedCandidate === app.worker.id && styles.candidateCardSelected,
+                      ]}
+                      onPress={() => setSelectedCandidate(app.worker.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Avatar uri={null} name={app.worker.displayName || 'U'} size={48} />
+                      <View style={styles.candidateInfo}>
+                        <Text style={styles.candidateName}>{app.worker.displayName}</Text>
+                        {app.message ? <Text style={{ fontSize: 12, color: TOKENS.colors.textSubtle }}>{app.message}</Text> : null}
+                      </View>
+                      <View style={styles.radioCircle}>
+                        {selectedCandidate === app.worker.id && <View style={styles.radioInner} />}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+              </View>
 
-            <View style={styles.totalBox}>
-              <Text style={styles.totalLabel}>Total del trabajo a pagar:</Text>
-              <Text style={styles.totalValue}>
-                ${(jobs.find((j) => j.id === selectedJobId)?.price || 0).toLocaleString('es-CL')}
-              </Text>
-            </View>
+              <View style={styles.totalBox}>
+                <Text style={styles.totalLabel}>Total del trabajo a pagar:</Text>
+                <Text style={styles.totalValue}>
+                  ${(jobs.find((j) => j.id === selectedJobId)?.price || 0).toLocaleString('es-CL')}
+                </Text>
+              </View>
 
-            {/* Acciones de Pago 1-Tap */}
-            <PaymentActionCards
-              hasCard={hasSavedCard}
-              cardBrand={cardBrand}
-              cardLast4={cardLast4}
-              onPayWithSavedCard={handlePaySavedCard}
-              onRegisterCard={handleRegisterCard}
-              onPayWithFlow={handlePayFlow}
-              isProcessing={isProcessing}
-              activeAction={activeAction}
-            />
+              {/* Acciones de Pago 1-Tap */}
+              <PaymentActionCards
+                hasCard={hasSavedCard}
+                cardBrand={cardBrand}
+                cardLast4={cardLast4}
+                onPayWithSavedCard={handlePaySavedCard}
+                onRegisterCard={handleRegisterCard}
+                onPayWithFlow={handlePayFlow}
+                isProcessing={isProcessing}
+                activeAction={activeAction}
+              />
+            </View>
           </View>
-        </View>
+        </GestureHandlerRootView>
       </RNModal>
     </View>
   );

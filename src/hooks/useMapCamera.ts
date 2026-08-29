@@ -9,15 +9,34 @@ import {
   calculateDynamicEdgePadding,
   calculateUsableMapRect,
   calculateSafeMapRect,
+  calculateShiftedLatitude,
   isPointInSafeRect,
   projectCoordinateToScreen,
   isMaterialRouteChange,
   DEFAULT_HORIZONTAL_PADDING,
   DEFAULT_VERTICAL_PADDING,
+  ROUTE_FIT_BOTTOM_CLEARANCE,
+  ROUTE_FIT_HORIZONTAL_CLEARANCE,
+  ROUTE_FIT_TOP_CLEARANCE,
+  ROUTE_FIT_ZOOM_SCALE,
+  DEFAULT_TEMUCO_PLC_REGION,
+  NAVIGATION_LATITUDE_DELTA,
+  NAVIGATION_LONGITUDE_DELTA,
+  NAVIGATION_PITCH,
+  NAVIGATION_ZOOM_LEVEL,
+  NAVIGATION_ALTITUDE,
   type DynamicEdgePadding,
   type BoundingBox,
   type SafeMapRect,
 } from '../utils/mapGeometry';
+
+export interface NavigationModeOptions {
+  heading?: number;
+  pitch?: number;
+  zoom?: number;
+  animated?: boolean;
+  duration?: number;
+}
 
 export type CameraMode =
   | 'IDLE'
@@ -25,6 +44,7 @@ export type CameraMode =
   | 'FOLLOW_USER'
   | 'FOLLOW_PROVIDER'
   | 'FOLLOW_ORDER'
+  | 'NAVIGATION'
   | 'USER_EXPLORING';
 
 export interface UseMapCameraOptions {
@@ -50,6 +70,7 @@ export interface FollowCoordinateOptions {
   latitudeDelta?: number;
   longitudeDelta?: number;
   reason?: string;
+  heading?: number;
 }
 
 export interface RecenterOptions {
@@ -85,6 +106,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
   const lastTargetCoordRef = useRef<RouteCoordinate | null>(null);
   const lastFittedPointsRef = useRef<RouteCoordinate[] | null>(null);
   const lastSheetTopRef = useRef<number | null>(sheetTop);
+  const lastHeaderBottomRef = useRef<number>(headerBottom);
+  const lastHeadingRef = useRef<number>(0);
+  const lastPitchRef = useRef<number>(NAVIGATION_PITCH);
   const isMountedRef = useRef<boolean>(true);
 
   useEffect(() => {
@@ -166,6 +190,15 @@ export function useMapCamera(options: UseMapCameraOptions) {
       const sanitized = validateAndSanitizeCoordinates(points);
       if (sanitized.length === 0 || !mapRef.current) return;
 
+      // Bloqueo de exclusividad: si está en modo navegación y no es un force explícito,
+      // ningún encuadre pasivo de ruta puede competir ni romper la cámara 3D de navegación.
+      if (cameraMode === 'NAVIGATION' && !fitOpts?.force) {
+        if (__DEV__) {
+          console.log(`[MAP:CAMERA_SKIP] reason=navigation_mode_active points=${sanitized.length}`);
+        }
+        return;
+      }
+
       // Comprobar identidad semántica de ruta para evitar fits innecesarios
       if (!fitOpts?.force && lastFittedPointsRef.current) {
         const isMaterial = isMaterialRouteChange(lastFittedPointsRef.current, sanitized);
@@ -181,8 +214,10 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       const animated = fitOpts?.animated ?? true;
       const padding: DynamicEdgePadding = {
-        ...dynamicEdgePadding,
-        ...fitOpts?.edgePaddingOverride,
+        top: dynamicEdgePadding.top + (fitOpts?.edgePaddingOverride?.top ?? 0),
+        bottom: dynamicEdgePadding.bottom + (fitOpts?.edgePaddingOverride?.bottom ?? 0),
+        left: dynamicEdgePadding.left + (fitOpts?.edgePaddingOverride?.left ?? 0),
+        right: dynamicEdgePadding.right + (fitOpts?.edgePaddingOverride?.right ?? 0),
       };
 
       const bbox: BoundingBox | null = calculateBoundingBox(sanitized, fitOpts?.minDelta);
@@ -195,26 +230,32 @@ export function useMapCamera(options: UseMapCameraOptions) {
       isProgrammaticMovementRef.current = true;
       setCameraMode('AUTO_FIT_ROUTE');
 
-      const shiftedLat = bbox.centerLatitude - (padding.bottom - padding.top) * 0.000005;
+      const targetLatDelta = bbox.latitudeDelta * ROUTE_FIT_ZOOM_SCALE;
+      const targetLngDelta = bbox.longitudeDelta * ROUTE_FIT_ZOOM_SCALE;
+      const shiftedLat = calculateShiftedLatitude(bbox.centerLatitude, targetLatDelta, padding, windowDimensions.height);
       const targetRegion: Region = {
         latitude: shiftedLat,
         longitude: bbox.centerLongitude,
-        latitudeDelta: bbox.latitudeDelta * 1.3,
-        longitudeDelta: bbox.longitudeDelta * 1.3,
+        latitudeDelta: targetLatDelta,
+        longitudeDelta: targetLngDelta,
       };
       lastAnimatedRegionRef.current = targetRegion;
 
-      try {
-        mapRef.current.fitToCoordinates(sanitized, {
-          edgePadding: padding,
-          animated,
-        });
-      } catch {
-        // Fallback matemático en caso de que fitToCoordinates falle
+      if (sanitized.length === 1) {
         mapRef.current.animateToRegion?.(targetRegion, animated ? 500 : 0);
+      } else {
+        try {
+          mapRef.current?.fitToCoordinates?.(sanitized, {
+            edgePadding: padding,
+            animated,
+          });
+        } catch {
+          // Fallback matemático en caso de que fitToCoordinates falle
+          mapRef.current.animateToRegion?.(targetRegion, animated ? 500 : 0);
+        }
       }
     },
-    [dynamicEdgePadding, headerBottom, mapRef, sheetTop],
+    [cameraMode, dynamicEdgePadding, headerBottom, mapRef, sheetTop, windowDimensions.height],
   );
 
   /**
@@ -234,6 +275,19 @@ export function useMapCamera(options: UseMapCameraOptions) {
         if (__DEV__) {
           console.log(`[MAP:CAMERA_SKIP] reason=user_interacting mode=${cameraMode}`);
         }
+        return;
+      }
+
+      // Si estamos en modo navegación, mantener el modo navegación en vez de degradar a 2D
+      if (cameraMode === 'NAVIGATION') {
+        const navHeading = (followOpts?.heading != null && Number.isFinite(followOpts.heading) && followOpts.heading >= 0)
+          ? followOpts.heading
+          : lastHeadingRef.current;
+        navigateToCoordinate(coord, {
+          heading: navHeading,
+          pitch: lastPitchRef.current,
+          animated,
+        });
         return;
       }
 
@@ -273,9 +327,8 @@ export function useMapCamera(options: UseMapCameraOptions) {
       const latDelta = followOpts?.latitudeDelta ?? 0.012;
       const lngDelta = followOpts?.longitudeDelta ?? 0.012;
 
-      // Compensación visual para que el marker quede centrado en el usableMapRect
-      const verticalOffsetRatio = (dynamicEdgePadding.bottom - dynamicEdgePadding.top) / windowDimensions.height;
-      const shiftedLatitude = coord.latitude - (verticalOffsetRatio * latDelta * 0.45);
+      // Compensación visual exacta para que el marker quede centrado en el usableMapRect
+      const shiftedLatitude = calculateShiftedLatitude(coord.latitude, latDelta, dynamicEdgePadding, windowDimensions.height);
 
       const targetRegion: Region = {
         latitude: shiftedLatitude,
@@ -293,9 +346,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
         console.log(`[MAP:FOLLOW] reason=${followOpts?.reason || 'auto_follow'} target=(${coord.latitude.toFixed(4)},${coord.longitude.toFixed(4)}) sheetTop=${sheetTop}`);
       }
 
-      mapRef.current.animateToRegion(targetRegion, animated ? 600 : 0);
+      mapRef.current?.animateToRegion?.(targetRegion, animated ? 600 : 0);
     },
-    [cameraMode, checkTargetVisibility, dynamicEdgePadding.bottom, dynamicEdgePadding.top, isUserExploring, mapRef, safeRect, sheetTop, windowDimensions.height],
+    [cameraMode, checkTargetVisibility, dynamicEdgePadding, isUserExploring, mapRef, safeRect, sheetTop, windowDimensions.height],
   );
 
   /**
@@ -304,31 +357,34 @@ export function useMapCamera(options: UseMapCameraOptions) {
    * la cámara se reajusta inmediatamente aunque el GPS no haya cambiado.
    */
   useEffect(() => {
-    if (sheetTop === null && lastSheetTopRef.current === null) return;
+    if (sheetTop === null && lastSheetTopRef.current === null && headerBottom === lastHeaderBottomRef.current) return;
     const previousSheetTop = lastSheetTopRef.current;
+    const previousHeaderBottom = lastHeaderBottomRef.current;
     const diff = Math.abs((sheetTop ?? windowDimensions.height) - (previousSheetTop ?? windowDimensions.height));
+    const headerDiff = Math.abs(headerBottom - previousHeaderBottom);
 
-    if (diff > 15) {
+    if (diff > 15 || headerDiff > 15) {
       if (__DEV__) {
-        console.log(`[MAP:VIEWPORT_CHANGE] reason=sheet_settled sheetTop=${sheetTop} previous=${previousSheetTop}`);
+        console.log(`[MAP:VIEWPORT_CHANGE] reason=viewport_settled sheetTop=${sheetTop} headerBottom=${headerBottom}`);
       }
 
       if (isFollowing && lastTargetCoordRef.current) {
         followCoordinate(lastTargetCoordRef.current, {
-          reason: 'sheet_settle_recenter',
+          reason: 'viewport_settle_recenter',
           animated: true,
         });
       } else if (cameraMode === 'AUTO_FIT_ROUTE' && lastFittedPointsRef.current) {
         fitToRoute(lastFittedPointsRef.current, {
           force: true,
-          reason: 'sheet_settle_route_fit',
+          reason: 'viewport_settle_route_fit',
           animated: true,
         });
       }
     }
 
     lastSheetTopRef.current = sheetTop;
-  }, [sheetTop, windowDimensions.height, isFollowing, followCoordinate, cameraMode, fitToRoute]);
+    lastHeaderBottomRef.current = headerBottom;
+  }, [sheetTop, headerBottom, windowDimensions.height, isFollowing, followCoordinate, cameraMode, fitToRoute]);
 
   /**
    * Manejador de gesto de arrastre (pan drag) por el usuario.
@@ -363,13 +419,147 @@ export function useMapCamera(options: UseMapCameraOptions) {
   }, []);
 
   /**
-   * Recentra el mapa y reactiva el seguimiento automático de cámara.
+   * Desactiva el modo de navegación 3D y restaura la cámara a vista cenital 2D plana (pitch: 0, heading: 0)
+   * centrada en la coordenada objetivo (o última coordenada conocida).
+   */
+  const exitNavigationMode = useCallback(
+    (targetCoord?: RouteCoordinate | null, animated: boolean = true) => {
+      const coord = targetCoord || lastTargetCoordRef.current;
+      if (__DEV__) {
+        console.log('[MAP:NAVIGATION_EXIT] resetting pitch to 0 and returning to 2D follow');
+      }
+      lastPitchRef.current = 0;
+      lastHeadingRef.current = 0;
+      setIsFollowing(true);
+      setCameraMode('FOLLOW_USER');
+      isProgrammaticMovementRef.current = true;
+
+      if (coord && mapRef.current) {
+        lastTargetCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
+        const latDelta = 0.012;
+        const lngDelta = 0.012;
+        const shiftedLatitude = calculateShiftedLatitude(
+          coord.latitude,
+          latDelta,
+          dynamicEdgePadding,
+          windowDimensions.height,
+        );
+
+        const targetRegion: Region = {
+          latitude: shiftedLatitude,
+          longitude: coord.longitude,
+          latitudeDelta: latDelta,
+          longitudeDelta: lngDelta,
+        };
+        lastAnimatedRegionRef.current = targetRegion;
+        lastRenderedRegionRef.current = targetRegion;
+
+        if (typeof mapRef.current.animateCamera === 'function') {
+          try {
+            mapRef.current.animateCamera(
+              {
+                center: { latitude: shiftedLatitude, longitude: coord.longitude },
+                pitch: 0,
+                heading: 0,
+                zoom: 15.5,
+              },
+              { duration: animated ? 600 : 0 },
+            );
+            return;
+          } catch {
+            // Fallback a animateToRegion
+          }
+        }
+        mapRef.current?.animateToRegion?.(targetRegion, animated ? 600 : 0);
+      }
+    },
+    [dynamicEdgePadding, mapRef, windowDimensions.height],
+  );
+
+  /**
+   * Activa el modo de navegación cercano centrado en la coordenada (usuario o punto)
+   * con inclinación 3D (pitch 60°), orientación (heading) y zoom cercano de calle.
+   */
+  const navigateToCoordinate = useCallback(
+    (coord: RouteCoordinate | null | undefined, navOpts?: NavigationModeOptions) => {
+      if (!coord || !mapRef.current) return;
+      const rawHeading = navOpts?.heading;
+      const heading = (rawHeading != null && Number.isFinite(rawHeading) && rawHeading >= 0)
+        ? rawHeading
+        : (lastHeadingRef.current >= 0 ? lastHeadingRef.current : 0);
+      const pitch = navOpts?.pitch ?? (lastPitchRef.current > 0 ? lastPitchRef.current : NAVIGATION_PITCH);
+      const animated = navOpts?.animated ?? true;
+      const duration = navOpts?.duration ?? 800;
+
+      lastHeadingRef.current = heading;
+      lastPitchRef.current = pitch;
+
+      setIsFollowing(true);
+      setCameraMode('NAVIGATION');
+      isProgrammaticMovementRef.current = true;
+      lastTargetCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
+
+      const latDelta = NAVIGATION_LATITUDE_DELTA;
+      const lngDelta = NAVIGATION_LONGITUDE_DELTA;
+      const shiftedLatitude = calculateShiftedLatitude(coord.latitude, latDelta, dynamicEdgePadding, windowDimensions.height);
+
+      const targetRegion: Region = {
+        latitude: shiftedLatitude,
+        longitude: coord.longitude,
+        latitudeDelta: latDelta,
+        longitudeDelta: lngDelta,
+      };
+      lastAnimatedRegionRef.current = targetRegion;
+      lastRenderedRegionRef.current = targetRegion;
+
+      if (typeof mapRef.current.animateCamera === 'function') {
+        try {
+          mapRef.current.animateCamera(
+            {
+              center: { latitude: shiftedLatitude, longitude: coord.longitude },
+              pitch,
+              heading,
+              zoom: navOpts?.zoom ?? NAVIGATION_ZOOM_LEVEL,
+              altitude: NAVIGATION_ALTITUDE,
+            },
+            { duration: animated ? duration : 0 },
+          );
+          return;
+        } catch {
+          // Fallback a animateToRegion
+        }
+      }
+
+      mapRef.current?.animateToRegion?.(targetRegion, animated ? duration : 0);
+    },
+    [dynamicEdgePadding, mapRef, windowDimensions.height],
+  );
+
+  /**
+   * Alterna entre modo navegación 3D y vista 2D plana.
+   * Si ya está activo, lo desactiva. Si está inactivo, lo activa con pitch 60°.
+   */
+  const toggleNavigationMode = useCallback(
+    (coord?: RouteCoordinate | null, navOpts?: NavigationModeOptions) => {
+      if (cameraMode === 'NAVIGATION') {
+        exitNavigationMode(coord, navOpts?.animated ?? true);
+      } else {
+        navigateToCoordinate(coord, navOpts);
+      }
+    },
+    [cameraMode, exitNavigationMode, navigateToCoordinate],
+  );
+
+  /**
+   * Recentra el mapa y reactiva el seguimiento automático de cámara en 2D.
    */
   const recenter = useCallback(
     (recenterOpts?: RecenterOptions) => {
       if (__DEV__) {
-        console.log('[MAP:RECENTER] restoring followMode');
+        console.log('[MAP:RECENTER] restoring followMode in 2D');
       }
+      lastPitchRef.current = 0;
+      lastHeadingRef.current = 0;
       setIsFollowing(true);
 
       if (recenterOpts?.pointsToFit && recenterOpts.pointsToFit.length >= 2) {
@@ -384,20 +574,68 @@ export function useMapCamera(options: UseMapCameraOptions) {
           animated: recenterOpts.animated ?? true,
           reason: 'recenter_requested',
         });
+      } else if (lastTargetCoordRef.current) {
+        followCoordinate(lastTargetCoordRef.current, {
+          force: true,
+          animated: recenterOpts?.animated ?? true,
+          reason: 'recenter_requested',
+        });
       }
     },
     [fitToRoute, followCoordinate],
   );
 
+  /**
+   * Restaura la vista al encuadre por defecto (Temuco + Padre Las Casas).
+   */
+  const fitToDefaultRegion = useCallback(
+    (defaultRegion: Region = DEFAULT_TEMUCO_PLC_REGION, animated: boolean = true) => {
+      if (!mapRef.current) return;
+      lastPitchRef.current = 0;
+      lastHeadingRef.current = 0;
+      setIsFollowing(false);
+      setCameraMode('IDLE');
+      isProgrammaticMovementRef.current = true;
+      lastTargetCoordRef.current = null;
+
+      const latDelta = defaultRegion.latitudeDelta;
+      const lngDelta = defaultRegion.longitudeDelta;
+      const shiftedLatitude = calculateShiftedLatitude(
+        defaultRegion.latitude,
+        latDelta,
+        dynamicEdgePadding,
+        windowDimensions.height,
+      );
+
+      const targetRegion: Region = {
+        latitude: shiftedLatitude,
+        longitude: defaultRegion.longitude,
+        latitudeDelta: latDelta,
+        longitudeDelta: lngDelta,
+      };
+
+      lastAnimatedRegionRef.current = targetRegion;
+      lastRenderedRegionRef.current = targetRegion;
+
+      mapRef.current?.animateToRegion?.(targetRegion, animated ? 800 : 0);
+    },
+    [dynamicEdgePadding, mapRef, windowDimensions.height],
+  );
+
   return {
     cameraMode,
     isFollowing,
+    isNavigating: cameraMode === 'NAVIGATION',
     isUserExploring,
     dynamicEdgePadding,
     usableRect,
     safeRect,
     fitToRoute,
     followCoordinate,
+    navigateToCoordinate,
+    exitNavigationMode,
+    toggleNavigationMode,
+    fitToDefaultRegion,
     handlePanDrag,
     handleRegionChangeComplete,
     recenter,
