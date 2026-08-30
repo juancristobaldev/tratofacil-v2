@@ -349,16 +349,17 @@ describe('BottomSheet Provider & Reconciler Integration Layer (Layer 2)', () => 
     expect(getCtx().pendingMapFlowKey).toBeNull();
   });
 
-  it('Collapsible Contract: Tall sheets tienen snapPoints colapsables y low-height sheets operan content-driven', () => {
+  it('Collapsible Contract: Todos los sheets registrados tienen snapPoints colapsables y dynamic sizing', () => {
     const { registry } = require('./bottomSheet.registry');
-    const tallCollapsibleSheets: Array<keyof typeof registry> = [
+    const collapsibleSheets: Array<keyof typeof registry> = [
       'categories',
+      'provider_preview',
       'focus_client',
       'focus_provider',
       'provider_dashboard',
     ];
 
-    tallCollapsibleSheets.forEach((key) => {
+    collapsibleSheets.forEach((key) => {
       const descriptor = registry[key];
       expect(descriptor).toBeDefined();
       expect(descriptor.enableDynamicSizing).toBe(true);
@@ -369,10 +370,5 @@ describe('BottomSheet Provider & Reconciler Integration Layer (Layer 2)', () => 
       expect(descriptor.snapPoints?.[0]).toBe(descriptor.collapsedHeight);
       expect(descriptor.initialIndex).toBe(1);
     });
-
-    const providerPreviewDescriptor = registry.provider_preview;
-    expect(providerPreviewDescriptor.enableDynamicSizing).toBe(true);
-    expect(providerPreviewDescriptor.snapPoints).toBeUndefined();
-    expect(providerPreviewDescriptor.initialIndex).toBe(0);
   });
 });

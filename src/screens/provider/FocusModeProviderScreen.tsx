@@ -6,6 +6,7 @@ import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline } from '../../components/ui';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { useMapCamera } from '../../hooks/useMapCamera';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
@@ -18,13 +19,23 @@ export const FocusModeProviderScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
-  const { sheetMetrics } = useBottomSheet();
+  const { sheetMetrics, setIndex, active } = useBottomSheet();
   const session = useFocusSession('provider');
   const { activeOrder, orderState, providerCoords, clientCoords, routeCoords, showChat, setShowChat, realtime } = session;
 
   const polylineCoords = routeCoords;
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
   const mapRef = useRef<MapView>(null);
+
+  const {
+    handleMapPanDrag: onSheetAutoCollapsePanDrag,
+    handleMapRegionChangeComplete: onSheetAutoCollapseRegionComplete,
+  } = useMapSheetCollapse({
+    activeSheet: active,
+    sheetIndex: sheetMetrics?.index ?? 1,
+    isCollapsed: sheetMetrics?.isCollapsed ?? false,
+    setIndex,
+  });
 
   const {
     fitToRoute,
@@ -100,8 +111,14 @@ export const FocusModeProviderScreen: React.FC = () => {
           ref={mapRef}
           style={styles.map}
           initialRegion={initialCenterRegion}
-          onPanDrag={handlePanDrag}
-          onRegionChangeComplete={handleRegionChangeComplete}
+          onPanDrag={() => {
+            handlePanDrag();
+            onSheetAutoCollapsePanDrag();
+          }}
+          onRegionChangeComplete={(r, d) => {
+            handleRegionChangeComplete(r, d);
+            onSheetAutoCollapseRegionComplete();
+          }}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}

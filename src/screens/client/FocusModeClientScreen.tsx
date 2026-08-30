@@ -22,6 +22,7 @@ import { FocusChatOverlay } from './components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { useMapCamera } from '../../hooks/useMapCamera';
 import type { RouteCoordinate } from '../../utils/directions';
 import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
@@ -31,7 +32,7 @@ export const FocusModeClientScreen: React.FC = () => {
   const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
   const navigation = useNavigation<any>();
-  const { dismiss, sheetMetrics } = useBottomSheet();
+  const { dismiss, sheetMetrics, setIndex, active } = useBottomSheet();
   const session = useFocusSession('client');
   const realtime = useRealtime();
 
@@ -46,6 +47,15 @@ export const FocusModeClientScreen: React.FC = () => {
   const polylineCoords = routeCoords;
 
   const mapRef = useRef<MapView>(null);
+  const {
+    handleMapPanDrag: onSheetAutoCollapsePanDrag,
+    handleMapRegionChangeComplete: onSheetAutoCollapseRegionComplete,
+  } = useMapSheetCollapse({
+    activeSheet: active,
+    sheetIndex: sheetMetrics?.index ?? 1,
+    isCollapsed: sheetMetrics?.isCollapsed ?? false,
+    setIndex,
+  });
   const {
     fitToRoute,
     followCoordinate,
@@ -242,8 +252,14 @@ export const FocusModeClientScreen: React.FC = () => {
           ref={mapRef}
           style={styles.map}
           initialRegion={initialCenterRegion}
-          onPanDrag={handlePanDrag}
-          onRegionChangeComplete={handleRegionChangeComplete}
+          onPanDrag={() => {
+            handlePanDrag();
+            onSheetAutoCollapsePanDrag();
+          }}
+          onRegionChangeComplete={(r, d) => {
+            handleRegionChangeComplete(r, d);
+            onSheetAutoCollapseRegionComplete();
+          }}
           customMapStyle={mapStyle}
           showsUserLocation={false}
           showsMyLocationButton={false}

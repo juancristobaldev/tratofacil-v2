@@ -97,6 +97,75 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
     );
   }
 
+  if (isCollapsed) {
+    const currentItem = clampedProviders[activeIndex] || clampedProviders[0];
+    const userCoords = location?.coords;
+    const pLat = currentItem ? (currentItem.lat ?? currentItem.latitude) : null;
+    const pLng = currentItem ? (currentItem.lng ?? currentItem.longitude) : null;
+
+    let etaText = '12 min';
+    let distanceKmText = '';
+    if (userCoords && pLat != null && pLng != null) {
+      const distMeters = getMetersBetween(userCoords.latitude, userCoords.longitude, pLat, pLng);
+      etaText = formatEtaFromMeters(distMeters);
+      distanceKmText = distMeters < 1000 ? `${Math.round(distMeters)}m` : `${(distMeters / 1000).toFixed(1)} km`;
+    }
+
+    return (
+      <View style={styles.compactContainer}>
+        <View style={styles.compactCardRow}>
+          <TouchableOpacity
+            style={styles.compactProviderInfo}
+            onPress={() => setIndex?.(1)}
+            activeOpacity={0.8}
+            accessibilityLabel="Expandir información del profesional"
+            accessibilityRole="button"
+          >
+            <Avatar uri={currentItem.avatar} name={currentItem.name || currentItem.providerName || ''} size={38} />
+            <View style={styles.compactDetailsCol}>
+              <Text style={styles.compactName} numberOfLines={1}>
+                {currentItem.name || currentItem.providerName || 'Mario R.'}
+              </Text>
+              <View style={styles.compactRatingAndEta}>
+                <Icon name="Star" size={11} color={TOKENS.colors.starActive} />
+                <Text style={styles.compactRatingText}>{(currentItem.rating || 4.9).toFixed(1)}</Text>
+                <Text style={styles.compactDot}>•</Text>
+                <Text style={styles.compactEtaText}>{etaText}</Text>
+                {Boolean(distanceKmText) && (
+                  <Text style={styles.compactDistText}>({distanceKmText})</Text>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.compactActionsRight}>
+            <Button
+              title="Perfil"
+              iconRight="ChevronRight"
+              size="sm"
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'VIEW_PROFILE', origin: 'PROVIDER_PREVIEW_COMPACT' });
+                dispatchBottomSheetAction('provider_preview', 'VIEW_PROFILE', currentItem, 'PROVIDER_PREVIEW_COMPACT');
+              }}
+              style={styles.compactProfileBtn}
+            />
+            <IconButton
+              icon="X"
+              size="sm"
+              variant="ghost"
+              accessibilityLabel="Cancelar selección de servicio"
+              onPress={() => {
+                bottomSheetDebug('PANEL_PRESS', { key: 'provider_preview', requestId, action: 'DESELECT', origin: 'PROVIDER_PREVIEW_COMPACT' });
+                dispatchBottomSheetAction('provider_preview', 'DESELECT', undefined, 'PROVIDER_PREVIEW_COMPACT');
+              }}
+              style={styles.compactDismissBtn}
+            />
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   const showDots = clampedProviders.length > 1;
 
   const renderItem = ({ item }: { item: ProviderPreviewItem }) => {

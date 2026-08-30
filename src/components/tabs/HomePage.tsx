@@ -7,6 +7,7 @@ import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
 import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
+import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import { isSheetAllowedForRole } from '../../bottom-sheet/core/bottomSheet.registry';
 import type { SheetKey } from '../../bottom-sheet/core/bottomSheet.types';
@@ -69,6 +70,7 @@ export const HomePage: React.FC = () => {
     present,
     dismiss,
     update,
+    setIndex,
     active,
     activePayload,
     sheetMetrics,
@@ -76,6 +78,17 @@ export const HomePage: React.FC = () => {
     bindRuntimeActionHandlers,
     unbindRuntimeActionHandlers,
   } = useBottomSheet();
+  const {
+    handleMapPanDrag: onSheetAutoCollapsePanDrag,
+    handleMapRegionChangeComplete: onSheetAutoCollapseRegionComplete,
+    cancelPendingRestore: cancelSheetAutoRestore,
+  } = useMapSheetCollapse({
+    activeSheet: active,
+    sheetIndex: sheetMetrics?.index ?? 1,
+    isCollapsed: sheetMetrics?.isCollapsed ?? false,
+    setIndex,
+    enabled: isFocused,
+  });
   const {
     fitToRoute,
     followCoordinate,
@@ -248,6 +261,7 @@ export const HomePage: React.FC = () => {
 
   const handleRegionChangeComplete = useCallback((newRegion: any) => {
     onCameraRegionChangeComplete(newRegion, mapPanActiveRef.current);
+    onSheetAutoCollapseRegionComplete();
     const current = regionRef.current;
     if (!current) return;
     const moved = (
@@ -264,15 +278,16 @@ export const HomePage: React.FC = () => {
       mapPanActiveRef.current = false;
       console.log('[MAP:GESTURE] PAN_END');
     }
-  }, [updateClusters, onCameraRegionChangeComplete]);
+  }, [updateClusters, onCameraRegionChangeComplete, onSheetAutoCollapseRegionComplete]);
 
   const handleMapPanDrag = useCallback(() => {
     Keyboard.dismiss();
     onCameraPanDrag();
+    onSheetAutoCollapsePanDrag();
     if (mapPanActiveRef.current) return;
     mapPanActiveRef.current = true;
     console.log('[MAP:GESTURE] PAN_START');
-  }, [onCameraPanDrag]);
+  }, [onCameraPanDrag, onSheetAutoCollapsePanDrag]);
 
   const initialGpsCenteredRef = useRef(false);
 
@@ -1166,6 +1181,7 @@ export const HomePage: React.FC = () => {
               coordinate={{ latitude, longitude }}
               isSelected={isSelected}
               onPress={() => {
+                cancelSheetAutoRestore();
                 console.log(`[MAP:INTERACTION] type=PROVIDER_PRESS providerId=${provider.id}`);
                 bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'PROVIDER_PRESS', origin: 'MAP_PROVIDER_PIN' });
                 bottomSheetDebug('FLOW_INTENT', { key: 'provider_preview', action: 'PROVIDER_PRESS', target: 'provider_preview' });

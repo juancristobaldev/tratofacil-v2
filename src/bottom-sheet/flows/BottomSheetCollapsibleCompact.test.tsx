@@ -502,6 +502,25 @@ describe('Collapsible Bottom Sheets with Compact Mode (E2E Contract)', () => {
       expect(view.getAllByLabelText('Ver perfil del profesional').length).toBeGreaterThan(0);
       expect(view.getByLabelText('Cancelar selección de servicio')).toBeTruthy();
     });
+
+    it('renders compact summary row with profile and dismiss actions when COLLAPSED', async () => {
+      const view = await render(
+        <BottomSheetProvider>
+          <ProviderPreviewPanelContent
+            sheetKey="provider_preview"
+            requestId={3}
+            payload={{ providers: mockProviders, selectedIndex: 0 }}
+            dismiss={jest.fn()}
+            setIndex={jest.fn()}
+            isCollapsed={true}
+          />
+        </BottomSheetProvider>,
+      );
+
+      expect(view.getByText('Pedro Electricista')).toBeTruthy();
+      expect(view.getByText('Perfil')).toBeTruthy();
+      expect(view.getByLabelText('Cancelar selección de servicio')).toBeTruthy();
+    });
   });
 
   describe('4. Categories: Open Category Tree vs Collapsed Filter Summary', () => {
