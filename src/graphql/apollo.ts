@@ -185,7 +185,7 @@ export const errorLink = new ErrorLink(({ graphQLErrors, networkError, operation
   }
 
   const errorMessage = extractApolloErrorMessage(graphQLErrors, networkError);
-  console.error('[APOLLO:ERROR]', operation.operationName, '|', errorMessage);
+  console.error('[APOLLO:ERROR]', operation.operationName, '|', errorMessage, '\n[FULL_GRAPHQL_ERRORS]:', JSON.stringify(graphQLErrors, null, 2), '\n[NETWORK_ERROR]:', JSON.stringify(networkError, null, 2));
 });
 
 const cache = new InMemoryCache({

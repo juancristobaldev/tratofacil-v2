@@ -1,3 +1,4 @@
+import type { CreateServiceInput, UpdateServiceInput } from '../graphql/generated';
 import { useQuery, useMutation } from '@apollo/client/react';
 import {
   MY_SERVICES,
@@ -5,10 +6,10 @@ import {
   UPDATE_SERVICE,
   DELETE_SERVICE,
 } from '../graphql/operations/services';
-import type { Service, ServiceProvider } from '../types/graphql';
+import type { Service, ServiceProvider } from '../graphql/generated';
 import { EMPTY_ARRAY } from '../utils/emptyArray';
 
-interface CreateServiceInput {
+type CreateServiceInput_old = {
   categoryId: number;
   city: string;
   description?: string;
@@ -17,7 +18,7 @@ interface CreateServiceInput {
   slug: string;
 }
 
-interface UpdateServiceInput {
+type UpdateServiceInput_old = {
   price?: number;
   hasHomeVisit?: boolean;
   description?: string;

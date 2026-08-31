@@ -1,3 +1,4 @@
+import type { CreateRealtimeOrderInput, GuestCreateRealtimeOrderInput, MutationQuoteRealtimeOrderArgs, CreateRealtimeProviderReviewInput, CreateClientReviewInput } from '../graphql/generated';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
@@ -40,7 +41,7 @@ import type {
   OrderRealTime,
   RealtimePaymentInitResponse,
   ChatMessageEntity,
-} from '../types/graphql';
+} from '../graphql/generated';
 
 interface RealtimeStateData {
   me: {
@@ -54,15 +55,15 @@ interface RealtimeStateData {
   };
 }
 
-interface CreateContactInput {
+type CreateRealtimeOrderInput_old = {
   serviceProviderId: number;
   description?: string;
-  lat: number;
-  lng: number;
+  clientLat: number;
+  clientLng: number;
   clientAddress?: string;
 }
 
-interface GuestCreateRealtimeOrderInput {
+type GuestCreateRealtimeOrderInput_old = {
   guestEmail: string;
   guestPhone: string;
   guestName?: string;
@@ -73,21 +74,21 @@ interface GuestCreateRealtimeOrderInput {
   clientDescription?: string;
 }
 
-interface QuoteInput {
+type MutationQuoteRealtimeOrderArgs_old = {
   orderRealtimeId: number;
   quotedPrice: number;
   quotedHours: number;
   quotedTransport: number;
 }
 
-interface ProviderReviewInput {
+type CreateRealtimeProviderReviewInput_old = {
   rating: number;
   comment?: string;
   orderRealtimeId: number;
   providerId: number;
 }
 
-interface ClientReviewInput {
+type CreateClientReviewInput_old = {
   rating: number;
   comment?: string;
   orderRealtimeId: number;
@@ -111,23 +112,23 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   clientId: number | null;
   refetch: () => void;
   toggleAvailability: (active: boolean, lat?: number | null, lng?: number | null) => void;
-  updateProviderLocation: (lat: number, lng: number) => Promise<void>;
-  createContactRequest: (input: CreateContactInput) => Promise<{ id: number; status: string }>;
-  quoteOrder: (params: QuoteInput) => Promise<void>;
-  updateQuote: (params: QuoteInput) => Promise<void>;
+  updateProviderLocation: (clientLat: number, clientLng: number) => Promise<void>;
+  createContactRequest: (input: CreateRealtimeOrderInput) => Promise<{ id: number; status: string }>;
+  quoteOrder: (params: MutationQuoteRealtimeOrderArgs) => Promise<void>;
+  updateQuote: (params: MutationQuoteRealtimeOrderArgs) => Promise<void>;
   acceptQuote: (orderRealtimeId: number) => Promise<void>;
   rejectQuote: (orderRealtimeId: number) => Promise<void>;
   respondRequest: (orderRealtimeId: number, decision: string) => Promise<void>;
   startOrder: (orderRealtimeId: number) => Promise<void>;
   finishOrder: (orderRealtimeId: number) => Promise<void>;
   cancelOrder: (orderRealtimeId: number) => Promise<void>;
-  updateLocation: (orderRealtimeId: number, lat: number, lng: number) => Promise<void>;
+  updateLocation: (orderRealtimeId: number, clientLat: number, clientLng: number) => Promise<void>;
   initPayment: (orderRealtimeId: number, returnUrl: string) => Promise<RealtimePaymentInitResponse>;
   confirmPayment: (token: string) => Promise<{ id: number; status: string }>;
   payWithSavedCard: (orderRealtimeId: number) => Promise<OrderRealTime>;
   sendMessage: (orderRealtimeId: number, message: string) => Promise<ChatMessageEntity>;
-  createProviderReview: (input: ProviderReviewInput) => Promise<void>;
-  createClientReview: (input: ClientReviewInput) => Promise<void>;
+  createProviderReview: (input: CreateRealtimeProviderReviewInput) => Promise<void>;
+  createClientReview: (input: CreateClientReviewInput) => Promise<void>;
     requestProviderToConnect: (serviceProviderId: number) => Promise<void>;
   socketRef: React.MutableRefObject<Socket | null>;
   guestCreateContactRequest: (input: GuestCreateRealtimeOrderInput) => Promise<{
@@ -555,15 +556,15 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       refetch();
     });
 
-    socket.on('provider:location-updated', (payload: { providerId: number; lat: number; lng: number; timestamp?: number }) => {
+    socket.on('provider:location-updated', (payload: { providerId: number; clientLat: number; clientLng: number; timestamp?: number }) => {
       logSocketIn('provider:location-updated', payload);
       if (!payload?.providerId) return;
       try {
         apolloClient.cache.modify({
           id: `Provider:${payload.providerId}`,
           fields: {
-            lat: () => payload.lat,
-            lng: () => payload.lng,
+            clientLat: () => payload.clientLat,
+            clientLng: () => payload.clientLng,
           },
         });
       } catch {}
@@ -636,9 +637,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const updateProviderLocation = useCallback(
-    async (lat: number, lng: number, timestamp?: number) => {
+    async (clientLat: number, clientLng: number, timestamp?: number) => {
       await updateProviderLocMut({
-        variables: { lat, lng, timestamp: timestamp ?? undefined },
+        variables: { lat: clientLat, lng: clientLng, timestamp: timestamp ?? undefined },
       });
     },
     [updateProviderLocMut],
@@ -676,15 +677,15 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   }, [isRealtimeActive, updateProviderLocation]);
 
   const createContactRequest = useCallback(
-    async (input: CreateContactInput) => {
+    async (input: CreateRealtimeOrderInput) => {
       if (__DEV__) console.log(`[RT:EVENT] source=CREATE_REQUEST type=start orderId=null status=null role=${roleRef.current}`);
       const { data: result } = await createContactMut({
         variables: {
           input: {
             serviceProviderId: Number(input.serviceProviderId),
-            clientDescription: input.description || undefined,
-            clientLat: Number(input.lat),
-            clientLng: Number(input.lng),
+            clientDescription: input.clientDescription || undefined,
+            clientLat: Number(input.clientLat),
+            clientLng: Number(input.clientLng),
             clientAddress: input.clientAddress || undefined,
           },
         },
@@ -699,14 +700,14 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const quoteOrder = useCallback(
-    async (params: QuoteInput) => {
+    async (params: MutationQuoteRealtimeOrderArgs) => {
       await quoteMut({ variables: params });
     },
     [quoteMut],
   );
 
   const updateQuote = useCallback(
-    async (params: QuoteInput) => {
+    async (params: MutationQuoteRealtimeOrderArgs) => {
       await updateQuoteMut({ variables: params });
     },
     [updateQuoteMut],
@@ -782,9 +783,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const updateLocation = useCallback(
-    async (orderRealtimeId: number, lat: number, lng: number, timestamp?: number) => {
+    async (orderRealtimeId: number, clientLat: number, clientLng: number, timestamp?: number) => {
       await updateLocMut({
-        variables: { orderRealtimeId, lat, lng, timestamp: timestamp ?? undefined },
+        variables: { orderRealtimeId, lat: clientLat, lng: clientLng, timestamp: timestamp ?? undefined },
       });
     },
     [updateLocMut],
@@ -898,7 +899,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const createProviderReview = useCallback(
-    async (input: ProviderReviewInput) => {
+    async (input: CreateRealtimeProviderReviewInput) => {
       await reviewProviderMut({ variables: { input } });
       refetch();
     },
@@ -906,7 +907,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   );
 
   const createClientReview = useCallback(
-    async (input: ClientReviewInput) => {
+    async (input: CreateClientReviewInput) => {
       await reviewClientMut({ variables: { input } });
       refetch();
     },

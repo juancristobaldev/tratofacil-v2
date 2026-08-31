@@ -9,7 +9,7 @@ import {
 import type {
   Category,
   Service,
-} from '../types/graphql';
+} from '../graphql/generated';
 import { buildCategoryTree, type TreeNode } from '../utils/categoryTree';
 import { EMPTY_ARRAY } from '../utils/emptyArray';
 

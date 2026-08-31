@@ -106,6 +106,26 @@ describe('Domain: BottomSheet Surface & Map Policy (Flujo 4 & 20)', () => {
         },
       },
       {
+        description: 'Proveedor con orden PAYMENT_PENDING -> mantiene focus_provider',
+        role: 'provider',
+        providerOrder: { id: 10, status: 'PAYMENT_PENDING' },
+        expected: {
+          kind: 'SHEET',
+          key: 'focus_provider',
+          reason: 'provider_domain_order',
+        },
+      },
+      {
+        description: 'Cliente con orden PAYMENT_PENDING -> muestra focus_client para pagar',
+        role: 'client',
+        clientOrder: { id: 10, status: 'PAYMENT_PENDING', provider: { name: 'Mario' } },
+        expected: {
+          kind: 'SHEET',
+          key: 'focus_client',
+          reason: 'client_domain_order_with_provider',
+        },
+      },
+      {
         description: 'Cliente con orden COMPLETED (terminal) -> regresa a categories',
         role: 'client',
         clientOrder: { id: 10, status: 'COMPLETED' },

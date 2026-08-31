@@ -10,11 +10,12 @@ import {
   SET_GUEST_PASSWORD,
 } from '../graphql/operations/auth';
 import { REGISTER_PROVIDER } from '../graphql/operations/providers';
-import { User, AppRole, Role } from '../types/graphql';
+import { User, Role } from '../graphql/generated';
+import { AppRole } from '../types/appRole';
 
 function mapRole(role: Role): AppRole {
-  if (role === Role.PROVIDER) return 'provider';
-  if (role === Role.CLIENT) return 'client';
+  if (role === Role.Provider) return 'provider';
+  if (role === Role.Client) return 'client';
   return 'guest';
 }
 

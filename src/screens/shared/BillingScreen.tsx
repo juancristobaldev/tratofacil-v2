@@ -1,3 +1,4 @@
+import { SubscriptionType } from "../../graphql/generated";
 import React, { useState, useCallback } from 'react';
 import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,7 +98,7 @@ export const BillingScreen: React.FC = () => {
     }
   };
 
-  const handleCancel = (flowId: string, type: 'PROVIDER' | 'MARKETPLACE') => {
+  const handleCancel = (orderId: number, type: SubscriptionType.Provider | SubscriptionType.Marketplace) => {
     Alert.alert('Cancelar suscripción', '¿Seguro que deseas cancelar esta suscripción?', [
       { text: 'No' },
       {
@@ -105,7 +106,7 @@ export const BillingScreen: React.FC = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await cancelSubscription({ subscriptionFlowId: flowId, type });
+            await cancelSubscription({ orderId, type });
             Alert.alert('Cancelada', 'Suscripción cancelada.');
             refetch();
           } catch (err: any) {
@@ -116,9 +117,9 @@ export const BillingScreen: React.FC = () => {
     ]);
   };
 
-  const handleReactivate = async (flowId: string, type: 'PROVIDER' | 'MARKETPLACE') => {
+  const handleReactivate = async (orderId: number, type: SubscriptionType.Provider | SubscriptionType.Marketplace) => {
     try {
-      await reactivateSubscription({ subscriptionFlowId: flowId, type });
+      await reactivateSubscription({ orderId, type });
       Alert.alert('Reactivada', 'Suscripción reactivada.');
       refetch();
     } catch (err: any) {
@@ -135,8 +136,8 @@ export const BillingScreen: React.FC = () => {
   }
 
   const renderSubscription = (
-    plan: { planActive: boolean; planEndsAt: string | null; subscriptionFlowId: string | null; plan: string } | null,
-    type: 'PROVIDER' | 'MARKETPLACE'
+    plan: { planActive: boolean; planEndsAt?: string | null; subscriptionFlowId?: string | null; plan: string } | null | undefined,
+    type: SubscriptionType.Provider | SubscriptionType.Marketplace
   ) => {
     if (!plan || !plan.subscriptionFlowId) return null;
     const ended = plan.planEndsAt ? new Date(plan.planEndsAt).getTime() < Date.now() : false;
@@ -145,7 +146,7 @@ export const BillingScreen: React.FC = () => {
         <View style={styles.subsHeader}>
           <Icon name="Crown" size={20} color={TOKENS.colors.brand600} />
           <Text style={styles.subsPlan}>
-            {type === 'PROVIDER' ? plan.plan.replace('TRATOFACIL_SRV_', '') : plan.plan.replace('TRATOFACIL_PUB_', '') || 'FREE'}
+            {type === SubscriptionType.Provider ? plan.plan.replace('TRATOFACIL_SRV_', '') : plan.plan.replace('TRATOFACIL_PUB_', '') || 'FREE'}
           </Text>
           <Badge
             label={plan.planActive ? 'Activa' : ended ? 'Finalizada' : 'Cancelada'}
@@ -156,10 +157,10 @@ export const BillingScreen: React.FC = () => {
           <Text style={styles.subsEnds}>Vence el {new Date(plan.planEndsAt).toLocaleDateString('es-CL')}</Text>
         )}
         {plan.planActive ? (
-          <Button title="Cancelar Suscripción" variant="outline" onPress={() => handleCancel(plan.subscriptionFlowId!, type)} style={styles.subsBtn} />
+          <Button title="Cancelar Suscripción" variant="outline" onPress={() => handleCancel(plan.id, type)} style={styles.subsBtn} />
         ) : (
           !ended && (
-            <Button title="Reactivar Suscripción" variant="outline" onPress={() => handleReactivate(plan.subscriptionFlowId!, type)} style={styles.subsBtn} />
+            <Button title="Reactivar Suscripción" variant="outline" onPress={() => handleReactivate(plan.id, type)} style={styles.subsBtn} />
           )
         )}
       </View>
@@ -238,8 +239,8 @@ export const BillingScreen: React.FC = () => {
         {/* Tab 1: Suscripciones */}
         {activeTab === 1 && (
           <View style={styles.tabContent}>
-            {renderSubscription(providerPlan, 'PROVIDER')}
-            {renderSubscription(marketplacePlan, 'MARKETPLACE')}
+            {renderSubscription(providerPlan, SubscriptionType.Provider)}
+            {renderSubscription(marketplacePlan, SubscriptionType.Marketplace)}
             {!providerPlan?.subscriptionFlowId && !marketplacePlan?.subscriptionFlowId && (
               <EmptyState
                 icon="Crown"

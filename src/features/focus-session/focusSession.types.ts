@@ -1,4 +1,4 @@
-import type { OrderRealTime } from '../../types/graphql';
+import type { OrderRealTime } from '../../graphql/generated';
 import type { UseTimeRealServicesReturn } from '../../hooks/useTimeRealServices';
 
 export interface FocusGeoPoint {

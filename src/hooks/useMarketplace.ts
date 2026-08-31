@@ -1,3 +1,4 @@
+import type { CreateProductInput, UpdateProductInput, CreateOrderProductInput, CreateShippingInfoInput } from '../graphql/generated';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { useAuth } from '../context/AuthContext';
@@ -24,7 +25,7 @@ import type {
   OrderProduct,
   Order,
   OrderJob,
-} from '../types/graphql';
+} from '../graphql/generated';
 import { EMPTY_ARRAY } from '../utils/emptyArray';
 
 // Referencia estable a nivel de módulo: evita que el fallback de `myOrders` sea un
@@ -35,7 +36,7 @@ const EMPTY_MY_ORDERS: { products: OrderProduct[]; services: Order[]; jobs: Orde
   jobs: [],
 };
 
-interface CreateProductInput {
+type CreateProductInput_old = {
   name: string;
   description?: string;
   price: number;
@@ -54,7 +55,7 @@ interface CreateProductInput {
   };
 }
 
-interface UpdateProductInput {
+type UpdateProductInput_old = {
   id: number;
   name?: string;
   description?: string;
@@ -64,12 +65,12 @@ interface UpdateProductInput {
   slug?: string;
 }
 
-interface CreateOrderInput {
+type CreateOrderInput_old = {
   productId: number;
   quantity: number;
 }
 
-interface CreateShippingInput {
+type CreateShippingInput_old = {
   street: string;
   number: string;
   commune: string;
@@ -108,7 +109,7 @@ interface UseMarketplaceReturn {
   createLoading: boolean;
   updateProduct: (input: UpdateProductInput) => Promise<void>;
   removeProduct: (id: number) => Promise<void>;
-  createOrder: (input: CreateOrderInput, shipping: CreateShippingInput) => Promise<{ id: number; status: string; total: number }>;
+  createOrder: (input: CreateOrderProductInput, shipping: CreateShippingInfoInput) => Promise<{ id: number; status: string; total: number }>;
   updateShipping: (input: { orderId: number; shippingCompany: string; trackingCode: string }) => Promise<void>;
   updateOrderStatus: (orderId: number, status: string) => Promise<void>;
   confirmOrderReceipt: (orderId: number) => Promise<void>;
@@ -243,7 +244,7 @@ export function useMarketplace(): UseMarketplaceReturn {
     });
   };
 
-  const createOrder = async (input: CreateOrderInput, shipping: CreateShippingInput) => {
+  const createOrder = async (input: CreateOrderProductInput, shipping: CreateShippingInfoInput) => {
     const { data: result } = await createOrderMut({
       variables: { input, shippingInput: shipping },
       refetchQueries: ['MyOrders', 'GetMarketplaceData'],

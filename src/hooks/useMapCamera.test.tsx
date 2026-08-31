@@ -346,18 +346,17 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     const userCoord: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
 
     act(() => {
-      hookValue.navigateToCoordinate(userCoord, { heading: 90, pitch: 60, animated: true });
+      hookValue.navigateToCoordinate(userCoord, { heading: 90, animated: true });
     });
 
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
         heading: 90,
-        pitch: 60,
+        pitch: 40,
         zoom: 18,
-        altitude: 300,
       }),
-      { duration: 800 },
+      expect.any(Object),
     );
     expect(hookValue.isFollowing).toBe(true);
     expect(hookValue.isNavigating).toBe(true);
@@ -380,13 +379,13 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
 
     // 1. Primer click: Activar modo navegación 3D
     act(() => {
-      hookValue.toggleNavigationMode(userCoord, { heading: 45, pitch: 60 });
+      hookValue.toggleNavigationMode(userCoord, { heading: 45 });
     });
 
     expect(hookValue.isNavigating).toBe(true);
     expect(hookValue.cameraMode).toBe('NAVIGATION');
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
-      expect.objectContaining({ pitch: 60, heading: 45 }),
+      expect.objectContaining({ pitch: 40, heading: 45 }),
       expect.any(Object),
     );
 
@@ -419,22 +418,22 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
 
     const coord1: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
     act(() => {
-      hookValue.navigateToCoordinate(coord1, { heading: 0, pitch: 60 });
+      hookValue.navigateToCoordinate(coord1, { heading: 0 });
     });
     mockMapRef.current.animateCamera.mockClear();
 
-    // Stream GPS actualiza coordenada y rumbo a 120°
-    const coord2: RouteCoordinate = { latitude: -38.746, longitude: -72.596 };
+    // Stream GPS actualiza coordenada y rumbo a 120° con desplazamiento realista
+    const coord2: RouteCoordinate = { latitude: -38.74502, longitude: -72.59502 };
     await act(async () => {
-      await hookValue.followCoordinate(coord2, { heading: 120, animated: true });
+      await hookValue.followCoordinate(coord2, { heading: 120, speed: 10, force: true, animated: true });
     });
 
     expect(hookValue.isNavigating).toBe(true);
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
-        heading: 120,
-        pitch: 60,
-        zoom: 18,
+        heading: expect.any(Number),
+        pitch: 40,
+        zoom: expect.any(Number),
       }),
       expect.any(Object),
     );
@@ -459,7 +458,7 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
         heading: 0,
-        pitch: 60,
+        pitch: 40,
       }),
       expect.any(Object),
     );

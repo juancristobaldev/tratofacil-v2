@@ -174,9 +174,9 @@ export const ProviderProfileScreen: React.FC = () => {
     try {
       await createContactRequest({
         serviceProviderId: Number(provider.serviceProviderId),
-        description: description.trim(),
-        lat: location.coords.latitude,
-        lng: location.coords.longitude,
+        clientDescription: description.trim(),
+        clientLat: location.coords.latitude,
+        clientLng: location.coords.longitude,
       });
       showNotification({ title: 'Solicitud enviada', message: `Espera la oferta de ${provider.name}`, type: 'success' });
       navigation.navigate('MainApp', { screen: 'Home' });

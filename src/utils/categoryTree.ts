@@ -1,4 +1,4 @@
-import type { Category, Service } from '../types/graphql';
+import type { Category, Service } from '../graphql/generated';
 
 export type TreeNode = {
   id: number;

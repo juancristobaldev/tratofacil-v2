@@ -1,3 +1,4 @@
+import type { CreatePlanOrderGeneralInput, ManageSubscriptionInput, MutationCreateOrderAdWithPaymentArgs } from '../graphql/generated';
 import { useQuery, useMutation } from '@apollo/client/react';
 import {
   MY_PROVIDER_PLAN,
@@ -22,9 +23,9 @@ import type {
   PaymentHistoryEntry,
   PaymentHistoryResponse,
   WithdrawalResult,
-} from '../types/graphql';
+} from '../graphql/generated';
 
-interface InitPlanInput {
+type InitPlanInput_old = {
   plan: string;
   interval?: string;
   type?: string;
@@ -32,12 +33,12 @@ interface InitPlanInput {
   couponName?: string;
 }
 
-interface ManageSubscriptionInput {
+type ManageSubscriptionInput_old = {
   subscriptionFlowId: string;
   type: string;
 }
 
-interface CreateAdInput {
+type CreateAdInput_old = {
   adId?: number;
   categoryId?: number;
   city: string;
@@ -62,13 +63,13 @@ interface UsePlansReturn {
   paymentHistoryError: Error | undefined;
   totalSpent: number;
   registerCard: (returnUrl: string) => Promise<RegisterCardForPlanResponse>;
-  subscribe: (input: InitPlanInput) => Promise<PlanResponse>;
+  subscribe: (input: CreatePlanOrderGeneralInput) => Promise<PlanResponse>;
   subscribeLoading: boolean;
   cancelSubscription: (input: ManageSubscriptionInput) => Promise<void>;
   reactivateSubscription: (input: ManageSubscriptionInput) => Promise<void>;
   requestWithdrawal: () => Promise<WithdrawalResult>;
   withdrawalLoading: boolean;
-  createAd: (input: CreateAdInput) => Promise<{ id: number; status: string; total: number }>;
+  createAd: (input: MutationCreateOrderAdWithPaymentArgs) => Promise<{ id: number; status: string; total: number }>;
   createFlowAd: (orderId: number, returnUrl?: string) => Promise<{ url: string; token: string }>;
   refetch: () => void;
 }
@@ -131,7 +132,7 @@ export function usePlans(): UsePlansReturn {
     return result!.registerCard;
   };
 
-  const subscribe = async (input: InitPlanInput) => {
+  const subscribe = async (input: CreatePlanOrderGeneralInput) => {
     const { data: result } = await initPlanMut({
       variables: { input },
     });
@@ -155,7 +156,7 @@ export function usePlans(): UsePlansReturn {
     return result!.requestWithdrawal;
   };
 
-  const createAd = async (input: CreateAdInput) => {
+  const createAd = async (input: MutationCreateOrderAdWithPaymentArgs) => {
     const { data: result } = await createAdMut({ variables: input });
     return result!.createOrderAdWithPayment;
   };

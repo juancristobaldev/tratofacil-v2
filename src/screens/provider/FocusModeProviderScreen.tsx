@@ -1,9 +1,9 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useCallback } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text, Dimensions } from 'react-native';
 import MapView, { type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline } from '../../components/ui';
+import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline, MapFloatingNavigationControls } from '../../components/ui';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
@@ -11,12 +11,14 @@ import { useMapCamera } from '../../hooks/useMapCamera';
 import { FocusChatOverlay } from '../client/components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 import type { RouteCoordinate } from '../../utils/directions';
+import { useLocation } from '../../context/LocationContext';
 import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const FocusModeProviderScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { location } = useLocation();
   const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
   const { sheetMetrics, setIndex, active } = useBottomSheet();
@@ -42,9 +44,12 @@ export const FocusModeProviderScreen: React.FC = () => {
     followCoordinate,
     handlePanDrag,
     handleRegionChangeComplete,
-    recenter,
     dynamicEdgePadding,
     isFollowing,
+    isNavigating,
+    isUserExploring,
+    toggleNavigationMode,
+    fitToDefaultRegion,
   } = useMapCamera({
     mapRef,
     headerBottom,
@@ -63,7 +68,20 @@ export const FocusModeProviderScreen: React.FC = () => {
     };
   }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
+  const localGpsCoords = useMemo<RouteCoordinate | null>(() => {
+    const lat = location?.coords?.latitude;
+    const lng = location?.coords?.longitude;
+    return lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+      ? { latitude: lat, longitude: lng }
+      : null;
+  }, [location?.coords?.latitude, location?.coords?.longitude]);
+
+  const navigationTargetCoordinate = localGpsCoords || providerCoords || clientCoords || null;
+
+  // Enrutamiento y encuadre inicial cuando no está en navegación activa
   useEffect(() => {
+    if (isNavigating) return;
+
     if (routeCoords.length >= 2) {
       const points: RouteCoordinate[] = [
         providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
@@ -79,10 +97,68 @@ export const FocusModeProviderScreen: React.FC = () => {
         ],
         { reason: 'focus_provider_pins_fit' },
       );
-    } else if (providerCoords) {
+    } else if (providerCoords && !isUserExploring) {
       followCoordinate(providerCoords, { reason: 'focus_provider_self_follow' });
     }
-  }, [orderState, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate]);
+  }, [
+    isNavigating,
+    orderState,
+    routeCoords,
+    clientCoords?.latitude,
+    clientCoords?.longitude,
+    providerCoords?.latitude,
+    providerCoords?.longitude,
+    fitToRoute,
+    followCoordinate,
+    isUserExploring,
+  ]);
+
+  // Seguimiento continuo del stream GPS cuando el usuario no está explorando libremente
+  useEffect(() => {
+    const followTarget = localGpsCoords || providerCoords;
+    if (followTarget && !isUserExploring) {
+      const heading =
+        location?.coords?.heading != null &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? location.coords.heading
+          : undefined;
+
+      followCoordinate(followTarget, {
+        animated: true,
+        heading,
+        reason: isNavigating ? 'focus_provider_nav_follow' : 'focus_provider_gps_follow',
+      });
+    }
+  }, [
+    localGpsCoords,
+    providerCoords?.latitude,
+    providerCoords?.longitude,
+    location?.coords?.heading,
+    isUserExploring,
+    isNavigating,
+    followCoordinate,
+  ]);
+
+  const handleToggleNavigation = useCallback(
+    (coord?: RouteCoordinate | null, options?: { heading?: number; pitch?: number; animated?: boolean; force?: boolean; duration?: number }) => {
+      const targetCoord = coord || localGpsCoords || providerCoords || clientCoords || null;
+      const heading =
+        options?.heading ??
+        (location?.coords?.heading != null &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? location.coords.heading
+          : undefined);
+
+      toggleNavigationMode(targetCoord, {
+        heading,
+        pitch: options?.pitch ?? 60,
+        animated: options?.animated ?? true,
+      });
+    },
+    [location?.coords, localGpsCoords, providerCoords, clientCoords, toggleNavigationMode],
+  );
 
   const handleFollow = () => {
     if (routeCoords.length >= 2) {
@@ -91,16 +167,32 @@ export const FocusModeProviderScreen: React.FC = () => {
         clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
         ...routeCoords,
       ].filter(Boolean) as RouteCoordinate[];
-      recenter({ pointsToFit: points });
+      fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_realtime_order' });
     } else if (providerCoords && clientCoords) {
-      recenter({
-        pointsToFit: [
+      fitToRoute(
+        [
           { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
           { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
         ],
+        { force: true, animated: true, reason: 'smart_framing_realtime_order' },
+      );
+    } else if (localGpsCoords || providerCoords) {
+      const targetCoord = localGpsCoords || providerCoords;
+      followCoordinate(targetCoord, {
+        force: true,
+        animated: true,
+        latitudeDelta: DEFAULT_TEMUCO_PLC_REGION.latitudeDelta,
+        longitudeDelta: DEFAULT_TEMUCO_PLC_REGION.longitudeDelta,
+        reason: 'smart_framing_metropolitan_user_recenter',
       });
-    } else if (providerCoords) {
-      recenter({ targetCoordinate: providerCoords });
+    } else if (clientCoords) {
+      followCoordinate(clientCoords, {
+        force: true,
+        animated: true,
+        reason: 'smart_framing_metropolitan_user_recenter',
+      });
+    } else {
+      fitToDefaultRegion(DEFAULT_TEMUCO_PLC_REGION, true);
     }
   };
 
@@ -126,7 +218,23 @@ export const FocusModeProviderScreen: React.FC = () => {
         >
           {clientCoords && <HousePin coordinate={clientCoords} />}
 
-          {providerCoords && <AnimatedUserMarker coordinate={providerCoords} />}
+          {providerCoords && (
+            <AnimatedUserMarker
+              coordinate={providerCoords}
+              onPress={() =>
+                handleToggleNavigation(providerCoords, {
+                  heading:
+                    location?.coords?.heading != null &&
+                    Number.isFinite(location.coords.heading) &&
+                    location.coords.heading >= 0
+                      ? location.coords.heading
+                      : 0,
+                  pitch: 60,
+                  animated: true,
+                })
+              }
+            />
+          )}
 
           {polylineCoords.length >= 2 && (
             <AnimatedPolyline
@@ -135,6 +243,20 @@ export const FocusModeProviderScreen: React.FC = () => {
             />
           )}
         </MapView>
+
+        {/* Top Floating Controls */}
+        <MapFloatingNavigationControls
+          isNavigating={isNavigating}
+          targetCoordinate={navigationTargetCoordinate}
+          heading={location?.coords?.heading}
+          onToggleNavigation={handleToggleNavigation}
+          onSmartFraming={handleFollow}
+          showSmartFraming={true}
+          style={[
+            styles.floatingControls,
+            { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },
+          ]}
+        />
 
         {!isFollowing && (
           <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
@@ -334,5 +456,11 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.brand500,
     fontSize: 13,
     fontWeight: '700',
+  },
+  floatingControls: {
+    position: 'absolute',
+    right: TOKENS.spacing.md,
+    zIndex: 1000,
+    elevation: 1000,
   },
 });

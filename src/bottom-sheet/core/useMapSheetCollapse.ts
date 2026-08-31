@@ -24,7 +24,7 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
   const [isMapManipulating, setIsMapManipulating] = useState(false);
   const isManipulatingRef = useRef(false);
   const wasOpenBeforeManipulationRef = useRef(false);
-  const settleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeSheetRef = useRef(activeSheet);
   activeSheetRef.current = activeSheet;

@@ -1,6 +1,6 @@
 import type { ComponentType, ElementRef } from 'react';
 import type { BottomSheetModal } from '@gorhom/bottom-sheet';
-import type { AppRole } from '../../types/graphql';
+import type { AppRole } from '../../types/appRole';
 
 export type SheetModalRef = ElementRef<typeof BottomSheetModal>;
 

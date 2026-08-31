@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin } from '../ui';
+import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
@@ -135,6 +135,9 @@ export const HomePage: React.FC = () => {
     });
   }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
 
+  const isFocusMapSurfaceActive = desiredMapSurface.kind === 'SHEET'
+    && (desiredMapSurface.key === 'focus_client' || desiredMapSurface.key === 'focus_provider');
+
   useEffect(() => {
       const order = role === 'provider'
       ? realtime.providerActiveOrder
@@ -260,7 +263,7 @@ export const HomePage: React.FC = () => {
   }, []);
 
   const handleRegionChangeComplete = useCallback((newRegion: any) => {
-    onCameraRegionChangeComplete(newRegion, mapPanActiveRef.current);
+    onCameraRegionChangeComplete(newRegion, { isGesture: mapPanActiveRef.current });
     onSheetAutoCollapseRegionComplete();
     const current = regionRef.current;
     if (!current) return;
@@ -1262,31 +1265,17 @@ export const HomePage: React.FC = () => {
           </View>
         )}
 
-        {/* Floating Map Action Buttons (Navigation 3D & Smart Framing) */}
-        <View style={styles.floatingButtonsWrapper}>
-          <TouchableOpacity
-            onPress={() => handleNavigationMode('nav_button')}
-            activeOpacity={0.8}
-            style={[styles.floatingActionBtn, isNavigating && styles.floatingActionBtnActive]}
-            accessibilityLabel="Modo navegación 3D"
-          >
-            <Icon
-              name="Navigation"
-              size={19}
-              color={isNavigating ? TOKENS.colors.white : TOKENS.colors.brand500}
-              fill={isNavigating ? TOKENS.colors.white : TOKENS.colors.brand500}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleSmartFraming}
-            activeOpacity={0.8}
-            style={styles.floatingActionBtn}
-            accessibilityLabel="Encuadre inteligente de mapa"
-          >
-            <Icon name="Maximize2" size={18} color={TOKENS.colors.dark900} />
-          </TouchableOpacity>
-        </View>
+        {!isFocusMapSurfaceActive && (
+          <MapFloatingNavigationControls
+            isNavigating={isNavigating}
+            targetCoordinate={activeUserCoords}
+            heading={location?.coords?.heading}
+            onToggleNavigation={toggleNavigationMode}
+            onSmartFraming={handleSmartFraming}
+            showNavigation={role === 'provider'}
+            showSmartFraming={true}
+          />
+        )}
       </View>
 
       {/* Dev Street Navigation Joystick */}
@@ -1324,21 +1313,6 @@ const styles = StyleSheet.create({
   floatingButtonsWrapper: {
     alignItems: 'flex-end',
     gap: 8,
-  },
-  floatingActionBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: TOKENS.colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...TOKENS.shadows.floating,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.surface200,
-  },
-  floatingActionBtnActive: {
-    backgroundColor: TOKENS.colors.brand500,
-    borderColor: TOKENS.colors.brand600,
   },
   sheetContent: { flex: 1, paddingHorizontal: TOKENS.spacing.lg, paddingTop: TOKENS.spacing.xxs },
   sheetTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },

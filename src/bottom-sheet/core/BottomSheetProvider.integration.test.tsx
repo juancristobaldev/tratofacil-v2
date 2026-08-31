@@ -4,7 +4,7 @@ import { Text, View } from 'react-native';
 import { BottomSheetProvider } from './BottomSheetProvider';
 import { useBottomSheet } from './useBottomSheet';
 import { useRole } from '../../context/RoleContext';
-import type { AppRole } from '../../types/graphql';
+import type { AppRole } from '../../types/appRole';
 
 let mockCurrentRole: AppRole = 'client';
 const mockSetRole = jest.fn((r: AppRole) => {

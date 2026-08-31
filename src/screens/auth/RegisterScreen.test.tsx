@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { RegisterScreen } from './RegisterScreen';
-import { Role } from '../../types/graphql';
+import { Role } from '../../graphql/generated';
 
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
@@ -64,7 +64,7 @@ describe('RegisterScreen component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRouteParams = {};
-    mockRegister.mockResolvedValue({ accessToken: 'token', user: { id: 1, role: Role.CLIENT } });
+    mockRegister.mockResolvedValue({ accessToken: 'token', user: { id: 1, role: Role.Client } });
   });
 
   it('COMPONENT: valida email inválido antes de avanzar', async () => {
@@ -100,7 +100,7 @@ describe('RegisterScreen component', () => {
       expect(mockRegister).toHaveBeenCalledWith({
         email: 'usuario@email.cl',
         password: 'Password123!',
-        role: Role.CLIENT,
+        role: Role.Client,
       });
       expect(mockReplace).toHaveBeenCalledWith('MainApp');
     });

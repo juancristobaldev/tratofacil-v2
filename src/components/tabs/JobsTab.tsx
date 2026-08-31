@@ -16,7 +16,7 @@ import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
-import type { Job, JobApplication } from '../../types/graphql';
+import type { Job, JobApplication } from '../../graphql/generated';
 
 type JobTabMode = 'Ofertas' | 'Mis Postulaciones' | 'Mis Ofertas';
 

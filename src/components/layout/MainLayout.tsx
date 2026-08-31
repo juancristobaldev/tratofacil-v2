@@ -34,7 +34,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const providerRealtimeOrder = realtime.providerActiveOrder;
   const nonTerminalProviderOrder = !!providerRealtimeOrder?.status && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(providerRealtimeOrder.status);
   const shouldShowClientFocus = role !== 'provider' && (active === 'focus_client' || nonTerminalClientOrder);
-  const shouldShowProviderFocus = role === 'provider' && active === 'focus_provider' && nonTerminalProviderOrder;
+  const shouldShowProviderFocus = role === 'provider' && (active === 'focus_provider' || nonTerminalProviderOrder);
 
   const renderCountRef = useRef(0);
   if (__DEV__) {

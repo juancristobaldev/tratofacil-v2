@@ -4,7 +4,7 @@ import { FocusClientPanelContent } from '../../components/panels/FocusClientPane
 import { FocusProviderPanelContent } from '../../components/panels/FocusProviderPanelContent';
 import { ProviderPanelContent } from '../../components/panels/ProviderPanelContent';
 import type { SheetKey, SheetRegistry } from './bottomSheet.types';
-import type { AppRole } from '../../types/graphql';
+import type { AppRole } from '../../types/appRole';
 
 export const registry: SheetRegistry = {
   categories: {
@@ -16,7 +16,7 @@ export const registry: SheetRegistry = {
     initialIndex: 1,
     enableDynamicSizing: true,
     contentMode: 'view',
-    replaceFrom: ['provider_preview'],
+    replaceFrom: ['provider_preview', 'focus_client'],
     replaceSameKey: true,
   },
   provider_preview: {
@@ -28,7 +28,7 @@ export const registry: SheetRegistry = {
     initialIndex: 1,
     enableDynamicSizing: true,
     contentMode: 'view',
-    replaceFrom: ['categories'],
+    replaceFrom: ['categories', 'focus_client'],
     replaceSameKey: true,
   },
   focus_client: {
@@ -40,6 +40,7 @@ export const registry: SheetRegistry = {
     initialIndex: 1,
     enableDynamicSizing: true,
     contentMode: 'scroll',
+    replaceFrom: ['categories', 'provider_preview'],
     replaceSameKey: true,
   },
   focus_provider: {
@@ -51,6 +52,7 @@ export const registry: SheetRegistry = {
     initialIndex: 1,
     enableDynamicSizing: true,
     contentMode: 'scroll',
+    replaceFrom: ['provider_dashboard'],
     replaceSameKey: true,
   },
   provider_dashboard: {
@@ -62,6 +64,7 @@ export const registry: SheetRegistry = {
     initialIndex: 1,
     enableDynamicSizing: true,
     contentMode: 'view',
+    replaceFrom: ['focus_provider'],
     replaceSameKey: true,
   },
 };

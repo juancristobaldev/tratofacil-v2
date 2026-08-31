@@ -67,7 +67,7 @@ export const DEFAULT_TEMUCO_PLC_REGION = {
 
 export const NAVIGATION_LATITUDE_DELTA = 0.0035;
 export const NAVIGATION_LONGITUDE_DELTA = 0.0035;
-export const NAVIGATION_PITCH = 60;
+export const NAVIGATION_PITCH = 40;
 export const NAVIGATION_ZOOM_LEVEL = 18;
 export const NAVIGATION_ALTITUDE = 300;
 

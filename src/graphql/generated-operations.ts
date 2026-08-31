@@ -12,7 +12,7 @@ export type BankAccountInput = {
 };
 
 export type ConditionDeliveryInput = {
-  confirmationDeadline: unknown;
+  confirmationDeadline: string;
   deliveryType: string;
   maxDispatchDays: number;
   shippingPayer: string;
@@ -155,7 +155,7 @@ export type CreateUserIdentityInput = {
 };
 
 export type CredentialsInput = {
-  birthday?: unknown;
+  birthday?: string | null | undefined;
   email: string;
   name?: string | null | undefined;
   password?: string | null | undefined;
@@ -175,7 +175,7 @@ export type GuestCreateRealtimeOrderInput = {
 };
 
 export type IdentityInput = {
-  birthday: unknown;
+  birthday: string;
   company?: string | null | undefined;
   firstName: string;
   lastName: string;
@@ -246,7 +246,7 @@ export type RealtimeOrderStatus =
   | 'REJECTED';
 
 export type RegisterUserInput = {
-  birthday?: unknown;
+  birthday?: string | null | undefined;
   displayName?: string | null | undefined;
   email: string;
   password: string;
@@ -332,10 +332,10 @@ export type UpdateShippingInput = {
 };
 
 export type UpdateUserInput = {
-  birthday?: unknown;
+  birthday?: string | null | undefined;
   displayName?: string | null | undefined;
   email?: string | null | undefined;
-  id: number;
+  id?: number | null | undefined;
   nicename?: string | null | undefined;
   phone?: string | null | undefined;
   url?: string | null | undefined;
@@ -373,7 +373,7 @@ export type GetDataAndTransitionsQuery = { getAllImageTransition: Array<{ id: nu
 export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MeQuery = { me: { id: number, email: string | null, emailVerified: boolean | null, displayName: string | null, flowCustomerId: string | null, role: Types.Role, cardActive: boolean | null, creditCardType: string | null, last4CardDigits: string | null, kycStatus: boolean | null, phone: string, birthday: unknown, isProfileComplete: boolean, isProfileFullyComplete: boolean, isGuest: boolean | null, username: string, identitys: Array<{ id: number, status: Types.IdentityStatus } | null> | null, planOrders: Array<{ id: number, plan: Types.ProviderPlan, planActive: boolean, planEndsAt: unknown, subscriptionFlowId: string | null, interval: Types.PlanInterval | null, status: Types.OrderStatus, total: number } | null> | null, marketplacePlanOrders: Array<{ id: number, plan: Types.UserPlan, planActive: boolean, planEndsAt: unknown, subscriptionFlowId: string | null, interval: Types.PlanInterval, status: Types.OrderStatus, total: number } | null> | null, reviewsReceived: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, providerId: number, orderRealtimeId: number, provider: { id: number, name: string, logoImage: { id: number, cdnUrl: string | null } | null } | null } | null> | null, provider: { id: number, name: string, slug: string, bio: string | null, location: string | null, lat: number | null, lng: number | null, rut: string | null, isRealtimeActive: boolean | null, hasSchedule: boolean | null, completedOrdersCount: number | null, priority: number, logoImage: { id: number, cdnUrl: string | null } | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus } | null, bank: { id: number, bankName: string, accountType: string, accountNumber: string, rut: string | null, email: string | null } | null, services: Array<{ id: number, description: string | null, price: number | null, hasHomeVisit: boolean, slug: string, providerId: number, serviceId: number | null, service: { id: number, name: string, slug: string } | null } | null> | null, realtimeReviews: Array<{ id: number, rating: number, comment: string | null, clientId: number, orderRealtimeId: number, createdAt: unknown, client: { id: number, displayName: string | null } | null } | null> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, client: { id: number, displayName: string | null } } | null> | null, portfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: unknown, image: { id: number, cdnUrl: string | null } | null } | null> | null, certificates: Array<{ id: number, title: string, institution: string | null, year: number | null, verified: boolean, fileImage: { id: number, cdnUrl: string | null } | null } | null> | null } | null, wallet: { id: number, balance: number, transactions: Array<{ id: number, type: string, amount: number, description: string | null, createdAt: unknown }> } | null } };
+export type MeQuery = { me: { id: number, email: string | null, emailVerified: boolean | null, displayName: string | null, flowCustomerId: string | null, role: Types.Role, cardActive: boolean | null, creditCardType: string | null, last4CardDigits: string | null, kycStatus: boolean | null, phone: string, birthday: string | null, isProfileComplete: boolean, isProfileFullyComplete: boolean, isGuest: boolean | null, username: string, identitys: Array<{ id: number, status: Types.IdentityStatus } | null> | null, planOrders: Array<{ id: number, plan: Types.ProviderPlan, planActive: boolean, planEndsAt: string | null, subscriptionFlowId: string | null, interval: Types.PlanInterval | null, status: Types.OrderStatus, total: number } | null> | null, marketplacePlanOrders: Array<{ id: number, plan: Types.UserPlan, planActive: boolean, planEndsAt: string | null, subscriptionFlowId: string | null, interval: Types.PlanInterval, status: Types.OrderStatus, total: number } | null> | null, reviewsReceived: Array<{ id: number, rating: number, comment: string | null, createdAt: string, providerId: number, orderRealtimeId: number, provider: { id: number, name: string, logoImage: { id: number, cdnUrl: string | null } | null } | null } | null> | null, provider: { id: number, name: string, slug: string, bio: string | null, location: string | null, lat: number | null, lng: number | null, rut: string | null, isRealtimeActive: boolean | null, hasSchedule: boolean | null, completedOrdersCount: number | null, priority: number, logoImage: { id: number, cdnUrl: string | null } | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus } | null, bank: { id: number, bankName: string, accountType: string, accountNumber: string, rut: string | null, email: string | null } | null, services: Array<{ id: number, description: string | null, price: number | null, hasHomeVisit: boolean, slug: string, providerId: number, serviceId: number | null, service: { id: number, name: string, slug: string } | null } | null> | null, realtimeReviews: Array<{ id: number, rating: number, comment: string | null, clientId: number, orderRealtimeId: number, createdAt: string, client: { id: number, displayName: string | null } | null } | null> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string, client: { id: number, displayName: string | null } } | null> | null, portfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: string, image: { id: number, cdnUrl: string | null } | null } | null> | null, certificates: Array<{ id: number, title: string, institution: string | null, year: number | null, verified: boolean, fileImage: { id: number, cdnUrl: string | null } | null } | null> | null } | null, wallet: { id: number, balance: number, transactions: Array<{ id: number, type: string, amount: number, description: string | null, createdAt: string }> } | null } };
 
 export type LoginMutationVariables = Exact<{
   loginInput: Types.LoginInput;
@@ -475,12 +475,12 @@ export type GetServicesByCategoryQueryVariables = Exact<{
 }>;
 
 
-export type GetServicesByCategoryQuery = { servicesByCategory: Array<{ id: number, name: string, slug: string, category: { id: number, name: string, slug: string } | null, serviceProviders: Array<{ id: number, price: number | null, hasHomeVisit: boolean, description: string | null, cities: Array<{ city: string }> | null, provider: { id: number, name: string, location: string | null, lat: number | null, lng: number | null, slug: string, isRealtimeActive: boolean | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null } | null } | null> | null }> };
+export type GetServicesByCategoryQuery = { servicesByCategory: Array<{ id: number, name: string, slug: string, category: { id: number, name: string, slug: string } | null, serviceProviders: Array<{ id: number, price: number | null, hasHomeVisit: boolean, description: string | null, cities: Array<{ city: string }> | null, provider: { id: number, name: string, location: string | null, lat: number | null, lng: number | null, slug: string, isRealtimeActive: boolean | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null } | null } | null> | null }> };
 
 export type MyJobsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyJobsQuery = { myJobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: unknown, updatedAt: unknown, applications: Array<{ id: number, message: string | null, status: string, worker: { id: number, displayName: string | null } }> | null, orders: Array<{ id: number, status: Types.OrderStatus, worker: { id: number, displayName: string | null } | null } | null> | null }> };
+export type MyJobsQuery = { myJobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: string, updatedAt: string, applications: Array<{ id: number, message: string | null, status: string, worker: { id: number, displayName: string | null } }> | null, orders: Array<{ id: number, status: Types.OrderStatus, worker: { id: number, displayName: string | null } | null } | null> | null }> };
 
 export type MyApplicationsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -494,14 +494,14 @@ export type GetJobsQueryVariables = Exact<{
 }>;
 
 
-export type GetJobsQuery = { jobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: unknown, user: { id: number, displayName: string | null }, reviews: Array<{ id: number, rating: number, comment: string | null } | null> | null }> };
+export type GetJobsQuery = { jobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: string, user: { id: number, displayName: string | null }, reviews: Array<{ id: number, rating: number, comment: string | null } | null> | null }> };
 
 export type GetJobQueryVariables = Exact<{
   id: number;
 }>;
 
 
-export type GetJobQuery = { job: { id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: unknown, user: { id: number, displayName: string | null }, applications: Array<{ id: number, message: string | null, status: string, worker: { id: number, displayName: string | null } }> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, client: { id: number, displayName: string | null } } | null> | null } };
+export type GetJobQuery = { job: { id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: string, user: { id: number, displayName: string | null }, applications: Array<{ id: number, message: string | null, status: string, worker: { id: number, displayName: string | null } }> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string, client: { id: number, displayName: string | null } } | null> | null } };
 
 export type CreateJobMutationVariables = Exact<{
   input: Types.CreateJobInput;
@@ -571,12 +571,12 @@ export type CancelOrderJobMutation = { cancelOrderJob: { id: number, status: Typ
 export type MyOrdersQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyOrdersQuery = { myOrders: { services: Array<{ id: number, status: Types.OrderStatus, total: number, createdAt: unknown, scheduledAt: unknown, clientAddress: string | null, serviceProvider: { id: number, service: { id: number, name: string } | null, provider: { id: number, name: string, logoImage: { id: number, cdnUrl: string | null } | null } | null } | null }> | null, products: Array<{ id: number, status: Types.OrderStatus, total: number, quantity: number, unitPrice: number, createdAt: unknown, commission: number, shippingCompany: string | null, trackingCode: string | null, product: { id: number, name: string, shippingDisabled: boolean, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, user: { id: number, displayName: string | null, provider: { id: number, name: string } | null } | null }, shippingInfo: { id: number, street: string, number: string, commune: string, region: string, phone: string } | null }> | null, jobs: Array<{ id: number, status: Types.OrderStatus, total: number | null, createdAt: unknown, job: { id: number, title: string, location: string | null }, worker: { id: number, displayName: string | null } | null }> | null } };
+export type MyOrdersQuery = { myOrders: { services: Array<{ id: number, status: Types.OrderStatus, total: number, createdAt: string, scheduledAt: string | null, clientAddress: string | null, serviceProvider: { id: number, service: { id: number, name: string } | null, provider: { id: number, name: string, logoImage: { id: number, cdnUrl: string | null } | null } | null } | null }> | null, products: Array<{ id: number, status: Types.OrderStatus, total: number, quantity: number, unitPrice: number, createdAt: string, commission: number, shippingCompany: string | null, trackingCode: string | null, product: { id: number, name: string, shippingDisabled: boolean, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, user: { id: number, displayName: string | null, provider: { id: number, name: string } | null } | null }, shippingInfo: { id: number, street: string, number: string, commune: string, region: string, phone: string } | null }> | null, jobs: Array<{ id: number, status: Types.OrderStatus, total: number | null, createdAt: string, job: { id: number, title: string, location: string | null }, worker: { id: number, displayName: string | null } | null }> | null } };
 
 export type GetMySalesQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetMySalesQuery = { getMySales: Array<{ id: number, status: Types.OrderStatus, total: number, quantity: number, unitPrice: number, createdAt: unknown, commission: number, shippingCompany: string | null, trackingCode: string | null, product: { id: number, name: string, shippingDisabled: boolean, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null }, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, shippingInfo: { id: number, street: string, number: string, commune: string, region: string, phone: string } | null }> };
+export type GetMySalesQuery = { getMySales: Array<{ id: number, status: Types.OrderStatus, total: number, quantity: number, unitPrice: number, createdAt: string, commission: number, shippingCompany: string | null, trackingCode: string | null, product: { id: number, name: string, shippingDisabled: boolean, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null }, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, shippingInfo: { id: number, street: string, number: string, commune: string, region: string, phone: string } | null }> };
 
 export type UpdateOrderProductShippingMutationVariables = Exact<{
   input: Types.UpdateShippingInput;
@@ -626,7 +626,7 @@ export type GetProductQueryVariables = Exact<{
 }>;
 
 
-export type GetProductQuery = { product: { id: number, name: string, slug: string, price: number, stock: number, description: string | null, location: string | null, shippingDisabled: boolean, categoryProductId: number, subCategorySlug: string | null, categoryProduct: { id: number, name: string, slug: string, shippingDisabled: boolean } | null, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, user: { id: number, displayName: string | null, identitys: Array<{ id: number, status: Types.IdentityStatus } | null> | null } | null, deliveryCondition: { id: number, deliveryType: string, shippingPayer: string, maxDispatchDays: number, confirmationDeadline: unknown } | null } };
+export type GetProductQuery = { product: { id: number, name: string, slug: string, price: number, stock: number, description: string | null, location: string | null, shippingDisabled: boolean, categoryProductId: number, subCategorySlug: string | null, categoryProduct: { id: number, name: string, slug: string, shippingDisabled: boolean } | null, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, user: { id: number, displayName: string | null, identitys: Array<{ id: number, status: Types.IdentityStatus } | null> | null } | null, deliveryCondition: { id: number, deliveryType: string, shippingPayer: string, maxDispatchDays: number, confirmationDeadline: string } | null } };
 
 export type GetProductBySlugQueryVariables = Exact<{
   slug: string;
@@ -680,7 +680,7 @@ export type GetMarketplaceDataQueryVariables = Exact<{
 }>;
 
 
-export type GetMarketplaceDataQuery = { categoriesProducts: Array<{ id: number, name: string, slug: string, subCategories: Array<{ id: number, name: string, slug: string } | null> | null, products: Array<{ id: number, name: string, slug: string, price: number, location: string | null, stock: number, description: string | null, shippingDisabled: boolean, categoryProductId: number, subCategorySlug: string | null, user: { id: number, displayName: string | null, identitys: Array<{ status: Types.IdentityStatus } | null> | null } | null, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, deliveryCondition: { id: number, deliveryType: string, shippingPayer: string, maxDispatchDays: number, confirmationDeadline: unknown } | null } | null> | null }> };
+export type GetMarketplaceDataQuery = { categoriesProducts: Array<{ id: number, name: string, slug: string, subCategories: Array<{ id: number, name: string, slug: string } | null> | null, products: Array<{ id: number, name: string, slug: string, price: number, location: string | null, stock: number, description: string | null, shippingDisabled: boolean, categoryProductId: number, subCategorySlug: string | null, user: { id: number, displayName: string | null, identitys: Array<{ status: Types.IdentityStatus } | null> | null } | null, images: Array<{ id: number, image: { id: number, cdnUrl: string | null } | null } | null> | null, deliveryCondition: { id: number, deliveryType: string, shippingPayer: string, maxDispatchDays: number, confirmationDeadline: string } | null } | null> | null }> };
 
 export type CreateOrderProductWithPaymentMutationVariables = Exact<{
   input: Types.CreateOrderProductInput;
@@ -724,7 +724,7 @@ export type GetPublicProfileQueryVariables = Exact<{
 }>;
 
 
-export type GetPublicProfileQuery = { publicProfile: { id: number, displayName: string | null, email: string | null, phone: string, role: Types.Role, provider: { id: number, name: string, slug: string, bio: string | null, location: string | null, lat: number | null, lng: number | null, isRealtimeActive: boolean | null, hasSchedule: boolean | null, completedOrdersCount: number | null, priority: number, rut: string | null, logoImage: { id: number, cdnUrl: string | null } | null, services: Array<{ id: number, price: number | null, hasHomeVisit: boolean, description: string | null, slug: string, serviceId: number | null, service: { id: number, name: string, slug: string, description: string | null } | null } | null> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, client: { id: number, displayName: string | null } } | null> | null, realtimeReviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, clientId: number, client: { id: number, displayName: string | null } | null } | null> | null, certificates: Array<{ id: number, title: string, institution: string | null, year: number | null, verified: boolean, fileImage: { id: number, cdnUrl: string | null } | null } | null> | null, portfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, createdAt: unknown, image: { id: number, cdnUrl: string | null } | null } | null> | null, hobbys: Array<{ id: number, name: string } | null> | null } | null } | null };
+export type GetPublicProfileQuery = { publicProfile: { id: number, displayName: string | null, email: string | null, phone: string, role: Types.Role, provider: { id: number, name: string, slug: string, bio: string | null, location: string | null, lat: number | null, lng: number | null, isRealtimeActive: boolean | null, hasSchedule: boolean | null, completedOrdersCount: number | null, priority: number, rut: string | null, logoImage: { id: number, cdnUrl: string | null } | null, services: Array<{ id: number, price: number | null, hasHomeVisit: boolean, description: string | null, slug: string, serviceId: number | null, service: { id: number, name: string, slug: string, description: string | null } | null } | null> | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string, client: { id: number, displayName: string | null } } | null> | null, realtimeReviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string, clientId: number, client: { id: number, displayName: string | null } | null } | null> | null, certificates: Array<{ id: number, title: string, institution: string | null, year: number | null, verified: boolean, fileImage: { id: number, cdnUrl: string | null } | null } | null> | null, portfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, createdAt: string, image: { id: number, cdnUrl: string | null } | null } | null> | null, hobbys: Array<{ id: number, name: string } | null> | null } | null } | null };
 
 export type GetServiceDetailQueryVariables = Exact<{
   serviceId: number;
@@ -732,7 +732,7 @@ export type GetServiceDetailQueryVariables = Exact<{
 }>;
 
 
-export type GetServiceDetailQuery = { serviceDetail: { id: number, description: string | null, price: number | null, hasHomeVisit: boolean | null, commission: number | null, netAmount: number | null, slug: string, service: { id: number, name: string, slug: string, image: { id: number, cdnUrl: string | null } | null } | null, provider: { id: number, name: string, location: string | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: unknown, client: { displayName: string | null } } | null> | null } | null } };
+export type GetServiceDetailQuery = { serviceDetail: { id: number, description: string | null, price: number | null, hasHomeVisit: boolean | null, commission: number | null, netAmount: number | null, slug: string, service: { id: number, name: string, slug: string, image: { id: number, cdnUrl: string | null } | null } | null, provider: { id: number, name: string, location: string | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number, comment: string | null, createdAt: string, client: { displayName: string | null } } | null> | null } | null } };
 
 export type GetProvidersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -764,21 +764,21 @@ export type CreateServiceContactRequestMutation = { createServiceContactRequest:
 export type GetMyPortfolioQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetMyPortfolioQuery = { myPortfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: unknown, image: { id: number, cdnUrl: string | null } | null }> };
+export type GetMyPortfolioQuery = { myPortfolio: Array<{ id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: string, image: { id: number, cdnUrl: string | null } | null }> };
 
 export type AddProviderPortfolioItemMutationVariables = Exact<{
   input: Types.CreateProviderPortfolioInput;
 }>;
 
 
-export type AddProviderPortfolioItemMutation = { addProviderPortfolioItem: { id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: unknown, image: { id: number, cdnUrl: string | null } | null } };
+export type AddProviderPortfolioItemMutation = { addProviderPortfolioItem: { id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: string, image: { id: number, cdnUrl: string | null } | null } };
 
 export type UpdateProviderPortfolioItemMutationVariables = Exact<{
   input: Types.UpdateProviderPortfolioInput;
 }>;
 
 
-export type UpdateProviderPortfolioItemMutation = { updateProviderPortfolioItem: { id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: unknown, image: { id: number, cdnUrl: string | null } | null } };
+export type UpdateProviderPortfolioItemMutation = { updateProviderPortfolioItem: { id: number, title: string | null, description: string | null, imageUrl: string, position: number, createdAt: string, image: { id: number, cdnUrl: string | null } | null } };
 
 export type DeleteProviderPortfolioItemMutationVariables = Exact<{
   id: number;
@@ -790,24 +790,24 @@ export type DeleteProviderPortfolioItemMutation = { deleteProviderPortfolioItem:
 export type GetMyRealtimeOrdersAsProviderQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetMyRealtimeOrdersAsProviderQuery = { myRealtimeOrdersAsProvider: Array<{ id: number, status: Types.RealtimeOrderStatus, createdAt: unknown, startedAt: unknown, completedAt: unknown, clientAddress: string | null, clientDescription: string | null, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, payment: { amount: number } | null, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null } }> };
+export type GetMyRealtimeOrdersAsProviderQuery = { myRealtimeOrdersAsProvider: Array<{ id: number, status: Types.RealtimeOrderStatus, createdAt: string, startedAt: string | null, completedAt: string | null, clientAddress: string | null, clientDescription: string | null, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, payment: { amount: number } | null, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null } }> };
 
 export type GetMyRealtimeOrdersAsClientQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetMyRealtimeOrdersAsClientQuery = { myRealtimeOrdersAsClient: Array<{ id: number, status: Types.RealtimeOrderStatus, createdAt: unknown, startedAt: unknown, completedAt: unknown, clientAddress: string | null, clientDescription: string | null, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, payment: { amount: number } | null, provider: { id: number, name: string, lat: number | null, lng: number | null, location: string | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null } }> };
+export type GetMyRealtimeOrdersAsClientQuery = { myRealtimeOrdersAsClient: Array<{ id: number, status: Types.RealtimeOrderStatus, createdAt: string, startedAt: string | null, completedAt: string | null, clientAddress: string | null, clientDescription: string | null, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, payment: { amount: number } | null, provider: { id: number, name: string, lat: number | null, lng: number | null, location: string | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null } }> };
 
 export type GetMyRealtimeStateQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type GetMyRealtimeStateQuery = { me: { id: number, provider: { id: number, isRealtimeActive: boolean | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, clientAddress: string | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, startedAt: unknown, completedAt: unknown, clientDescription: string | null, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null }, payment: { amount: number } | null } | null } | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, clientAddress: string | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, startedAt: unknown, completedAt: unknown, clientDescription: string | null, providerId: number, provider: { id: number, name: string, lat: number | null, lng: number | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null }, payment: { amount: number } | null } | null } };
+export type GetMyRealtimeStateQuery = { me: { id: number, provider: { id: number, isRealtimeActive: boolean | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, clientAddress: string | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, startedAt: string | null, completedAt: string | null, clientDescription: string | null, client: { id: number, displayName: string | null, reviewsReceived: Array<{ id: number, rating: number } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null }, payment: { amount: number } | null } | null } | null, activeRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, clientAddress: string | null, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, counterOfferPrice: number | null, counterOfferHours: number | null, counterOfferTransport: number | null, startedAt: string | null, completedAt: string | null, clientDescription: string | null, providerId: number, provider: { id: number, name: string, lat: number | null, lng: number | null, logoImage: { id: number, cdnUrl: string | null } | null, reviews: Array<{ id: number, rating: number } | null> | null, realtimeReviews: Array<{ id: number, rating: number } | null> | null, certificates: Array<{ id: number, verified: boolean } | null> | null }, serviceProvider: { id: number, price: number | null, service: { id: number, name: string } | null }, payment: { amount: number } | null } | null } };
 
 export type GetMessagesQueryVariables = Exact<{
   orderRealtimeId: number;
 }>;
 
 
-export type GetMessagesQuery = { messages: Array<{ id: number, message: string | null, senderId: number, createdAt: unknown, sender: { id: number, displayName: string | null }, image: { id: number, cdnUrl: string | null } | null }> };
+export type GetMessagesQuery = { messages: Array<{ id: number, message: string | null, senderId: number, createdAt: string, sender: { id: number, displayName: string | null }, image: { id: number, cdnUrl: string | null } | null }> };
 
 export type SetMyRealtimeAvailabilityMutationVariables = Exact<{
   active: boolean;
@@ -857,7 +857,7 @@ export type RejectRealtimeOrderQuoteMutationVariables = Exact<{
 }>;
 
 
-export type RejectRealtimeOrderQuoteMutation = { rejectRealtimeOrderQuote: { id: number, status: Types.RealtimeOrderStatus, respondedAt: unknown } };
+export type RejectRealtimeOrderQuoteMutation = { rejectRealtimeOrderQuote: { id: number, status: Types.RealtimeOrderStatus, respondedAt: string | null } };
 
 export type RespondRealtimeContactRequestMutationVariables = Exact<{
   orderRealtimeId: number;
@@ -865,28 +865,28 @@ export type RespondRealtimeContactRequestMutationVariables = Exact<{
 }>;
 
 
-export type RespondRealtimeContactRequestMutation = { respondRealtimeContactRequest: { id: number, status: Types.RealtimeOrderStatus, respondedAt: unknown } };
+export type RespondRealtimeContactRequestMutation = { respondRealtimeContactRequest: { id: number, status: Types.RealtimeOrderStatus, respondedAt: string | null } };
 
 export type StartRealtimeOrderMutationVariables = Exact<{
   orderRealtimeId: number;
 }>;
 
 
-export type StartRealtimeOrderMutation = { startRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, startedAt: unknown } };
+export type StartRealtimeOrderMutation = { startRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, startedAt: string | null } };
 
 export type FinishRealtimeOrderMutationVariables = Exact<{
   orderRealtimeId: number;
 }>;
 
 
-export type FinishRealtimeOrderMutation = { finishRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, completedAt: unknown } };
+export type FinishRealtimeOrderMutation = { finishRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, completedAt: string | null } };
 
 export type CancelRealtimeOrderMutationVariables = Exact<{
   orderRealtimeId: number;
 }>;
 
 
-export type CancelRealtimeOrderMutation = { cancelRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, respondedAt: unknown } };
+export type CancelRealtimeOrderMutation = { cancelRealtimeOrder: { id: number, status: Types.RealtimeOrderStatus, respondedAt: string | null } };
 
 export type UpdateRealtimeOrderLocationMutationVariables = Exact<{
   orderRealtimeId: number;
@@ -896,7 +896,7 @@ export type UpdateRealtimeOrderLocationMutationVariables = Exact<{
 }>;
 
 
-export type UpdateRealtimeOrderLocationMutation = { updateRealtimeOrderLocation: { id: number, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, updatedAt: unknown } };
+export type UpdateRealtimeOrderLocationMutation = { updateRealtimeOrderLocation: { id: number, clientLat: number, clientLng: number, providerLat: number | null, providerLng: number | null, updatedAt: string } };
 
 export type UpdateProviderLocationMutationVariables = Exact<{
   lat: number;
@@ -913,7 +913,7 @@ export type InitRealtimeFlowPaymentMutationVariables = Exact<{
 }>;
 
 
-export type InitRealtimeFlowPaymentMutation = { initRealtimeFlowPayment: { url: string, token: string, paymentExpiresAt: unknown } };
+export type InitRealtimeFlowPaymentMutation = { initRealtimeFlowPayment: { url: string, token: string, paymentExpiresAt: string } };
 
 export type ConfirmRealtimeFlowPaymentMutationVariables = Exact<{
   token: string;
@@ -927,7 +927,7 @@ export type PayRealtimeOrderWithSavedCardMutationVariables = Exact<{
 }>;
 
 
-export type PayRealtimeOrderWithSavedCardMutation = { payRealtimeOrderWithSavedCard: { id: number, status: Types.RealtimeOrderStatus, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, respondedAt: unknown, provider: { id: number, name: string, lat: number | null, lng: number | null }, payment: { amount: number } | null } };
+export type PayRealtimeOrderWithSavedCardMutation = { payRealtimeOrderWithSavedCard: { id: number, status: Types.RealtimeOrderStatus, quotedPrice: number | null, quotedHours: number | null, quotedTransport: number | null, respondedAt: string | null, provider: { id: number, name: string, lat: number | null, lng: number | null }, payment: { amount: number } | null } };
 
 export type SendMessageMutationVariables = Exact<{
   orderRealtimeId: number;
@@ -935,7 +935,7 @@ export type SendMessageMutationVariables = Exact<{
 }>;
 
 
-export type SendMessageMutation = { sendMessage: { id: number, message: string | null, senderId: number, createdAt: unknown, sender: { id: number, displayName: string | null } } };
+export type SendMessageMutation = { sendMessage: { id: number, message: string | null, senderId: number, createdAt: string, sender: { id: number, displayName: string | null } } };
 
 export type CreateRealtimeProviderReviewMutationVariables = Exact<{
   input: Types.CreateRealtimeProviderReviewInput;
@@ -1017,22 +1017,22 @@ export type CreateSupportTicketMutationVariables = Exact<{
 }>;
 
 
-export type CreateSupportTicketMutation = { createSupportTicket: { id: number, email: string, subject: string, message: string, status: string, createdAt: unknown } };
+export type CreateSupportTicketMutation = { createSupportTicket: { id: number, email: string, subject: string, message: string, status: string, createdAt: string } };
 
 export type MyWalletQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyWalletQuery = { myWallet: { id: number, balance: number, transactions: Array<{ id: number, type: string, amount: number, description: string | null, createdAt: unknown, orderRealtimeId: number | null }> } };
+export type MyWalletQuery = { myWallet: { id: number, balance: number, transactions: Array<{ id: number, type: string, amount: number, description: string | null, createdAt: string, orderRealtimeId: number | null }> } };
 
 export type RequestWithdrawalMutationVariables = Exact<{ [key: string]: never; }>;
 
 
-export type RequestWithdrawalMutation = { requestWithdrawal: { id: number, amount: number, status: Types.WithdrawalStatus, bankName: string, accountType: string, accountNumber: string, rut: string, email: string, createdAt: unknown } };
+export type RequestWithdrawalMutation = { requestWithdrawal: { id: number, amount: number, status: Types.WithdrawalStatus, bankName: string, accountType: string, accountNumber: string, rut: string, email: string, createdAt: string } };
 
 export type MyPaymentHistoryQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyPaymentHistoryQuery = { myPaymentHistory: { totalSpent: number, payments: Array<{ id: string, amount: number, description: string, details: string | null, createdAt: unknown, type: Types.PaymentEntryType, status: Types.PaymentStatus, transactionId: string | null, orderId: number | null }> } };
+export type MyPaymentHistoryQuery = { myPaymentHistory: { totalSpent: number, payments: Array<{ id: string, amount: number, description: string, details: string | null, createdAt: string, type: Types.PaymentEntryType, status: Types.PaymentStatus, transactionId: string | null, orderId: number | null }> } };
 
 export type RegisterCardMutationVariables = Exact<{
   returnUrl: string;
@@ -1046,7 +1046,7 @@ export type UpdateUserMutationVariables = Exact<{
 }>;
 
 
-export type UpdateUserMutation = { updateUser: { id: number, displayName: string | null, email: string | null, phone: string, birthday: unknown } };
+export type UpdateUserMutation = { updateUser: { id: number, displayName: string | null, email: string | null, phone: string, birthday: string | null } };
 
 export type UpdateProviderMutationVariables = Exact<{
   id: number;
@@ -1074,28 +1074,28 @@ export type UpdateMyBankAccountMutation = { updateMyBankAccount: { id: number, b
 export type MyProviderPlanQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyProviderPlanQuery = { myProviderPlan: { id: number, plan: Types.ProviderPlan, planActive: boolean, planEndsAt: unknown, subscriptionFlowId: string | null, interval: Types.PlanInterval | null, status: Types.OrderStatus, total: number } | null };
+export type MyProviderPlanQuery = { myProviderPlan: { id: number, plan: Types.ProviderPlan, planActive: boolean, planEndsAt: string | null, subscriptionFlowId: string | null, interval: Types.PlanInterval | null, status: Types.OrderStatus, total: number } | null };
 
 export type InitPlanMutationVariables = Exact<{
   input: Types.CreatePlanOrderGeneralInput;
 }>;
 
 
-export type InitPlanMutation = { initPlan: { success: boolean, message: string | null, planEndsAt: unknown, externalSubscriptionId: string | null } };
+export type InitPlanMutation = { initPlan: { success: boolean, message: string | null, planEndsAt: string | null, externalSubscriptionId: string | null } };
 
 export type CancelSubscriptionMutationVariables = Exact<{
   input: Types.ManageSubscriptionInput;
 }>;
 
 
-export type CancelSubscriptionMutation = { cancelSubscription: { success: boolean, message: string | null, planEndsAt: unknown } };
+export type CancelSubscriptionMutation = { cancelSubscription: { success: boolean, message: string | null, planEndsAt: string | null } };
 
 export type ReactivateSubscriptionMutationVariables = Exact<{
   input: Types.ManageSubscriptionInput;
 }>;
 
 
-export type ReactivateSubscriptionMutation = { reactivateSubscription: { success: boolean, message: string | null, planEndsAt: unknown, externalSubscriptionId: string | null } };
+export type ReactivateSubscriptionMutation = { reactivateSubscription: { success: boolean, message: string | null, planEndsAt: string | null, externalSubscriptionId: string | null } };
 
 export type UpdateIdentityMutationVariables = Exact<{
   input: Types.IdentityInput;

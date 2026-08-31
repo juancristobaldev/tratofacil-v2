@@ -201,5 +201,54 @@ describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
       expect(queryByPlaceholderText('¿Qué servicio necesitas?')).toBeNull();
     });
   });
-});
 
+  describe('Home floating navigation controls ownership', () => {
+    it('Proveedor con orden ACCEPTED no renderiza controles de Home mientras focus_provider es la superficie activa', async () => {
+      mockRole = 'provider';
+      mockRealtime.providerActiveOrder = {
+        id: 201,
+        status: 'ACCEPTED',
+        client: { displayName: 'Carlos' },
+      };
+
+      const { queryByTestId } = await render(<HomePage />);
+
+      expect(queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+      expect(queryByTestId('btn-smart-framing')).toBeNull();
+    });
+
+    it('Cliente con orden ACCEPTED no renderiza controles de Home mientras focus_client es la superficie activa', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = {
+        id: 101,
+        status: 'ACCEPTED',
+        provider: { id: 202, name: 'Mario' },
+      };
+
+      const { queryByTestId } = await render(<HomePage />);
+
+      expect(queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+      expect(queryByTestId('btn-smart-framing')).toBeNull();
+    });
+
+    it('Proveedor sin orden activa conserva controles de navegación de Home', async () => {
+      mockRole = 'provider';
+      mockRealtime.providerActiveOrder = null;
+
+      const { getByTestId } = await render(<HomePage />);
+
+      expect(getByTestId('btn-toggle-navigation-mode')).toBeTruthy();
+      expect(getByTestId('btn-smart-framing')).toBeTruthy();
+    });
+
+    it('Cliente sin orden activa conserva encuadre de Home sin navegación 3D', async () => {
+      mockRole = 'client';
+      mockRealtime.activeOrder = null;
+
+      const { queryByTestId, getByTestId } = await render(<HomePage />);
+
+      expect(queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+      expect(getByTestId('btn-smart-framing')).toBeTruthy();
+    });
+  });
+});

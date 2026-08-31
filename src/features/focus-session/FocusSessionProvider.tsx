@@ -6,7 +6,7 @@ import { useRoutePolyline } from '../../hooks/useRoute';
 import { getImageUrl } from '../../utils/imageUrl';
 import { summarizeForRole } from '../../utils/ratings';
 import { navigate } from '../../navigation/navigationRef';
-import type { OrderRealTime } from '../../types/graphql';
+import type { OrderRealTime } from '../../graphql/generated';
 import type {
   FocusSessionValue,
   FocusClientSession,
@@ -45,7 +45,11 @@ function toPoint(lat: number | null | undefined, lng: number | null | undefined)
 const STATUS_MAP: Record<string, ProviderOrderState> = {
   PENDING: 'VIEW_REQUEST',
   QUOTED: 'WAITING_CLIENT_RESPONSE',
+  NEGOTIATING: 'WAITING_CLIENT_RESPONSE',
+  PAYMENT_PENDING: 'WAITING_CLIENT_RESPONSE',
   ACCEPTED: 'EN_CAMINO',
+  PROVIDER_ON_THE_WAY: 'EN_CAMINO',
+  ARRIVED: 'ARRIVED',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETED: 'COMPLETED',
   CANCELLED: 'CANCELLED',
@@ -94,21 +98,22 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // ---- Session de cliente ---------------------------------------------------
   const provider: SessionProviderInfo | null = useMemo(() => {
-    const p = clientActiveOrder?.provider;
+    const p = clientActiveOrder?.provider || (clientActiveOrder?.serviceProvider as any)?.provider;
     const sp = clientActiveOrder?.serviceProvider;
-    if (!p) return null;
-    const allReviews = [...(p.reviews || []), ...(p.realtimeReviews || [])];
+    if (!p && !sp) return null;
+    const allReviews = [...(p?.reviews || []), ...(p?.realtimeReviews || [])];
+    const name = p?.name || 'Profesional';
     return {
-      id: String(p.id),
-      name: p.name,
-      providerName: p.name,
-      avatar: getImageUrl(p.logoImage?.cdnUrl || null),
+      id: String(p?.id || sp?.id || 'provider'),
+      name,
+      providerName: name,
+      avatar: getImageUrl(p?.logoImage?.cdnUrl || null),
       rating: allReviews.length
         ? allReviews.reduce((s: number, r: any) => s + r.rating, 0) / allReviews.length
         : 0,
       reviewsCount: allReviews.length,
-      verified: p.certificates?.some((c: any) => c.verified) || false,
-      description: p.bio || '',
+      verified: p?.certificates?.some((c: any) => c.verified) || false,
+      description: p?.bio || sp?.description || '',
       pricePerHour: sp?.price || 0,
       serviceName: sp?.service?.name || '',
       serviceProviderId: sp?.id,

@@ -29,13 +29,25 @@ import {
   type BoundingBox,
   type SafeMapRect,
 } from '../utils/mapGeometry';
+import {
+  SmartNavigationEngine,
+  type NavigationMotionSample,
+  type SmartCameraTarget,
+  SMART_NAV_CONSTANTS,
+  navigationTelemetry,
+} from '../navigation-engine';
 
 export interface NavigationModeOptions {
   heading?: number;
   pitch?: number;
   zoom?: number;
+  speed?: number;
+  accuracy?: number;
+  source?: 'LOCAL_GPS' | 'REMOTE_TRACKING';
+  routeCoords?: RouteCoordinate[] | null;
   animated?: boolean;
   duration?: number;
+  force?: boolean;
 }
 
 export type CameraMode =
@@ -71,6 +83,10 @@ export interface FollowCoordinateOptions {
   longitudeDelta?: number;
   reason?: string;
   heading?: number;
+  speed?: number;
+  accuracy?: number;
+  source?: 'LOCAL_GPS' | 'REMOTE_TRACKING';
+  routeCoords?: RouteCoordinate[] | null;
 }
 
 export interface RecenterOptions {
@@ -96,6 +112,11 @@ export function useMapCamera(options: UseMapCameraOptions) {
   } = options;
 
   const [cameraMode, setCameraMode] = useState<CameraMode>('IDLE');
+  const cameraModeRef = useRef<CameraMode>('IDLE');
+  const updateCameraMode = useCallback((mode: CameraMode) => {
+    cameraModeRef.current = mode;
+    setCameraMode(mode);
+  }, []);
   const [isFollowing, setIsFollowing] = useState<boolean>(initialFollowMode);
   const isUserExploring = !isFollowing;
 
@@ -110,6 +131,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
   const lastHeadingRef = useRef<number>(0);
   const lastPitchRef = useRef<number>(NAVIGATION_PITCH);
   const isMountedRef = useRef<boolean>(true);
+  const navEngineRef = useRef<SmartNavigationEngine>(new SmartNavigationEngine());
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -192,7 +214,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       // Bloqueo de exclusividad: si está en modo navegación y no es un force explícito,
       // ningún encuadre pasivo de ruta puede competir ni romper la cámara 3D de navegación.
-      if (cameraMode === 'NAVIGATION' && !fitOpts?.force) {
+      if ((cameraModeRef.current === 'NAVIGATION' || cameraMode === 'NAVIGATION') && !fitOpts?.force) {
         if (__DEV__) {
           console.log(`[MAP:CAMERA_SKIP] reason=navigation_mode_active points=${sanitized.length}`);
         }
@@ -228,7 +250,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
       }
 
       isProgrammaticMovementRef.current = true;
-      setCameraMode('AUTO_FIT_ROUTE');
+      updateCameraMode('AUTO_FIT_ROUTE');
 
       const targetLatDelta = bbox.latitudeDelta * ROUTE_FIT_ZOOM_SCALE;
       const targetLngDelta = bbox.longitudeDelta * ROUTE_FIT_ZOOM_SCALE;
@@ -278,15 +300,16 @@ export function useMapCamera(options: UseMapCameraOptions) {
         return;
       }
 
-      // Si estamos en modo navegación, mantener el modo navegación en vez de degradar a 2D
+      // Si estamos en modo navegación, procesar a través de SmartNavigationEngine
       if (cameraMode === 'NAVIGATION') {
-        const navHeading = (followOpts?.heading != null && Number.isFinite(followOpts.heading) && followOpts.heading >= 0)
-          ? followOpts.heading
-          : lastHeadingRef.current;
         navigateToCoordinate(coord, {
-          heading: navHeading,
-          pitch: lastPitchRef.current,
+          heading: followOpts?.heading,
+          speed: followOpts?.speed,
+          accuracy: followOpts?.accuracy,
+          source: followOpts?.source,
+          routeCoords: followOpts?.routeCoords,
           animated,
+          force,
         });
         return;
       }
@@ -340,7 +363,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
       lastAnimatedRegionRef.current = targetRegion;
       lastRenderedRegionRef.current = targetRegion;
       isProgrammaticMovementRef.current = true;
-      setCameraMode('FOLLOW_USER');
+      updateCameraMode('FOLLOW_USER');
 
       if (__DEV__) {
         console.log(`[MAP:FOLLOW] reason=${followOpts?.reason || 'auto_follow'} target=(${coord.latitude.toFixed(4)},${coord.longitude.toFixed(4)}) sheetTop=${sheetTop}`);
@@ -358,18 +381,22 @@ export function useMapCamera(options: UseMapCameraOptions) {
    */
   useEffect(() => {
     if (sheetTop === null && lastSheetTopRef.current === null && headerBottom === lastHeaderBottomRef.current) return;
-    const previousSheetTop = lastSheetTopRef.current;
-    const previousHeaderBottom = lastHeaderBottomRef.current;
-    const diff = Math.abs((sheetTop ?? windowDimensions.height) - (previousSheetTop ?? windowDimensions.height));
-    const headerDiff = Math.abs(headerBottom - previousHeaderBottom);
 
-    if (diff > 15 || headerDiff > 15) {
+    if (!isMountedRef.current || !mapRef.current) return;
+
+    const sheetTopDelta = lastSheetTopRef.current !== null && sheetTop !== null
+      ? Math.abs(sheetTop - lastSheetTopRef.current)
+      : 0;
+    const headerBottomDelta = Math.abs(headerBottom - lastHeaderBottomRef.current);
+
+    if (sheetTopDelta > 20 || headerBottomDelta > 10) {
       if (__DEV__) {
         console.log(`[MAP:VIEWPORT_CHANGE] reason=viewport_settled sheetTop=${sheetTop} headerBottom=${headerBottom}`);
       }
 
-      if (isFollowing && lastTargetCoordRef.current) {
+      if (isFollowing && lastTargetCoordRef.current && cameraMode !== 'NAVIGATION') {
         followCoordinate(lastTargetCoordRef.current, {
+          force: true,
           reason: 'viewport_settle_recenter',
           animated: true,
         });
@@ -394,29 +421,42 @@ export function useMapCamera(options: UseMapCameraOptions) {
     if (__DEV__) {
       console.log('[MAP:USER_INTERACTION] type=PAN_DRAG');
     }
+    navigationTelemetry.recordUserGesture();
+    if (navigationTelemetry.isActive()) {
+      navigationTelemetry.endSession();
+    }
+    navEngineRef.current.reset();
     setIsFollowing(false);
-    setCameraMode('USER_EXPLORING');
+    updateCameraMode('USER_EXPLORING');
   }, []);
 
   /**
-   * Manejador de finalización de movimiento de región del MapView.
-   * Filtra movimientos programáticos para no disparar falsamente USER_EXPLORING.
+   * Manejador de finalización de movimiento de región (interacción libre del usuario).
    */
-  const handleRegionChangeComplete = useCallback((region: Region, details?: { isGesture?: boolean } | boolean) => {
-    lastRenderedRegionRef.current = region;
-    if (isProgrammaticMovementRef.current) {
-      isProgrammaticMovementRef.current = false;
-      return;
-    }
-    const isGesture = typeof details === 'boolean' ? details : details?.isGesture;
-    if (isGesture) {
-      if (__DEV__) {
-        console.log('[MAP:USER_INTERACTION] type=GESTURE_REGION_CHANGE');
+  const handleRegionChangeComplete = useCallback(
+    (region: Region, details?: { isGesture?: boolean }) => {
+      lastRenderedRegionRef.current = region;
+
+      if (isProgrammaticMovementRef.current) {
+        isProgrammaticMovementRef.current = false;
+        return;
       }
-      setIsFollowing(false);
-      setCameraMode('USER_EXPLORING');
-    }
-  }, []);
+
+      if (details?.isGesture) {
+        if (__DEV__) {
+          console.log('[MAP:USER_INTERACTION] type=GESTURE_REGION_CHANGE');
+        }
+        navigationTelemetry.recordUserGesture();
+        if (navigationTelemetry.isActive()) {
+          navigationTelemetry.endSession();
+        }
+        navEngineRef.current.reset();
+        setIsFollowing(false);
+        updateCameraMode('USER_EXPLORING');
+      }
+    },
+    [],
+  );
 
   /**
    * Desactiva el modo de navegación 3D y restaura la cámara a vista cenital 2D plana (pitch: 0, heading: 0)
@@ -428,10 +468,14 @@ export function useMapCamera(options: UseMapCameraOptions) {
       if (__DEV__) {
         console.log('[MAP:NAVIGATION_EXIT] resetting pitch to 0 and returning to 2D follow');
       }
+      if (navigationTelemetry.isActive()) {
+        navigationTelemetry.endSession();
+      }
+      navEngineRef.current.reset();
       lastPitchRef.current = 0;
       lastHeadingRef.current = 0;
       setIsFollowing(true);
-      setCameraMode('FOLLOW_USER');
+      updateCameraMode('FOLLOW_USER');
       isProgrammaticMovementRef.current = true;
 
       if (coord && mapRef.current) {
@@ -473,54 +517,95 @@ export function useMapCamera(options: UseMapCameraOptions) {
         mapRef.current?.animateToRegion?.(targetRegion, animated ? 600 : 0);
       }
     },
-    [dynamicEdgePadding, mapRef, windowDimensions.height],
+    [cameraMode, dynamicEdgePadding, mapRef, windowDimensions.height],
   );
 
   /**
-   * Activa el modo de navegación cercano centrado en la coordenada (usuario o punto)
-   * con inclinación 3D (pitch 60°), orientación (heading) y zoom cercano de calle.
+   * Activa o actualiza el modo de navegación inteligente con SmartNavigationEngine
+   * aplicando pitch canónico de 40°, filtrado GPS, fusión de rumbo, look-ahead y zoom adaptativo.
    */
   const navigateToCoordinate = useCallback(
     (coord: RouteCoordinate | null | undefined, navOpts?: NavigationModeOptions) => {
       if (!coord || !mapRef.current) return;
-      const rawHeading = navOpts?.heading;
-      const heading = (rawHeading != null && Number.isFinite(rawHeading) && rawHeading >= 0)
-        ? rawHeading
-        : (lastHeadingRef.current >= 0 ? lastHeadingRef.current : 0);
-      const pitch = navOpts?.pitch ?? (lastPitchRef.current > 0 ? lastPitchRef.current : NAVIGATION_PITCH);
+
+      const isInitialNavigationActivation = cameraModeRef.current !== 'NAVIGATION' && cameraMode !== 'NAVIGATION';
+
+      if (!navigationTelemetry.isActive()) {
+        navigationTelemetry.startSession();
+      }
+
+      const sample: NavigationMotionSample = {
+        coordinate: coord,
+        timestamp: Date.now(),
+        heading: navOpts?.heading,
+        speed: navOpts?.speed,
+        accuracy: navOpts?.accuracy,
+        source: navOpts?.source ?? (navOpts?.heading != null ? 'LOCAL_GPS' : 'REMOTE_TRACKING'),
+      };
+
+      const target = navEngineRef.current.processMotionSample(sample, navOpts?.routeCoords);
+      if (!target) return;
+
+      const writeDecision = navEngineRef.current.evaluateCameraWrite(
+        target,
+        Date.now(),
+        (navOpts?.force ?? false) || isInitialNavigationActivation,
+      );
+
+      if (!writeDecision.shouldWrite) {
+        if (__DEV__) {
+          console.log(`[MAP:CAMERA_SKIP] reason=navigation_engine_${writeDecision.reason}`);
+        }
+        return;
+      }
+
+      const pitch = navOpts?.pitch ?? target.pitch;
+      const heading = target.heading;
+      const zoom = navOpts?.zoom ?? target.zoom;
+      const duration = navOpts?.duration ?? writeDecision.durationMs;
       const animated = navOpts?.animated ?? true;
-      const duration = navOpts?.duration ?? 800;
 
       lastHeadingRef.current = heading;
       lastPitchRef.current = pitch;
 
       setIsFollowing(true);
-      setCameraMode('NAVIGATION');
+      updateCameraMode('NAVIGATION');
       isProgrammaticMovementRef.current = true;
-      lastTargetCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
+      lastTargetCoordRef.current = { latitude: target.center.latitude, longitude: target.center.longitude };
 
       const latDelta = NAVIGATION_LATITUDE_DELTA;
       const lngDelta = NAVIGATION_LONGITUDE_DELTA;
-      const shiftedLatitude = calculateShiftedLatitude(coord.latitude, latDelta, dynamicEdgePadding, windowDimensions.height);
+      const shiftedLatitude = calculateShiftedLatitude(
+        target.center.latitude,
+        latDelta,
+        dynamicEdgePadding,
+        windowDimensions.height,
+      );
 
       const targetRegion: Region = {
         latitude: shiftedLatitude,
-        longitude: coord.longitude,
+        longitude: target.center.longitude,
         latitudeDelta: latDelta,
         longitudeDelta: lngDelta,
       };
       lastAnimatedRegionRef.current = targetRegion;
       lastRenderedRegionRef.current = targetRegion;
 
+      if (__DEV__) {
+        console.log(
+          `[MAP:NAVIGATION_WRITE] activation=${isInitialNavigationActivation} reason=${writeDecision.reason} center=(${target.center.latitude.toFixed(5)},${target.center.longitude.toFixed(5)}) heading=${heading.toFixed(1)}° pitch=${pitch}° zoom=${zoom.toFixed(2)} duration=${duration}ms`,
+        );
+      }
+
       if (typeof mapRef.current.animateCamera === 'function') {
         try {
           mapRef.current.animateCamera(
             {
-              center: { latitude: shiftedLatitude, longitude: coord.longitude },
+              center: { latitude: shiftedLatitude, longitude: target.center.longitude },
               pitch,
               heading,
-              zoom: navOpts?.zoom ?? NAVIGATION_ZOOM_LEVEL,
-              altitude: NAVIGATION_ALTITUDE,
+              zoom,
+              altitude: target.altitude,
             },
             { duration: animated ? duration : 0 },
           );
@@ -537,7 +622,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
   /**
    * Alterna entre modo navegación 3D y vista 2D plana.
-   * Si ya está activo, lo desactiva. Si está inactivo, lo activa con pitch 60°.
+   * Si ya está activo, lo desactiva. Si está inactivo, lo activa con SmartNavigationEngine.
    */
   const toggleNavigationMode = useCallback(
     (coord?: RouteCoordinate | null, navOpts?: NavigationModeOptions) => {
@@ -558,6 +643,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
       if (__DEV__) {
         console.log('[MAP:RECENTER] restoring followMode in 2D');
       }
+      navEngineRef.current.reset();
       lastPitchRef.current = 0;
       lastHeadingRef.current = 0;
       setIsFollowing(true);
@@ -571,14 +657,14 @@ export function useMapCamera(options: UseMapCameraOptions) {
       } else if (recenterOpts?.targetCoordinate) {
         followCoordinate(recenterOpts.targetCoordinate, {
           force: true,
+          reason: 'recenter_target',
           animated: recenterOpts.animated ?? true,
-          reason: 'recenter_requested',
         });
       } else if (lastTargetCoordRef.current) {
         followCoordinate(lastTargetCoordRef.current, {
           force: true,
+          reason: 'recenter_last_target',
           animated: recenterOpts?.animated ?? true,
-          reason: 'recenter_requested',
         });
       }
     },
@@ -594,7 +680,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
       lastPitchRef.current = 0;
       lastHeadingRef.current = 0;
       setIsFollowing(false);
-      setCameraMode('IDLE');
+      updateCameraMode('IDLE');
       isProgrammaticMovementRef.current = true;
       lastTargetCoordRef.current = null;
 

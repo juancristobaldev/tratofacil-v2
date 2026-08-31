@@ -11,7 +11,7 @@ import { useMarketplace } from '../../hooks/useMarketplace';
 import { useSearchLocation } from '../../hooks/useSearchLocation';
 import { useRefresh } from '../../context/RefreshContext';
 import { getImageUrl } from '../../utils/imageUrl';
-import type { CategoryProduct } from '../../types/graphql';
+import type { CategoryProduct } from '../../graphql/generated';
 
 type MarketplaceMainTab = 'Explorar' | 'Mis Pedidos';
 type OrdersSubTab = 'Mis Compras' | 'Mis Ventas';

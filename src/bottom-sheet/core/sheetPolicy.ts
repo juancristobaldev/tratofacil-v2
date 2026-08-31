@@ -1,8 +1,8 @@
 import type { SheetKey } from './bottomSheet.types';
-import type { AppRole } from '../../types/graphql';
+import type { AppRole } from '../../types/appRole';
 
 export const TERMINAL_REALTIME_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
-export const PROVIDER_FOCUS_STATUSES = ['PENDING', 'QUOTED', 'ACCEPTED', 'IN_PROGRESS'];
+export const PROVIDER_FOCUS_STATUSES = ['PENDING', 'QUOTED', 'PAYMENT_PENDING', 'ACCEPTED', 'IN_PROGRESS'];
 
 export type DesiredMapSurface =
   | { kind: 'SHEET'; key: SheetKey; reason: string }
@@ -33,7 +33,7 @@ export function deriveDesiredMapSurface(params: {
 
   if (role === 'provider') {
     const order = providerActiveOrder;
-    if (order?.status && PROVIDER_FOCUS_STATUSES.includes(order.status)) {
+    if (order?.status && (PROVIDER_FOCUS_STATUSES.includes(order.status) || !TERMINAL_REALTIME_STATUSES.includes(order.status))) {
       return { kind: 'SHEET', key: 'focus_provider', reason: 'provider_domain_order' };
     }
     return { kind: 'SHEET', key: 'provider_dashboard', reason: 'provider_default' };

@@ -15,7 +15,7 @@ import { Button } from '../../components/ui/Button';
 import { Icon } from '../../components/ui/Icon';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
-import { Role } from '../../types/graphql';
+import { Role } from '../../graphql/generated';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -79,7 +79,7 @@ export const RegisterScreen: React.FC = () => {
       await register({
         email: normalizedEmail,
         password,
-        role: Role.CLIENT,
+        role: Role.Client,
       });
       navigation.replace('MainApp');
     } catch (err: any) {

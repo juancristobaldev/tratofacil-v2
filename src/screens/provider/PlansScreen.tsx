@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { PlanInterval, SubscriptionType, ProviderPlan } from '../../graphql/generated';
 import { StyleSheet, View, Text, ScrollView, Alert, RefreshControl, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +9,6 @@ import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
 import { ProviderOnlyGate } from '../../components/ui/ProviderOnlyGate';
-import { ProviderPlan } from '../../types/graphql';
 
 interface Plan {
   id: string;
@@ -69,7 +69,7 @@ export const PlansScreen: React.FC = () => {
     reactivateSubscription,
     refetch,
   } = usePlans();
-  const [interval, setInterval] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+  const [interval, setInterval] = useState<PlanInterval.Monthly | PlanInterval.Yearly>(PlanInterval.Monthly);
   const [refreshing, setRefreshing] = useState(false);
 
   const currentPlan = providerPlan?.plan || user?.planOrders?.[0]?.plan || ProviderPlan.FREE;
@@ -99,7 +99,7 @@ export const PlansScreen: React.FC = () => {
       await subscribe({
         plan: plan.planEnum,
         interval,
-        type: 'PROVIDER',
+        type: SubscriptionType.Provider,
         customerId,
       });
       Alert.alert('Suscripción', 'Redirigiendo al pago...');
@@ -117,7 +117,7 @@ export const PlansScreen: React.FC = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await cancelSubscription({ subscriptionFlowId, type: 'PROVIDER' });
+            await cancelSubscription({ orderId: currentPlan?.id || 0, type: SubscriptionType.Provider });
             Alert.alert('Cancelada', 'Tu suscripción quedó cancelada. Conservarás el plan hasta la fecha de vencimiento.');
             refetch();
           } catch (err: any) {
@@ -131,7 +131,7 @@ export const PlansScreen: React.FC = () => {
   const handleReactivate = async () => {
     if (!subscriptionFlowId) return;
     try {
-      await reactivateSubscription({ subscriptionFlowId, type: 'PROVIDER' });
+      await reactivateSubscription({ subscriptionFlowId, type: SubscriptionType.Provider });
       Alert.alert('Reactivada', 'Tu suscripción fue reactivada.');
       refetch();
     } catch (err: any) {
@@ -152,8 +152,8 @@ export const PlansScreen: React.FC = () => {
           {/* Segmented Pill selector matching ui-kit.html */}
           <View style={styles.intervalCenterWrapper}>
             <IntervalToggle
-              isAnnual={interval === 'YEARLY'}
-              onToggle={(annual) => setInterval(annual ? 'YEARLY' : 'MONTHLY')}
+              isAnnual={interval === PlanInterval.Yearly}
+              onToggle={(annual) => setInterval(annual ? PlanInterval.Yearly : PlanInterval.Monthly)}
               discountLabel="-20%"
             />
           </View>
@@ -162,14 +162,14 @@ export const PlansScreen: React.FC = () => {
           <View style={styles.plansList}>
             {PLANS.map((plan) => {
               const isCurrent = plan.planEnum === currentPlan && currentPlanActive;
-              const price = interval === 'MONTHLY' ? plan.monthly : plan.yearly;
+              const price = interval === PlanInterval.Monthly ? plan.monthly : plan.yearly;
 
               return (
                 <PlanCard
                   key={plan.id}
                   name={plan.name}
                   price={price}
-                  period={interval === 'MONTHLY' ? '/mes' : '/año'}
+                  period={interval === PlanInterval.Monthly ? '/mes' : '/año'}
                   commission={plan.commission}
                   features={plan.features}
                   isRecommended={plan.recommended}

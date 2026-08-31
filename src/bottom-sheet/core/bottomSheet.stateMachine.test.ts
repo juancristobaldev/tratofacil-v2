@@ -7,7 +7,7 @@ import {
 } from './sheetPolicy';
 import { isSheetAllowedForRole, registry } from './bottomSheet.registry';
 import type { SheetKey } from './bottomSheet.types';
-import type { AppRole } from '../../types/graphql';
+import type { AppRole } from '../../types/appRole';
 
 describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
   describe('Suite 1: Client Default Policy', () => {

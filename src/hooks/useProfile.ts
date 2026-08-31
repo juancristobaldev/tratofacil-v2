@@ -1,3 +1,4 @@
+import type { CreateProviderPortfolioInput, UpdateProviderPortfolioInput, UpdateUserInput, UpdateProviderInput, UpdateBankUserInput, IdentityInput, CreateUserIdentityInput } from '../graphql/generated';
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useQuery, useMutation } from '@apollo/client/react';
 import {
@@ -19,16 +20,16 @@ import {
   GET_PROVIDER_REGISTRATION_STATUS,
 } from '../graphql/operations/wallet';
 import { useAuth } from '../context/AuthContext';
-import type { User } from '../types/graphql';
+import type { User } from '../graphql/generated';
 
-interface CreatePortfolioInput {
+type CreatePortfolioInput_old = {
   imageUrl: string;
   title?: string;
   description?: string;
   position?: number;
 }
 
-interface UpdatePortfolioInput {
+type UpdatePortfolioInput_old = {
   id: number;
   title?: string;
   description?: string;
@@ -36,14 +37,14 @@ interface UpdatePortfolioInput {
   position?: number;
 }
 
-interface UpdateUserInput {
+type UpdateUserInput_old = {
   displayName?: string;
   email?: string;
   phone?: string;
   birthday?: string;
 }
 
-interface UpdateProviderInput {
+type UpdateProviderInput_old = {
   name?: string;
   bio?: string;
   location?: string;
@@ -51,7 +52,7 @@ interface UpdateProviderInput {
   logoUrl?: string;
 }
 
-interface UpdateBankInput {
+type UpdateBankInput_old = {
   bankName: string;
   accountType: string;
   accountNumber: string;
@@ -59,7 +60,7 @@ interface UpdateBankInput {
   rut?: string;
 }
 
-interface IdentityInput {
+type IdentityInput_old = {
   userId: number;
   firstName: string;
   lastName: string;
@@ -69,7 +70,7 @@ interface IdentityInput {
   company?: string;
 }
 
-interface CreateIdentityInput {
+type CreateIdentityInput_old = {
   dniFront: string;
   qrSession: string;
   selfie: string;
@@ -91,16 +92,16 @@ interface UseProfileReturn {
   fetchPublicProfile: (userId: number) => void;
   updateProfile: (input: UpdateUserInput) => Promise<void>;
   updateProviderProfile: (providerId: number, input: UpdateProviderInput) => Promise<void>;
-  updateProviderBank: (providerId: number, input: UpdateBankInput) => Promise<void>;
-  updateMyBank: (input: UpdateBankInput) => Promise<void>;
+  updateProviderBank: (providerId: number, input: UpdateBankUserInput) => Promise<void>;
+  updateMyBank: (input: UpdateBankUserInput) => Promise<void>;
   updateIdentity: (input: IdentityInput) => Promise<void>;
-  createIdentity: (input: CreateIdentityInput) => Promise<void>;
+  createIdentity: (input: CreateUserIdentityInput) => Promise<void>;
   createKycSession: (userId: number) => Promise<string | null>;
   completeKyc: (session: string) => Promise<void>;
   sendEmailVerificationCode: (email: string) => Promise<void>;
   confirmEmail: (code: string, email: string) => Promise<void>;
-  addPortfolioItem: (input: CreatePortfolioInput) => Promise<void>;
-  updatePortfolioItem: (input: UpdatePortfolioInput) => Promise<void>;
+  addPortfolioItem: (input: CreateProviderPortfolioInput) => Promise<void>;
+  updatePortfolioItem: (input: UpdateProviderPortfolioInput) => Promise<void>;
   deletePortfolioItem: (id: number) => Promise<void>;
   saving: boolean;
   setSaving: Dispatch<SetStateAction<boolean>>;
@@ -179,7 +180,7 @@ export function useProfile(): UseProfileReturn {
     }
   };
 
-  const updateProviderBank = async (providerId: number, input: UpdateBankInput) => {
+  const updateProviderBank = async (providerId: number, input: UpdateBankUserInput) => {
     setSaving(true);
     try {
       await updateBankMut({ variables: { input, providerId } });
@@ -189,7 +190,7 @@ export function useProfile(): UseProfileReturn {
     }
   };
 
-  const updateMyBank = async (input: UpdateBankInput) => {
+  const updateMyBank = async (input: UpdateBankUserInput) => {
     setSaving(true);
     try {
       await updateMyBankMut({ variables: { input } });
@@ -209,7 +210,7 @@ export function useProfile(): UseProfileReturn {
     }
   };
 
-  const createIdentity = async (input: CreateIdentityInput) => {
+  const createIdentity = async (input: CreateUserIdentityInput) => {
     setSaving(true);
     try {
       await createIdentityMut({ variables: { input } });
@@ -238,7 +239,7 @@ export function useProfile(): UseProfileReturn {
     await refetchAuth();
   };
 
-  const addPortfolioItem = async (input: CreatePortfolioInput) => {
+  const addPortfolioItem = async (input: CreateProviderPortfolioInput) => {
     setSaving(true);
     try {
       await addPortfolioMut({ variables: { input } });
@@ -248,7 +249,7 @@ export function useProfile(): UseProfileReturn {
     }
   };
 
-  const updatePortfolioItem = async (input: UpdatePortfolioInput) => {
+  const updatePortfolioItem = async (input: UpdateProviderPortfolioInput) => {
     setSaving(true);
     try {
       await updatePortfolioMut({ variables: { input } });

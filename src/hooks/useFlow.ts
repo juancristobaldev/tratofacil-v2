@@ -5,7 +5,7 @@ import { INIT_FLOW_PRODUCT, CONFIRM_FLOW_PRODUCT, PAY_PRODUCT_WITH_SAVED_CARD } 
 import { INIT_FLOW_JOB, CONFIRM_FLOW_JOB } from '../graphql/operations/jobs';
 import { INIT_REALTIME_FLOW_PAYMENT, CONFIRM_REALTIME_FLOW_PAYMENT, PAY_REALTIME_ORDER_WITH_SAVED_CARD } from '../graphql/operations/realtime';
 import { CONFIRM_FLOW_AD } from '../graphql/operations/wallet';
-import type { RealtimePaymentInitResponse } from '../types/graphql';
+import type { RealtimePaymentInitResponse } from '../graphql/generated';
 
 type FlowPaymentType = 'product' | 'job' | 'realtime' | 'ad';
 

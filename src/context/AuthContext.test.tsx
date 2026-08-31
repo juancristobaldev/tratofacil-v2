@@ -3,7 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { AuthProvider, useAuth } from './AuthContext';
 import * as secureStorage from '../utils/secureStorage';
 import * as apolloModule from '../graphql/apollo';
-import { Role } from '../types/graphql';
+import { Role } from '../graphql/generated';
 
 const mockQuery = jest.fn();
 const mockClearStore = jest.fn();
@@ -81,7 +81,7 @@ describe('AuthContext lifecycle and session management', () => {
         me: {
           id: 10,
           email: 'usuario@tratofacil.test',
-          role: Role.CLIENT,
+          role: Role.Client,
           displayName: 'Usuario Restaurado',
         },
       },
@@ -107,7 +107,7 @@ describe('AuthContext lifecycle and session management', () => {
       data: {
         login: {
           accessToken: 'newly-issued-token',
-          user: { id: 25, email: 'nuevo@tratofacil.test', role: Role.CLIENT },
+          user: { id: 25, email: 'nuevo@tratofacil.test', role: Role.Client },
         },
       },
     });
@@ -118,7 +118,7 @@ describe('AuthContext lifecycle and session management', () => {
         me: {
           id: 25,
           email: 'nuevo@tratofacil.test',
-          role: Role.CLIENT,
+          role: Role.Client,
           displayName: 'Nuevo Logueado',
         },
       },
@@ -186,7 +186,7 @@ describe('AuthContext lifecycle and session management', () => {
         me: {
           id: 50,
           email: 'pro-online@tratofacil.test',
-          role: Role.PROVIDER,
+          role: Role.Provider,
           displayName: 'Pro Online',
           provider: {
             id: 100,
@@ -216,7 +216,7 @@ describe('AuthContext lifecycle and session management', () => {
         me: {
           id: 51,
           email: 'pro-offline@tratofacil.test',
-          role: Role.PROVIDER,
+          role: Role.Provider,
           displayName: 'Pro Offline',
           provider: {
             id: 101,
@@ -246,7 +246,7 @@ describe('AuthContext lifecycle and session management', () => {
         me: {
           id: 52,
           email: 'pro-order@tratofacil.test',
-          role: Role.PROVIDER,
+          role: Role.Provider,
           displayName: 'Pro Con Orden',
           provider: {
             id: 102,

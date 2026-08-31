@@ -37,9 +37,12 @@ export const RatingScreen: React.FC = () => {
     orderRealtimeId,
     providerId,
     clientId,
+    orderJobId: rawOrderJobId,
     jobId,
     workerId,
   } = route.params || {};
+
+  const orderJobId = rawOrderJobId ?? jobId;
 
   const [selectedRating, setSelectedRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
@@ -76,20 +79,20 @@ export const RatingScreen: React.FC = () => {
           orderRealtimeId,
           clientId,
         });
-      } else if (role === 'client' && jobId && workerId) {
+      } else if (role === 'client' && orderJobId && workerId) {
         await reviewJob({
           rating: selectedRating,
           comment,
-          jobId,
+          jobId: orderJobId,
           workerId,
-        });
+        } as any);
       }
     } catch (_err) {
       // Best-effort submission
     } finally {
       setSubmitting(false);
     }
-    if (jobId) {
+    if (orderJobId) {
       navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
       return;
     }

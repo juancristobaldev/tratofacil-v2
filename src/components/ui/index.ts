@@ -41,3 +41,4 @@ export * from './CreditCardPreview';
 export * from './SettingsMenuCard';
 export * from './StatsOverviewCard';
 export * from './ReviewCard';
+export * from './MapFloatingNavigationControls';

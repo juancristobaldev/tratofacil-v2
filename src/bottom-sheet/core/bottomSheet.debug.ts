@@ -35,7 +35,9 @@ type BottomSheetDebugEvent =
   | 'INVARIANT_VIOLATION'
   | 'HOST_CONTENT'
   | 'PANEL_MOUNT'
-  | 'PANEL_UNMOUNT';
+  | 'PANEL_UNMOUNT'
+  | 'MAP_AUTO_COLLAPSE'
+  | 'MAP_AUTO_RESTORE';
 
 type DebugPayload = {
   requestId?: number | null;
@@ -80,6 +82,8 @@ type DebugPayload = {
   decision?: string;
   hasProvider?: boolean;
   hasServiceProvider?: boolean;
+  fromIndex?: number;
+  toIndex?: number;
 };
 
 const ENABLED = true;

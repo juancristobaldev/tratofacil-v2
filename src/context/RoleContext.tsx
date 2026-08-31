@@ -1,5 +1,5 @@
 import { useAuth } from './AuthContext';
-import type { AppRole } from '../types/graphql';
+import type { AppRole } from '../types/appRole';
 
 export type { AppRole };
 

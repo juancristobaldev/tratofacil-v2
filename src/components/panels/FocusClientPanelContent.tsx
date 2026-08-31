@@ -92,10 +92,15 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
   const distanceToProvider = distanceToProviderKm;
 
-  const canStartOrder = status === 'ACCEPTED' && distanceToProvider !== null && distanceToProvider <= START_ORDER_DISTANCE_KM;
+  const isQuotedPhase = status === 'QUOTED' || status === 'NEGOTIATING' || status === 'PAYMENT_PENDING' || status === 'PENDING';
+  const isAcceptedPhase = status === 'ACCEPTED' || status === 'PROVIDER_ON_THE_WAY' || status === 'ARRIVED';
+  const isInProgressPhase = status === 'IN_PROGRESS';
+  const isPaymentStepActive = showPaymentStep || status === 'PAYMENT_PENDING';
+
+  const canStartOrder = isAcceptedPhase && distanceToProvider !== null && distanceToProvider <= START_ORDER_DISTANCE_KM;
 
   useEffect(() => {
-    if (status !== 'IN_PROGRESS' || !activeOrder?.startedAt) return;
+    if (!isInProgressPhase || !activeOrder?.startedAt) return;
     const interval = setInterval(() => {
       const sec = Math.floor((Date.now() - new Date(activeOrder.startedAt!).getTime()) / 1000);
       const mm = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -103,7 +108,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       setServiceElapsed(`${mm}:${ss}`);
     }, 1000);
     return () => clearInterval(interval);
-  }, [status, activeOrder?.startedAt]);
+  }, [isInProgressPhase, activeOrder?.startedAt]);
 
   const handlePay = async () => {
     const actionId = nextBottomSheetActionId();
@@ -239,24 +244,26 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           <View style={styles.compactInfoCol}>
             <View style={styles.compactTitleRow}>
               <Text style={styles.compactName} numberOfLines={1}>{provider.name}</Text>
-              {status === 'QUOTED' && !counterOfferSent && (
+              {isQuotedPhase && !counterOfferSent && (
                 <Text style={styles.compactPriceBadge}>
                   {`$${(negotiatedPrice !== (activeOrder?.quotedPrice || 0) && negotiatedPrice > 0 ? negotiatedPrice : (activeOrder?.quotedPrice || 0)).toLocaleString('es-CL')}`}
                 </Text>
               )}
             </View>
             <Text style={styles.compactStatusText} numberOfLines={1}>
-              {status === 'QUOTED'
+              {isQuotedPhase
                 ? counterOfferSent
                   ? 'Contraoferta enviada • Esperando'
-                  : negotiatedPrice !== (activeOrder?.quotedPrice || 0)
-                    ? 'Tu contraoferta lista para enviar'
-                    : 'Oferta recibida'
-                : status === 'ACCEPTED'
+                  : status === 'PAYMENT_PENDING'
+                    ? 'Pago pendiente • Continuar'
+                    : negotiatedPrice !== (activeOrder?.quotedPrice || 0)
+                      ? 'Tu contraoferta lista para enviar'
+                      : 'Oferta recibida'
+                : isAcceptedPhase
                   ? canStartOrder
                     ? 'Llegó al domicilio • Listo'
                     : `En camino • ${etaRemaining}`
-                  : status === 'IN_PROGRESS'
+                  : isInProgressPhase
                     ? `En curso • ${serviceElapsed}`
                     : 'Seguimiento de orden'}
             </Text>
@@ -265,8 +272,8 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
         </TouchableOpacity>
 
         <View style={styles.compactActionRow}>
-          {status === 'QUOTED' && !counterOfferSent && (
-            negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
+          {isQuotedPhase && !counterOfferSent && (
+            negotiatedPrice !== (activeOrder?.quotedPrice || 0) && status !== 'PAYMENT_PENDING' ? (
               <Button
                 title="Enviar contraoferta"
                 onPress={async () => {
@@ -294,7 +301,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               />
             ) : (
               <Button
-                title="Aceptar oferta"
+                title={status === 'PAYMENT_PENDING' ? "Continuar pago" : "Aceptar oferta"}
                 onPress={() => {
                   setShowPaymentStep(true);
                   setIndex?.(1);
@@ -305,7 +312,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             )
           )}
 
-          {status === 'QUOTED' && counterOfferSent && (
+          {isQuotedPhase && counterOfferSent && (
             <Button
               title="Contraoferta enviada"
               variant="secondary"
@@ -316,7 +323,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             />
           )}
 
-          {status === 'ACCEPTED' && (
+          {isAcceptedPhase && (
             canStartOrder ? (
               <Button
                 title="Confirmar inicio de servicio"
@@ -340,7 +347,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             )
           )}
 
-          {status === 'IN_PROGRESS' && (
+          {isInProgressPhase && (
             <Button
               title="Abrir Chat"
               variant="secondary"
@@ -366,8 +373,8 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       showsVerticalScrollIndicator={true}
       bounces={false}
     >
-      {/* QUOTED — Quote recibida */}
-      {status === 'QUOTED' && (
+      {/* QUOTED — Quote recibida / Negociación / Pago */}
+      {isQuotedPhase && (
         <View style={styles.quotedContainer}>
           {/* Header unificado del profesional con ETA y Chat */}
           <View style={styles.providerCardHeaderCompact}>
@@ -409,7 +416,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           )}
 
           {/* Bloque integrado de Oferta y Contraoferta (Paso 1: Oferta / Negociación | Paso 2: Método de Pago) */}
-          {showPaymentStep ? (
+          {isPaymentStepActive ? (
             <View style={styles.paymentStepContainer}>
               <View style={styles.paymentStepHeader}>
                 <TouchableOpacity
@@ -553,7 +560,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       )}
 
       {/* ACCEPTED — En camino / Listo para iniciar */}
-      {status === 'ACCEPTED' && (
+      {isAcceptedPhase && (
         <View style={styles.sheetBody}>
           {canStartOrder ? (
             <View style={styles.arrivalCard}>
@@ -625,7 +632,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       )}
 
       {/* IN_PROGRESS — Servicio en curso */}
-      {status === 'IN_PROGRESS' && (
+      {isInProgressPhase && (
         <View style={styles.sheetBody}>
           <View style={styles.timerHeader}>
             <Text style={styles.timerLabel}>Tiempo de servicio</Text>

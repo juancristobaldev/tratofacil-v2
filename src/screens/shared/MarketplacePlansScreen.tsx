@@ -1,3 +1,4 @@
+import { PlanInterval } from "../../graphql/generated";
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,7 +7,7 @@ import { TOKENS } from '../../theme';
 import { Icon, Button, Card, Badge } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
-import { UserPlan } from '../../types/graphql';
+import { UserPlan } from '../../graphql/generated';
 
 interface MarketPlan {
   id: string;
@@ -24,7 +25,7 @@ const MARKETPLACE_PLANS: MarketPlan[] = [
   {
     id: 'mp_free',
     name: 'Gratis',
-    planEnum: UserPlan.FREE,
+    planEnum: UserPlan.Free,
     monthly: 0,
     yearly: 0,
     maxPublications: '2',
@@ -35,7 +36,7 @@ const MARKETPLACE_PLANS: MarketPlan[] = [
   {
     id: 'mp_initial',
     name: 'Inicial',
-    planEnum: UserPlan.TRATOFACIL_PUB_INITIAL,
+    planEnum: UserPlan.TratofacilPubInitial,
     monthly: 15900,
     yearly: 190800,
     maxPublications: '10',
@@ -46,7 +47,7 @@ const MARKETPLACE_PLANS: MarketPlan[] = [
   {
     id: 'mp_pro',
     name: 'Pro',
-    planEnum: UserPlan.TRATOFACIL_PUB_PRO,
+    planEnum: UserPlan.TratofacilPubPro,
     monthly: 32900,
     yearly: 324000,
     maxPublications: '50',
@@ -57,7 +58,7 @@ const MARKETPLACE_PLANS: MarketPlan[] = [
   {
     id: 'mp_business',
     name: 'Business',
-    planEnum: UserPlan.TRATOFACIL_PUB_BUSINESS,
+    planEnum: UserPlan.TratofacilPubBusiness,
     monthly: 64900,
     yearly: 623000,
     maxPublications: '200',
@@ -68,7 +69,7 @@ const MARKETPLACE_PLANS: MarketPlan[] = [
   {
     id: 'mp_full',
     name: 'Full',
-    planEnum: UserPlan.TRATOFACIL_PUB_FULL,
+    planEnum: UserPlan.TratofacilPubFull,
     monthly: 104900,
     yearly: 982000,
     maxPublications: 'Ilimitadas',
@@ -85,9 +86,9 @@ export const MarketplacePlansScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { user } = useAuth();
   const { subscribe, subscribeLoading } = usePlans();
-  const [interval, setInterval] = useState<'MONTHLY' | 'YEARLY'>('MONTHLY');
+  const [interval, setInterval] = useState<PlanInterval.Monthly | PlanInterval.Yearly>(PlanInterval.Monthly);
 
-  const currentPlan = user?.marketplacePlanOrders?.[0]?.plan || UserPlan.FREE;
+  const currentPlan = user?.marketplacePlanOrders?.[0]?.plan || UserPlan.Free;
   const currentPlanActive = user?.marketplacePlanOrders?.[0]?.planActive ?? false;
 
   const handleSelect = async (plan: MarketPlan) => {
@@ -95,7 +96,7 @@ export const MarketplacePlansScreen: React.FC = () => {
       navigation.navigate('Login');
       return;
     }
-    if (plan.planEnum === UserPlan.FREE) {
+    if (plan.planEnum === UserPlan.Free) {
       navigation.navigate('MainApp');
       return;
     }
@@ -129,7 +130,7 @@ export const MarketplacePlansScreen: React.FC = () => {
         <Text style={styles.intro}>Elige el plan que se adapte a tu volumen de ventas y destaca tus publicaciones.</Text>
 
         <View style={styles.intervalRow}>
-          {(['MONTHLY', 'YEARLY'] as const).map((it) => (
+          {([PlanInterval.Monthly, PlanInterval.Yearly] as const).map((it) => (
             <TouchableOpacity
               key={it}
               style={[styles.intervalBtn, interval === it && styles.intervalBtnActive]}
@@ -139,7 +140,7 @@ export const MarketplacePlansScreen: React.FC = () => {
               <Text
                 style={[styles.intervalText, interval === it && styles.intervalTextActive]}
               >
-                {it === 'MONTHLY' ? 'Mensual' : 'Anual'}
+                {it === PlanInterval.Monthly ? 'Mensual' : 'Anual'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -147,7 +148,7 @@ export const MarketplacePlansScreen: React.FC = () => {
 
         {MARKETPLACE_PLANS.map((plan) => {
           const isCurrent = plan.planEnum === currentPlan;
-          const price = interval === 'MONTHLY' ? plan.monthly : plan.yearly;
+          const price = interval === PlanInterval.Monthly ? plan.monthly : plan.yearly;
           return (
             <Card key={plan.id} style={[styles.planCard, plan.recommended && styles.planCardRecommended]} padded={true}>
               <View style={styles.planHeader}>
@@ -155,7 +156,7 @@ export const MarketplacePlansScreen: React.FC = () => {
                 {plan.recommended && <Badge label="RECOMENDADO" tone="brand" />}
               </View>
               <Text style={styles.planPrice}>
-                {price === 0 ? 'Gratis' : `$${fmt(price)} / ${interval === 'MONTHLY' ? 'mes' : 'año'}`}
+                {price === 0 ? 'Gratis' : `$${fmt(price)} / ${interval === PlanInterval.Monthly ? 'mes' : 'año'}`}
               </Text>
               <Text style={styles.planMeta}>{plan.maxPublications} publicaciones · {plan.maxPhotos} fotos c/u</Text>
               <View style={styles.divider} />

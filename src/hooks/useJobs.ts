@@ -1,3 +1,4 @@
+import type { UpdateJobInput, CreateOrderJobInput, CreateReviewsJobInput } from '../graphql/generated';
 import { useQuery, useMutation } from '@apollo/client/react';
 import { useMemo } from 'react';
 import {
@@ -18,16 +19,17 @@ import type {
   Job,
   JobApplication,
   OrderJob,
-} from '../types/graphql';
+  CreateJobInput
+} from '../graphql/generated';
 
-interface CreateJobInput {
+type CreateJobInput_old = {
   title: string;
   description?: string;
   price?: number;
   location?: string;
 }
 
-interface UpdateJobInput {
+type UpdateJobInput_old = {
   id: number;
   title?: string;
   description?: string;
@@ -35,16 +37,16 @@ interface UpdateJobInput {
   location?: string;
 }
 
-interface CreateOrderInput {
-  jobId: number;
+type CreateOrderInput_old = {
+  orderJobId: number;
   workerId?: number;
 }
 
-interface ReviewsJobInput {
+type ReviewsJobInput_old = {
   rating: number;
   comment?: string;
   workerId: number;
-  jobId: number;
+  orderJobId: number;
 }
 
 interface UseJobsReturn {
@@ -63,9 +65,9 @@ interface UseJobsReturn {
   createLoading: boolean;
   updateJob: (input: UpdateJobInput) => Promise<void>;
   removeJob: (id: number) => Promise<void>;
-  applyToJob: (jobId: number, message?: string) => Promise<void>;
-  createOrder: (input: CreateOrderInput) => Promise<{ id: number; status: string; total: number }>;
-  reviewJob: (input: ReviewsJobInput) => Promise<void>;
+  applyToJob: (orderJobId: number, message?: string) => Promise<void>;
+  createOrder: (input: CreateOrderJobInput) => Promise<{ id: number; status: string; total: number }>;
+  reviewJob: (input: CreateReviewsJobInput) => Promise<void>;
   refetchMyJobs: () => void;
 }
 
@@ -134,18 +136,18 @@ export function useJobs(): UseJobsReturn {
     await removeMut({ variables: { id }, refetchQueries: ['MyJobs'] });
   };
 
-  const applyToJob = async (jobId: number, message?: string) => {
-    await applyMut({ variables: { jobId, message } });
+  const applyToJob = async (orderJobId: number, message?: string) => {
+    await applyMut({ variables: { jobId: orderJobId, message } });
   };
 
-  const createOrder = async (input: CreateOrderInput) => {
+  const createOrder = async (input: CreateOrderJobInput) => {
     const { data: result } = await createOrderMut({
-      variables: { input: { jobId: input.jobId, workerId: input.workerId } },
+      variables: { input },
     });
     return result!.createOrderJobWithPayment;
   };
 
-  const reviewJob = async (input: ReviewsJobInput) => {
+  const reviewJob = async (input: CreateReviewsJobInput) => {
     await reviewMut({ variables: { input } });
     refetchMyJobs();
   };

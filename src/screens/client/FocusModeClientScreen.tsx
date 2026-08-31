@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,12 +12,12 @@ import {
 import MapView, { type Region } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin } from '../../components/ui';
+import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../../components/ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { getImageUrl } from '../../utils/imageUrl';
-import type { OrderRealTime } from '../../types/graphql';
+import type { OrderRealTime } from '../../graphql/generated';
 import { FocusChatOverlay } from './components/FocusChatOverlay';
 import { useBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 
@@ -64,6 +64,8 @@ export const FocusModeClientScreen: React.FC = () => {
     recenter,
     dynamicEdgePadding,
     isFollowing,
+    isNavigating,
+    isUserExploring,
   } = useMapCamera({
     mapRef,
     headerBottom,
@@ -82,7 +84,7 @@ export const FocusModeClientScreen: React.FC = () => {
     };
   }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
-  // Actualización de cámara basada en ruta y pins
+  // Actualización de cámara basada en ruta y pins cuando no está en navegación activa
   useEffect(() => {
     if (status === 'PENDING') {
       if (clientCoords) {
@@ -90,6 +92,8 @@ export const FocusModeClientScreen: React.FC = () => {
       }
       return;
     }
+
+    if (isNavigating) return;
 
     if (routeCoords.length >= 2) {
       const points: RouteCoordinate[] = [
@@ -106,10 +110,21 @@ export const FocusModeClientScreen: React.FC = () => {
         ],
         { reason: 'focus_client_pins_fit' },
       );
-    } else if (providerCoords) {
+    } else if (providerCoords && !isUserExploring) {
       followCoordinate(providerCoords, { reason: 'focus_client_provider_follow' });
     }
-  }, [status, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate]);
+  }, [status, isNavigating, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate, isUserExploring]);
+
+  // Seguimiento continuo del stream GPS/proveedor
+  useEffect(() => {
+    if (status !== 'PENDING' && providerCoords && !isUserExploring) {
+      followCoordinate(providerCoords, {
+        animated: true,
+        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
+        reason: isNavigating ? 'focus_client_nav_follow' : 'focus_client_provider_stream_follow',
+      });
+    }
+  }, [status, providerCoords?.latitude, providerCoords?.longitude, isUserExploring, isNavigating, routeCoords, followCoordinate]);
 
   const handleFollow = () => {
     if (routeCoords.length >= 2) {
@@ -281,6 +296,22 @@ export const FocusModeClientScreen: React.FC = () => {
             />
           )}
         </MapView>
+
+        {status !== 'PENDING' && (
+          <MapFloatingNavigationControls
+            isNavigating={false}
+            targetCoordinate={providerCoords || clientCoords}
+            heading={null}
+            onToggleNavigation={() => {}}
+            onSmartFraming={handleFollow}
+            showNavigation={false}
+            showSmartFraming={true}
+            style={[
+              styles.floatingControls,
+              { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },
+            ]}
+          />
+        )}
 
         {!isFollowing && status !== 'PENDING' && (
           <TouchableOpacity onPress={handleFollow} style={styles.followBtn}>
@@ -570,5 +601,11 @@ const styles = StyleSheet.create({
     borderColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  floatingControls: {
+    position: 'absolute',
+    right: TOKENS.spacing.md,
+    zIndex: 1000,
+    elevation: 1000,
   },
 });
