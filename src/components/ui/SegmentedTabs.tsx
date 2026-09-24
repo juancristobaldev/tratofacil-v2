@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,14 +6,17 @@ import {
   ViewStyle,
   StyleProp,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { TOKENS } from '../../theme';
+import { Icon, IconName } from './Icon';
 
 // --- SEGMENTED TABS ---
 export interface TabOption<T> {
   key: T;
   label: string;
   count?: number;
+  icon?: IconName;
 }
 
 export interface SegmentedTabsProps<T> {
@@ -21,6 +24,8 @@ export interface SegmentedTabsProps<T> {
   activeTab: T;
   onTabChange: (tab: T) => void;
   style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  scrollable?: boolean;
   testID?: string;
 }
 
@@ -29,48 +34,118 @@ export function SegmentedTabs<T extends string | number>({
   activeTab,
   onTabChange,
   style,
+  contentContainerStyle,
+  scrollable,
   testID,
 }: SegmentedTabsProps<T>) {
-  return (
-    <View style={[styles.container, style]} testID={testID}>
-      {tabs.map((tab) => {
-        const isActive = tab.key === activeTab;
-        return (
-          <TouchableOpacity
-            key={String(tab.key)}
-            onPress={() => onTabChange(tab.key)}
-            activeOpacity={0.8}
-            style={[styles.tabButton, isActive && styles.activeTabButton]}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={tab.label}
+  const isScrollable = scrollable !== undefined ? scrollable : tabs.length > 3;
+  const scrollViewRef = useRef<ScrollView>(null);
+  const tabLayoutsRef = useRef<{ [key: string]: { x: number; width: number } }>({});
+
+  const scrollToTab = (key: T) => {
+    const layout = tabLayoutsRef.current[String(key)];
+    if (layout && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({
+        x: Math.max(0, layout.x - 24),
+        animated: true,
+      });
+    }
+  };
+
+  const handleTabPress = (key: T) => {
+    onTabChange(key);
+    if (isScrollable) {
+      scrollToTab(key);
+    }
+  };
+
+  useEffect(() => {
+    if (isScrollable) {
+      const timer = setTimeout(() => {
+        scrollToTab(activeTab);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, isScrollable]);
+
+  const renderTabsContent = () =>
+    tabs.map((tab) => {
+      const isActive = tab.key === activeTab;
+      return (
+        <TouchableOpacity
+          key={String(tab.key)}
+          onPress={() => handleTabPress(tab.key)}
+          onLayout={
+            isScrollable
+              ? (e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  tabLayoutsRef.current[String(tab.key)] = { x, width };
+                }
+              : undefined
+          }
+          activeOpacity={0.8}
+          style={[
+            isScrollable ? styles.scrollTabButton : styles.tabButton,
+            isActive && styles.activeTabButton,
+          ]}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: isActive }}
+          accessibilityLabel={tab.label}
+        >
+          {tab.icon && (
+            <Icon
+              name={tab.icon}
+              size={16}
+              color={isActive ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle}
+              style={styles.tabIcon}
+            />
+          )}
+          <Text
+            style={[styles.tabText, isActive ? styles.activeTabText : styles.inactiveTabText]}
+            numberOfLines={1}
           >
-            <Text
-              style={[styles.tabText, isActive ? styles.activeTabText : styles.inactiveTabText]}
-              numberOfLines={1}
+            {tab.label}
+          </Text>
+          {typeof tab.count === 'number' && (
+            <View
+              style={[
+                styles.badge,
+                isActive ? styles.activeBadge : styles.inactiveBadge,
+              ]}
             >
-              {tab.label}
-            </Text>
-            {typeof tab.count === 'number' && (
-              <View
+              <Text
                 style={[
-                  styles.badge,
-                  isActive ? styles.activeBadge : styles.inactiveBadge,
+                  styles.badgeText,
+                  isActive ? styles.activeBadgeText : styles.inactiveBadgeText,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.badgeText,
-                    isActive ? styles.activeBadgeText : styles.inactiveBadgeText,
-                  ]}
-                >
-                  {tab.count}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        );
-      })}
+                {tab.count}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    });
+
+  if (isScrollable) {
+    return (
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        style={[styles.scrollContainer, style]}
+        contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
+        testID={testID}
+      >
+        {renderTabsContent()}
+      </ScrollView>
+    );
+  }
+
+  return (
+    <View style={[styles.container, style]} testID={testID}>
+      {renderTabsContent()}
     </View>
   );
 }
@@ -125,6 +200,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  scrollContainer: {
+    backgroundColor: 'rgba(226, 232, 240, 0.6)',
+    borderRadius: TOKENS.geometry.radiusInput,
+    padding: 3,
+  },
+  scrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   tabButton: {
     flex: 1,
     paddingVertical: TOKENS.spacing.xs + 2,
@@ -133,6 +218,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     minHeight: 38,
+  },
+  scrollTabButton: {
+    paddingHorizontal: TOKENS.spacing.md,
+    paddingVertical: TOKENS.spacing.xs + 2,
+    borderRadius: TOKENS.geometry.radiusSm + 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    minHeight: 38,
+  },
+  tabIcon: {
+    marginRight: 6,
   },
   activeTabButton: {
     backgroundColor: TOKENS.colors.white,

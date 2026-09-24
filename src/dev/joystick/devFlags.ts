@@ -17,7 +17,7 @@ export interface DevJoystickConfig {
 const DEFAULT_CONFIG: DevJoystickConfig = {
   enabled: true,
   debugHud: true,
-  streetSnapMode: true,
+  streetSnapMode: false,
   followCamera: true,
   speedKmh: 35,
   deadZone: 0.08,

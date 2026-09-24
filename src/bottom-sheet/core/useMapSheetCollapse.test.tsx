@@ -228,4 +228,84 @@ describe('useMapSheetCollapse Hook', () => {
     // Should not call setIndex because activeSheet is null
     expect(mockSetIndex).toHaveBeenCalledTimes(1);
   });
+
+  it('does NOT collapse single-detent / non-collapsible sheets (provider_preview) on map pan drag', () => {
+    const mockSetIndex = jest.fn();
+
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          activeSheet="provider_preview"
+          sheetIndex={0}
+          isCollapsed={false}
+          setIndex={mockSetIndex}
+          debounceMs={400}
+        />
+      );
+    });
+
+    // User drags map while provider_preview is open
+    act(() => {
+      hookValue.handleMapPanDrag();
+    });
+
+    // Should NOT collapse provider_preview
+    expect(mockSetIndex).not.toHaveBeenCalled();
+    expect(hookValue.isMapManipulating).toBe(true);
+
+    // Map settles
+    act(() => {
+      hookValue.handleMapRegionChangeComplete();
+      jest.advanceTimersByTime(500);
+    });
+
+    // Still no spurious index calls and manipulation ended
+    expect(mockSetIndex).not.toHaveBeenCalled();
+    expect(hookValue.isMapManipulating).toBe(false);
+  });
+
+  it('discards auto-restore if activeSheet changes to another sheet during map debounce', () => {
+    const mockSetIndex = jest.fn();
+    let renderer: any;
+
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <TestComponent
+          activeSheet="categories"
+          sheetIndex={1}
+          isCollapsed={false}
+          setIndex={mockSetIndex}
+          debounceMs={400}
+        />
+      );
+    });
+
+    act(() => {
+      hookValue.handleMapPanDrag();
+    });
+
+    expect(mockSetIndex).toHaveBeenCalledWith(0);
+
+    // Active sheet transitions from categories to provider_preview
+    act(() => {
+      renderer.update(
+        <TestComponent
+          activeSheet="provider_preview"
+          sheetIndex={0}
+          isCollapsed={false}
+          setIndex={mockSetIndex}
+          debounceMs={400}
+        />
+      );
+    });
+
+    act(() => {
+      hookValue.handleMapRegionChangeComplete();
+      jest.advanceTimersByTime(500);
+    });
+
+    // Should NOT call setIndex(1) because sheet changed from categories to provider_preview
+    expect(mockSetIndex).toHaveBeenCalledTimes(1);
+    expect(hookValue.isMapManipulating).toBe(false);
+  });
 });

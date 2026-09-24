@@ -1,4 +1,4 @@
-import React, { forwardRef, useMemo, useCallback } from 'react';
+import React, { forwardRef, useMemo, useCallback, useRef, useImperativeHandle } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
 import {
   BottomSheetModal,
@@ -51,7 +51,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       safeTopInset: insets.top,
       safeBottomInset: insets.bottom,
     });
-    const computedMaxDynamicContentSize = geometry.maxDynamicContentSize;
+    const computedMaxDynamicContentSize = maxDynamicContentSize ?? geometry.maxDynamicContentSize;
 
     const activeSnapPoints = useMemo(() => resolveSheetSnapPoints({
       snapPoints,
@@ -88,10 +88,45 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       });
     }
 
+    const internalModalRef = useRef<BottomSheetModal>(null);
+
+    useImperativeHandle(ref, () => {
+      return new Proxy({} as SheetModalRef, {
+        get(_target, prop) {
+          if (prop === 'snapToIndex') {
+            return (targetIndex: number, ...args: any[]) => {
+              try {
+                return internalModalRef.current?.snapToIndex(targetIndex, ...args);
+              } catch (error) {
+                if (__DEV__) {
+                  console.warn('[BS:SAFE_SNAP_TO_INDEX] Invariant caught during transition:', {
+                    targetIndex,
+                    error,
+                  });
+                }
+                requestAnimationFrame(() => {
+                  try {
+                    internalModalRef.current?.snapToIndex(targetIndex, ...args);
+                  } catch {
+                    // Ignored if detents are still settling
+                  }
+                });
+              }
+            };
+          }
+          const val = (internalModalRef.current as any)?.[prop];
+          if (typeof val === 'function') {
+            return val.bind(internalModalRef.current);
+          }
+          return val;
+        },
+      });
+    }, []);
+
     const handleSheetChanges = useCallback(
       (index: number) => {
         if (__DEV__) {
-          const position = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
+          const position = (internalModalRef.current as unknown as { animatedPosition?: { value?: number } })?.animatedPosition?.value;
           const currentSnap = activeSnapPoints ? activeSnapPoints[index] : 'DYNAMIC';
           console.log('[BS:SHEET_CHANGE]', {
             index,
@@ -104,12 +139,12 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
         }
         onChange?.(index);
       },
-      [onChange, ref, activeSnapPoints],
+      [onChange, activeSnapPoints],
     );
 
     return (
       <BottomSheetModal
-        ref={ref}
+        ref={internalModalRef}
         index={initialIndex}
         snapPoints={activeSnapPoints}
         enableDynamicSizing={enableDynamicSizing}
@@ -142,7 +177,7 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
               const { width, height } = event.nativeEvent.layout;
               onContentHeightChange?.(height);
               if (__DEV__) {
-                const contentBottom = (ref as unknown as { current?: { animatedPosition?: { value?: number } } })?.current?.animatedPosition?.value;
+                const contentBottom = (internalModalRef.current as unknown as { animatedPosition?: { value?: number } })?.animatedPosition?.value;
                 console.log('[BS:CONTENT_LAYOUT]', { width, height });
                 console.log('[BS:SAFE_CONTENT]', {
                   key: sheetKey ?? null,

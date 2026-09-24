@@ -27,10 +27,10 @@ describe('Domain: BottomSheet Surface & Map Policy (Flujo 4 & 20)', () => {
       },
       {
         description:
-          'CRÍTICO (Flujo 4): Cliente en PENDING esperando oferta -> NO_SHEET_BY_DESIGN',
+          'Cliente en PENDING esperando oferta -> NO_SHEET_BY_DESIGN (Regla 2.20)',
         role: 'client',
         clientOrder: { id: 10, status: 'PENDING', provider: { name: 'Mario' } },
-        expected: { kind: 'NO_SHEET_BY_DESIGN', reason: 'WAITING_PROVIDER_QUOTE' },
+        expected: { kind: 'NO_SHEET_BY_DESIGN', reason: 'client_order_pending_quote' },
       },
       {
         description:
@@ -166,16 +166,46 @@ describe('Domain: BottomSheet Surface & Map Policy (Flujo 4 & 20)', () => {
   });
 
   describe('selectClientRealtimeOrder precedence', () => {
-    it('prefiere domainOrder si es no-terminal', () => {
-      const local = { id: 1, status: 'PENDING' };
-      const domain = { id: 1, status: 'QUOTED' };
-      expect(selectClientRealtimeOrder(local, domain)).toEqual(domain);
+    it('prefiere localOrder si tiene mayor rango de progresión (e.g. QUOTED en socket vs PENDING en cache)', () => {
+      const local = { id: 1, status: 'QUOTED', quotedPrice: 35000 };
+      const domain = { id: 1, status: 'PENDING', provider: { id: 99, name: 'Mario' } };
+      const result = selectClientRealtimeOrder(local, domain);
+      expect(result?.status).toBe('QUOTED');
+      expect(result?.quotedPrice).toBe(35000);
+      expect(result?.provider).toEqual({ id: 99, name: 'Mario' });
+    });
+
+    it('prefiere domainOrder si tiene mayor rango de progresión (e.g. ACCEPTED vs QUOTED)', () => {
+      const local = { id: 1, status: 'QUOTED' };
+      const domain = { id: 1, status: 'ACCEPTED' };
+      expect(selectClientRealtimeOrder(local, domain)?.status).toEqual('ACCEPTED');
+    });
+
+    it('prefiere localOrder si ambos tienen el mismo rango de estado activo (live socket freshest)', () => {
+      const local = { id: 1, status: 'QUOTED', quotedPrice: 40000 };
+      const domain = { id: 1, status: 'QUOTED', quotedPrice: 35000 };
+      expect(selectClientRealtimeOrder(local, domain)?.quotedPrice).toEqual(40000);
     });
 
     it('ignora domainOrder terminal y cae en localOrder si este sigue activo', () => {
       const local = { id: 1, status: 'QUOTED' };
       const domain = { id: 1, status: 'COMPLETED' };
-      expect(selectClientRealtimeOrder(local, domain)).toEqual(local);
+      expect(selectClientRealtimeOrder(local, domain)?.status).toEqual('QUOTED');
+    });
+
+    it('ignora localOrder terminal y cae en domainOrder si este sigue activo', () => {
+      const local = { id: 1, status: 'CANCELLED' };
+      const domain = { id: 1, status: 'QUOTED' };
+      expect(selectClientRealtimeOrder(local, domain)?.status).toEqual('QUOTED');
+    });
+
+    it('preserva startedAt del domainOrder cuando localOrder tiene status IN_PROGRESS', () => {
+      const local = { id: 101, status: 'IN_PROGRESS' };
+      const domain = { id: 101, status: 'IN_PROGRESS', startedAt: '2026-09-08T12:00:00.000Z', clientAddress: 'Calle 123' };
+      const result = selectClientRealtimeOrder(local, domain);
+      expect(result?.status).toBe('IN_PROGRESS');
+      expect(result?.startedAt).toBe('2026-09-08T12:00:00.000Z');
+      expect(result?.clientAddress).toBe('Calle 123');
     });
   });
 });

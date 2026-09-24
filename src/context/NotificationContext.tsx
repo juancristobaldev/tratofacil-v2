@@ -15,31 +15,55 @@ import { Icon } from '../components/ui/Icon';
 
 export type NotificationType = 'success' | 'error' | 'info';
 
-interface NotificationOptions {
+export interface NotificationOptions {
+  id?: string;
   title: string;
   message: string;
   type?: NotificationType;
   duration?: number; // ms
+  onPress?: () => void;
 }
 
 interface NotificationContextProps {
   showNotification: (options: NotificationOptions) => void;
+  clearNotification: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextProps>({
   showNotification: () => {},
+  clearNotification: () => {},
 });
 
 export const useNotification = () => useContext(NotificationContext);
 
+const triggerHaptic = (type?: NotificationType) => {
+  try {
+    if (type === 'error') {
+      Vibration.vibrate([0, 60, 60, 60]);
+    } else if (type === 'success') {
+      Vibration.vibrate([0, 80]);
+    } else {
+      Vibration.vibrate(40);
+    }
+  } catch {}
+};
+
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notification, setNotification] = useState<NotificationOptions | null>(null);
+  const notificationRef = useRef<NotificationOptions | null>(null);
+  const isShowingRef = useRef(false);
+  const queueRef = useRef<NotificationOptions[]>([]);
+  const recentIdsRef = useRef<Map<string, number>>(new Map());
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
       }
     };
   }, []);
@@ -48,46 +72,141 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const opacity = useSharedValue(0);
   const progress = useSharedValue(1);
 
-  const hideNotification = useCallback(() => {
-    translateY.value = withSpring(-150, { damping: 20, stiffness: 200 });
-    opacity.value = withTiming(0, { duration: 200 }, (finished) => {
-      if (finished) {
-        runOnJS(setNotification)(null);
-      }
-    });
-  }, [translateY, opacity]);
+  const displayNotification = useCallback((opts: NotificationOptions) => {
+    notificationRef.current = opts;
+    setNotification(opts);
 
-  const showNotification = useCallback((options: NotificationOptions) => {
-    setNotification(options);
-    
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    try { Vibration.vibrate(50); } catch {}
+    triggerHaptic(opts.type);
 
-    // Reset values
     translateY.value = -150;
     opacity.value = 0;
     progress.value = 1;
 
-    // Enter animation
     translateY.value = withSpring(0, { damping: 15, stiffness: 150, mass: 0.8 });
     opacity.value = withTiming(1, { duration: 200 });
 
-    const duration = options.duration || 4000;
-    
-    // Progress bar animation
-    progress.value = withTiming(0, { duration: duration, easing: Easing.linear });
+    const duration = opts.duration || 4000;
+    progress.value = withTiming(0, { duration, easing: Easing?.linear });
 
     timeoutRef.current = setTimeout(() => {
       hideNotification();
     }, duration);
-  }, [hideNotification, progress, opacity, translateY]);
+  }, [opacity, progress, translateY]);
 
-  const value = useMemo(() => ({ showNotification }), [showNotification]);
+  const isHidingRef = useRef(false);
+
+  const processNextOrClose = useCallback(() => {
+    isHidingRef.current = false;
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    if (queueRef.current.length > 0) {
+      const next = queueRef.current.shift()!;
+      displayNotification(next);
+    } else {
+      isShowingRef.current = false;
+      notificationRef.current = null;
+      setNotification(null);
+    }
+  }, [displayNotification]);
+
+  const hideNotification = useCallback(() => {
+    if (isHidingRef.current) return;
+    isHidingRef.current = true;
+
+    translateY.value = withSpring(-150, { damping: 20, stiffness: 200 });
+    opacity.value = withTiming(0, { duration: 200 }, (finished) => {
+      if (finished) {
+        runOnJS(processNextOrClose)();
+      }
+    });
+
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+    }
+    hideTimeoutRef.current = setTimeout(() => {
+      processNextOrClose();
+    }, 250);
+  }, [translateY, opacity, processNextOrClose]);
+
+  const clearNotification = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    translateY.value = -150;
+    opacity.value = 0;
+    progress.value = 0;
+
+    if (queueRef.current.length > 0) {
+      const next = queueRef.current.shift()!;
+      displayNotification(next);
+    } else {
+      isShowingRef.current = false;
+      notificationRef.current = null;
+      setNotification(null);
+    }
+  }, [opacity, progress, translateY, displayNotification]);
+
+  const showNotification = useCallback((options: NotificationOptions) => {
+    const dedupeKey = options.id || `${options.type || 'info'}:${options.title}:${options.message}`;
+    const now = Date.now();
+
+    // Clean up expired keys (> 10s)
+    for (const [key, timestamp] of recentIdsRef.current.entries()) {
+      if (now - timestamp > 10000) {
+        recentIdsRef.current.delete(key);
+      }
+    }
+
+    // Cooldown check (2000ms for exact duplicate)
+    const lastTimestamp = recentIdsRef.current.get(dedupeKey);
+    if (lastTimestamp && (now - lastTimestamp) < 2000) {
+      return;
+    }
+    recentIdsRef.current.set(dedupeKey, now);
+
+    if (isShowingRef.current) {
+      const alreadyInQueue = queueRef.current.some(
+        item => (item.id && item.id === options.id) || (item.type === options.type && item.title === options.title && item.message === options.message),
+      );
+      const isCurrentlyShowing = notificationRef.current && (
+        (options.id && notificationRef.current.id === options.id) ||
+        (notificationRef.current.type === options.type && notificationRef.current.title === options.title && notificationRef.current.message === options.message)
+      );
+      if (!alreadyInQueue && !isCurrentlyShowing) {
+        queueRef.current.push(options);
+      }
+      return;
+    }
+
+    isShowingRef.current = true;
+    displayNotification(options);
+  }, [displayNotification]);
+
+  const handlePress = useCallback(() => {
+    const current = notificationRef.current;
+    if (current?.onPress) {
+      try {
+        current.onPress();
+      } catch {}
+    }
+    clearNotification();
+  }, [clearNotification]);
+
+  const value = useMemo(() => ({ showNotification, clearNotification }), [showNotification, clearNotification]);
 
   const panGesture = Gesture.Pan()
+    .activeOffsetY([-10, 10])
     .onUpdate((e) => {
       if (e.translationY < 0) {
         translateY.value = e.translationY;
@@ -103,6 +222,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         translateY.value = withSpring(0, { damping: 15, stiffness: 150 });
       }
     });
+
+  const tapGesture = Gesture.Tap()
+    .onEnd(() => {
+      runOnJS(handlePress)();
+    });
+
+  const composedGesture = Gesture.Exclusive(panGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
@@ -120,7 +246,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {notification && (
         <View style={styles.container} pointerEvents="box-none">
           <SafeAreaView pointerEvents="box-none">
-            <GestureDetector gesture={panGesture}>
+            <GestureDetector gesture={composedGesture}>
               <Animated.View style={[styles.notificationPill, animatedStyle]}>
                 <View style={styles.contentRow}>
                   <View style={[

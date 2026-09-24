@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Input, Button } from '../../components/ui';
@@ -13,6 +23,8 @@ export const SetPasswordScreen: React.FC = () => {
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const confirmRef = useRef<TextInput>(null);
 
   const handleSubmit = async () => {
     setError(null);
@@ -44,51 +56,68 @@ export const SetPasswordScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Crea tu contraseña</Text>
-        <Text style={styles.subtitle}>
-          Tu cuenta fue creada como invitado. Configura una contraseña para proteger tu acceso y disfrutar de todas las funciones.
-        </Text>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            <Text style={styles.title}>Crea tu contraseña</Text>
+            <Text style={styles.subtitle}>
+              Tu cuenta fue creada como invitado. Configura una contraseña para proteger tu acceso y disfrutar de todas las funciones.
+            </Text>
 
-        {error && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            <Input
+              placeholder="Nueva contraseña (mín. 8 caracteres)"
+              value={password}
+              onChangeText={setPassword}
+              isPassword
+              returnKeyType="next"
+              onSubmitEditing={() => confirmRef.current?.focus()}
+              containerStyle={styles.input}
+            />
+            <Input
+              ref={confirmRef}
+              placeholder="Confirmar contraseña"
+              value={confirm}
+              onChangeText={setConfirm}
+              isPassword
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+              containerStyle={styles.input}
+            />
+
+            <Button
+              title={loading ? 'Creando...' : 'Crear contraseña'}
+              onPress={handleSubmit}
+              disabled={loading || password.length < 8 || confirm.length < 8}
+              style={styles.submitBtn}
+            />
+
+            <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
+              <Text style={styles.skipText}>Saltar por ahora</Text>
+            </TouchableOpacity>
           </View>
-        )}
-
-        <Input
-          placeholder="Nueva contraseña (mín. 8 caracteres)"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          style={styles.input}
-        />
-        <Input
-          placeholder="Confirmar contraseña"
-          value={confirm}
-          onChangeText={setConfirm}
-          secureTextEntry
-          style={styles.input}
-        />
-
-        <Button
-          title={loading ? 'Creando...' : 'Crear contraseña'}
-          onPress={handleSubmit}
-          disabled={loading || password.length < 8 || confirm.length < 8}
-          style={styles.submitBtn}
-        />
-
-        <TouchableOpacity onPress={handleSkip} style={styles.skipBtn}>
-          <Text style={styles.skipText}>Saltar por ahora</Text>
-        </TouchableOpacity>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.white },
-  content: { flex: 1, padding: TOKENS.spacing.xl, justifyContent: 'center' },
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingVertical: TOKENS.spacing.lg },
+  content: { padding: TOKENS.spacing.xl },
   title: { fontSize: TOKENS.typography.sizes.xxl, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain, textAlign: 'center', marginBottom: TOKENS.spacing.md },
   subtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.xl, lineHeight: 20 },
   errorBox: { backgroundColor: '#fef2f2', padding: TOKENS.spacing.md, borderRadius: 12, marginBottom: TOKENS.spacing.md },

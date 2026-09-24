@@ -283,6 +283,7 @@ export const ProviderPreviewPanelContent: React.FC<SheetComponentProps<'provider
 const styles = StyleSheet.create({
   container: {
     width: SCREEN_WIDTH,
+    minHeight: 140,
     paddingTop: TOKENS.spacing.xs,
   },
   emptyContainer: {

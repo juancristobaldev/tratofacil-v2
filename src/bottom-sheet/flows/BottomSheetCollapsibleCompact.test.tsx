@@ -180,6 +180,7 @@ jest.mock('../primitives', () => {
   const { View, TextInput, ScrollView } = require('react-native');
   return {
     BottomSheetScrollView: ScrollView,
+    BottomSheetView: View,
     BottomSheetFlatList: ({ ListHeaderComponent, data, renderItem, ...props }: any) =>
       React.createElement(
         View,
@@ -210,6 +211,7 @@ jest.mock('../../bottom-sheet/primitives', () => {
   const { View, TextInput, ScrollView } = require('react-native');
   return {
     BottomSheetScrollView: ScrollView,
+    BottomSheetView: View,
     BottomSheetFlatList: ({ ListHeaderComponent, data, renderItem, ...props }: any) =>
       React.createElement(
         View,

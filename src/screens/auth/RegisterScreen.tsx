@@ -215,6 +215,7 @@ export const RegisterScreen: React.FC = () => {
                     if (error) setError('');
                   }}
                   isPassword
+                  autoFocus
                   editable={!registerLoading}
                   onSubmitEditing={handleRegister}
                   returnKeyType="done"
@@ -283,8 +284,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
     paddingHorizontal: TOKENS.spacing.lg,
+    paddingVertical: TOKENS.spacing.md,
     paddingBottom: TOKENS.spacing.xl,
   },
   header: {

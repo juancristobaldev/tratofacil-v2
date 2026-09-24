@@ -4,7 +4,7 @@ import { TOKENS } from '../../theme';
 import { Icon } from './Icon';
 import { Badge } from './Badge';
 
-export type PaymentMethod = 'saved_card' | 'register_card' | 'webpay';
+export type PaymentMethod = 'saved_card' | 'register_card' | 'flow';
 
 export interface PaymentMethodSelectorProps {
   hasCard: boolean;
@@ -76,45 +76,45 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             </View>
           </TouchableOpacity>
 
-          {/* Opción 2: Flow / Webpay */}
+          {/* Opción 2: Flow */}
           <TouchableOpacity
             style={[
               styles.optionCard,
-              selectedMethod === 'webpay' && styles.optionCardActive,
+              selectedMethod === 'flow' && styles.optionCardActive,
             ]}
-            onPress={() => onSelectMethod('webpay')}
+            onPress={() => onSelectMethod('flow')}
             activeOpacity={0.8}
             disabled={disabled}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selectedMethod === 'webpay', disabled }}
-            accessibilityLabel="Webpay o Flow"
+            accessibilityState={{ checked: selectedMethod === 'flow', disabled }}
+            accessibilityLabel="Pagar con Flow"
           >
             <View style={styles.optionLeft}>
               <View
                 style={[
                   styles.optionIconBox,
-                  selectedMethod === 'webpay' && styles.optionIconBoxActive,
+                  selectedMethod === 'flow' && styles.optionIconBoxActive,
                 ]}
               >
                 <Icon
                   name="Globe"
                   size={18}
                   color={
-                    selectedMethod === 'webpay'
+                    selectedMethod === 'flow'
                       ? TOKENS.colors.brand600
                       : TOKENS.colors.textSubtle
                   }
                 />
               </View>
               <View style={styles.optionTexts}>
-                <Text style={styles.optionTitle}>Webpay / Flow</Text>
+                <Text style={styles.optionTitle}>Flow</Text>
                 <Text style={styles.optionSubtitle}>
                   Débito, crédito u otros medios de pago
                 </Text>
               </View>
             </View>
             <View style={styles.radioOuter}>
-              {selectedMethod === 'webpay' && <View style={styles.radioInner} />}
+              {selectedMethod === 'flow' && <View style={styles.radioInner} />}
             </View>
           </TouchableOpacity>
         </>
@@ -165,45 +165,45 @@ export const PaymentMethodSelector: React.FC<PaymentMethodSelectorProps> = ({
             </View>
           </TouchableOpacity>
 
-          {/* Opción B: Webpay Directo */}
+          {/* Opción B: Pago directo Flow */}
           <TouchableOpacity
             style={[
               styles.optionCard,
-              selectedMethod === 'webpay' && styles.optionCardActive,
+              selectedMethod === 'flow' && styles.optionCardActive,
             ]}
-            onPress={() => onSelectMethod('webpay')}
+            onPress={() => onSelectMethod('flow')}
             activeOpacity={0.8}
             disabled={disabled}
             accessibilityRole="radio"
-            accessibilityState={{ checked: selectedMethod === 'webpay', disabled }}
-            accessibilityLabel="Pagar con Flow o Webpay"
+            accessibilityState={{ checked: selectedMethod === 'flow', disabled }}
+            accessibilityLabel="Pagar con Flow"
           >
             <View style={styles.optionLeft}>
               <View
                 style={[
                   styles.optionIconBox,
-                  selectedMethod === 'webpay' && styles.optionIconBoxActive,
+                  selectedMethod === 'flow' && styles.optionIconBoxActive,
                 ]}
               >
                 <Icon
                   name="Globe"
                   size={18}
                   color={
-                    selectedMethod === 'webpay'
+                    selectedMethod === 'flow'
                       ? TOKENS.colors.brand600
                       : TOKENS.colors.textSubtle
                   }
                 />
               </View>
               <View style={styles.optionTexts}>
-                <Text style={styles.optionTitle}>Pagar con Flow / Webpay</Text>
+                <Text style={styles.optionTitle}>Pagar con Flow</Text>
                 <Text style={styles.optionSubtitle}>
                   Pago único directo sin guardar tarjeta
                 </Text>
               </View>
             </View>
             <View style={styles.radioOuter}>
-              {selectedMethod === 'webpay' && <View style={styles.radioInner} />}
+              {selectedMethod === 'flow' && <View style={styles.radioInner} />}
             </View>
           </TouchableOpacity>
         </>

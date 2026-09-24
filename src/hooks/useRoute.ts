@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   getDirections,
   isUsableRoutingCoordinate,
+  computeGeodesicDistance,
+  isSensibleRoute,
+  MIN_ROUTING_PROXIMITY_METERS,
   type RouteCoordinate,
   type RouteResult,
   type RouteProvider,
@@ -113,7 +116,7 @@ export function useRoutePolyline(
           return;
         }
 
-        if (result && result.coordinates.length >= 2) {
+        if (result && result.coordinates.length >= 2 && isSensibleRoute(result, orig, destination)) {
           // SWAP ATÓMICO: actualizar toda la geometría y metadatos en un solo ciclo
           setRouteCoords(result.coordinates);
           setRouteDuration(result.durationSeconds);
@@ -132,10 +135,10 @@ export function useRoutePolyline(
 
           if (__DEV__) console.log(`[ROUTE:SUCCESS] seq=${currentSeq} provider=${result.provider} points=${result.coordinates.length} distance=${result.distanceMeters}m`);
         } else {
-          // Fallo al calcular ruta nueva
+          // Fallo al calcular ruta nueva o ruta descartada por insensata (in-house, vueltas tontas, etc.)
           handleRoutingFailure(orig, destination, currentSeq, {
             reason: 'NO_ROUTE',
-            message: 'No se encontró ruta vial disponible.',
+            message: 'No se encontró ruta vial sensata disponible.',
           });
         }
       } catch (err: any) {
@@ -221,6 +224,25 @@ export function useRoutePolyline(
 
     const currentOrigin: RouteCoordinate = { latitude: origin!.latitude, longitude: origin!.longitude };
     const currentDest: RouteCoordinate = { latitude: dest!.latitude, longitude: dest!.longitude };
+
+    // 1.1 In-House Proximity Guard: Si ambos están a <= 30m, están en el mismo domicilio
+    if (computeGeodesicDistance(currentOrigin, currentDest) <= MIN_ROUTING_PROXIMITY_METERS) {
+      clearTimers();
+      abortRef.current?.abort();
+      setRouteCoords([]);
+      setRouteDuration(0);
+      setRouteDistance(0);
+      setRouteProvider(null);
+      setRouteCalculatedAt(Date.now());
+      setRouteOrigin(currentOrigin);
+      setRouteDestination(currentDest);
+      setStatus('ready');
+      setError(null);
+      lastGoodRouteRef.current = null;
+      lastCalculatedOriginRef.current = currentOrigin;
+      lastCalculatedDestRef.current = currentDest;
+      return;
+    }
 
     // 2. CARGA INICIAL: Si aún no tenemos ruta calculada, ejecutar INMEDIATAMENTE (0ms delay)
     if (!lastGoodRouteRef.current || lastGoodRouteRef.current.coordinates.length < 2) {

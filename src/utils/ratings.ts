@@ -7,14 +7,21 @@ interface ReviewLike {
   rating?: number | null;
 }
 
-export function averageRating(reviews: ReviewLike[] | null | undefined): number {
+export function averageRating(
+  reviews: (ReviewLike | null | undefined)[] | null | undefined,
+): number {
   if (!reviews || reviews.length === 0) return 0;
-  const sum = reviews.reduce((acc, r) => acc + (r?.rating || 0), 0);
-  return sum / reviews.length;
+  const validReviews = reviews.filter(
+    (r): r is ReviewLike => r != null && typeof r.rating === 'number',
+  );
+  if (validReviews.length === 0) return 0;
+  const sum = validReviews.reduce((acc, r) => acc + (r.rating || 0), 0);
+  return sum / validReviews.length;
 }
 
 export function reviewsCount(reviews: unknown[] | null | undefined): number {
-  return reviews?.length ?? 0;
+  if (!reviews) return 0;
+  return reviews.filter((r) => r != null).length;
 }
 
 /**
@@ -25,16 +32,23 @@ export function reviewsCount(reviews: unknown[] | null | undefined): number {
  */
 export function summarizeForRole(
   target: {
-    reviews?: ReviewLike[] | null;
-    realtimeReviews?: ReviewLike[] | null;
-    reviewsReceived?: ReviewLike[] | null;
+    reviews?: (ReviewLike | null | undefined)[] | null;
+    realtimeReviews?: (ReviewLike | null | undefined)[] | null;
+    reviewsReceived?: (ReviewLike | null | undefined)[] | null;
+    clientReviewsReceived?: (ReviewLike | null | undefined)[] | null;
   } | null | undefined,
   targetRole: 'client' | 'provider',
 ): RatingSummary | null {
   if (!target) return null;
-  const providerSources = [...(target.reviews || []), ...(target.realtimeReviews || [])];
-  const reviews =
-    targetRole === 'provider' ? providerSources : target.reviewsReceived;
+  const providerSources = [
+    ...(target.reviews || []),
+    ...(target.realtimeReviews || []),
+  ].filter((r): r is ReviewLike => r != null);
+  const clientSources = [
+    ...(target.reviewsReceived || []),
+    ...(target.clientReviewsReceived || []),
+  ].filter((r): r is ReviewLike => r != null);
+  const reviews = targetRole === 'provider' ? providerSources : clientSources;
 
   if (!reviews || reviews.length === 0) return null;
   return {

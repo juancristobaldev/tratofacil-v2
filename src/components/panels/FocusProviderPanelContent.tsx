@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
-import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
+import { BottomSheetScrollView, BottomSheetView } from '../../bottom-sheet/primitives';
 import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Button, Badge, Rating, WorkTimer } from '../ui';
@@ -15,6 +15,8 @@ import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { usePanelState } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
 import type { SheetComponentProps } from '../../bottom-sheet/core/bottomSheet.types';
+import { sanitizeAddress, isCoordinateString } from '../../utils/addressSanitizer';
+import { reverseGeocode } from '../../utils/geocode';
 
 export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_provider'>> = ({
   isCollapsed = false,
@@ -38,6 +40,9 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       quoteTransport: typeof fnOrVal === 'function' ? fnOrVal(prev.quoteTransport) : fnOrVal,
     }));
   const [contentHeight, setContentHeight] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [isEditingQuote, setIsEditingQuote] = useState(false);
   // DEV-only measurement probe (Fase 0) — no layout change
   const primaryActionRef = useRef<View>(null);
   const { height: winH } = useWindowDimensions();
@@ -49,16 +54,35 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     setOrderState,
     distanceLabel,
     etaLabel,
+    distanceMeters,
+    isWithinArrivalRadius,
+    providerCoords,
     setShowChat,
     handleFinish,
     realtime,
   } = session;
 
+  const [isConfirmingArrival, setIsConfirmingArrival] = useState(false);
+
   const order = activeOrder;
   const etaRemaining = etaLabel || '...';
   const distanceRemaining = distanceLabel || '...';
   const clientName = order?.client?.displayName || 'Cliente';
-  const clientAddress = order?.clientAddress || '';
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (order?.clientAddress && !isCoordinateString(order.clientAddress)) return;
+    if (!order?.clientLat || !order?.clientLng) return;
+    let cancelled = false;
+    reverseGeocode(order.clientLat, order.clientLng)
+      .then((addr) => {
+        if (!cancelled && addr) setResolvedAddress(addr);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [order?.clientAddress, order?.clientLat, order?.clientLng]);
+
+  const clientAddress = sanitizeAddress(resolvedAddress || order?.clientAddress, 'Ubicación del cliente');
   const clientDescription = order?.clientDescription || '';
   const basePrice = order?.serviceProvider?.price || 0;
   const totalQuote = (quoteHours * basePrice) + (quoteTransport * 1000);
@@ -66,9 +90,10 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     ? (order?.client as any).reviewsReceived.reduce((s: number, r: any) => s + r.rating, 0) / (order?.client as any).reviewsReceived.length
     : 0;
   const clientReviewCount = (order?.client as any)?.reviewsReceived?.length || 0;
-  const derivedPhase = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null
+  const hasCounterOffer = order?.counterOfferPrice != null;
+  const derivedPhase = (orderState === 'VIEW_REQUEST' && !hasCounterOffer)
     ? 'REQUEST_CREATED'
-    : orderState === 'VIEW_REQUEST' && order?.counterOfferPrice != null
+    : hasCounterOffer
       ? 'WAITING_PROVIDER_RESPONSE'
       : orderState;
   const turn = derivedPhase === 'REQUEST_CREATED' || derivedPhase === 'WAITING_PROVIDER_RESPONSE'
@@ -76,11 +101,11 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     : derivedPhase === 'WAITING_CLIENT_RESPONSE'
       ? 'CLIENT'
       : 'NONE';
-  const sendQuoteVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
-  const rejectVisible = orderState === 'VIEW_REQUEST' && order?.counterOfferPrice == null;
-  const cancelVisible = orderState === 'WAITING_CLIENT_RESPONSE';
-  const acceptCounterVisible = order?.counterOfferPrice != null && (orderState === 'VIEW_REQUEST' || orderState === 'WAITING_CLIENT_RESPONSE');
-  const updateQuoteVisible = orderState === 'WAITING_CLIENT_RESPONSE';
+  const sendQuoteVisible = orderState === 'VIEW_REQUEST' && !hasCounterOffer;
+  const rejectVisible = orderState === 'VIEW_REQUEST' && !hasCounterOffer;
+  const cancelVisible = orderState === 'WAITING_CLIENT_RESPONSE' && !hasCounterOffer;
+  const acceptCounterVisible = hasCounterOffer && (orderState === 'VIEW_REQUEST' || orderState === 'WAITING_CLIENT_RESPONSE');
+  const updateQuoteVisible = orderState === 'WAITING_CLIENT_RESPONSE' && !hasCounterOffer;
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -93,6 +118,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
   }, [acceptCounterVisible, cancelVisible, contentHeight, derivedPhase, order?.counterOfferPrice, order?.id, order?.quotedPrice, order?.status, orderState, rejectVisible, sendQuoteVisible, turn, updateQuoteVisible]);
 
   const handleSendQuote = async () => {
+    if (isSubmitting) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'SEND_QUOTE', origin: 'FOCUS_PROVIDER', payload: { quotedPrice: totalQuote, quotedHours: quoteHours, quotedTransport: quoteTransport } });
     if (!order?.id || !realtime?.quoteOrder) {
@@ -100,6 +126,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'SEND_QUOTE', result: 'quote_order' });
+    setIsSubmitting(true);
     try {
       await realtime.quoteOrder({
         orderRealtimeId: order.id,
@@ -110,10 +137,60 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       setOrderState('WAITING_CLIENT_RESPONSE');
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo enviar la oferta.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStartEditingQuote = () => {
+    setQuoteHours(order?.quotedHours || 1);
+    setQuoteTransport(order?.quotedTransport || 0);
+    setIsEditingQuote(true);
+  };
+
+  const handleUpdateQuote = async () => {
+    if (isSubmitting) return;
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', {
+      actionId,
+      key: 'focus_provider',
+      action: 'UPDATE_QUOTE',
+      origin: 'FOCUS_PROVIDER',
+      payload: { quotedPrice: totalQuote, quotedHours: quoteHours, quotedTransport: quoteTransport },
+    });
+    if (!order?.id || !realtime?.updateQuote) {
+      bottomSheetDebug('ACTION_BLOCKED', {
+        actionId,
+        key: 'focus_provider',
+        action: 'UPDATE_QUOTE',
+        reason: !order?.id ? 'missing_active_order' : 'missing_realtime_executor',
+      });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'UPDATE_QUOTE', result: 'update_quote' });
+    setIsSubmitting(true);
+    try {
+      await realtime.updateQuote({
+        orderRealtimeId: order.id,
+        quotedPrice: totalQuote,
+        quotedHours: quoteHours,
+        quotedTransport: quoteTransport,
+      });
+      setIsEditingQuote(false);
+      showNotification({
+        title: 'Oferta actualizada',
+        message: 'Tu cotización ha sido actualizada con éxito.',
+        type: 'success',
+      });
+    } catch {
+      showNotification({ title: 'Error', message: 'No se pudo actualizar la oferta.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleAcceptCounterOffer = async () => {
+    if (isSubmitting) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'ACCEPT_COUNTEROFFER', origin: 'FOCUS_PROVIDER' });
     if (!order?.id || !realtime?.respondToCounterOffer) {
@@ -121,15 +198,24 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'ACCEPT_COUNTEROFFER', result: 'accept_counteroffer' });
+    setIsSubmitting(true);
     try {
       await realtime.respondToCounterOffer(order.id, 'ACCEPTED');
       setOrderState('WAITING_CLIENT_RESPONSE');
+      showNotification({
+        title: 'Contraoferta aceptada',
+        message: 'Has aceptado la contraoferta del cliente.',
+        type: 'success',
+      });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo aceptar la contraoferta.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleRejectCounterOffer = async () => {
+    if (isSubmitting) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'REJECT_COUNTEROFFER', origin: 'FOCUS_PROVIDER' });
     if (!order?.id || !realtime?.respondToCounterOffer) {
@@ -137,14 +223,23 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'REJECT_COUNTEROFFER', result: 'reject_counteroffer' });
+    setIsSubmitting(true);
     try {
       await realtime.respondToCounterOffer(order.id, 'REJECTED');
+      showNotification({
+        title: 'Contraoferta rechazada',
+        message: 'Has rechazado la contraoferta. Se mantiene tu oferta previa.',
+        type: 'info',
+      });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo rechazar la contraoferta.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleReject = async () => {
+    if (isSubmitting) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'REJECT_REQUEST', origin: 'FOCUS_PROVIDER' });
     if (!order?.id || !realtime?.respondRequest) {
@@ -152,14 +247,18 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'REJECT_REQUEST', result: 'reject_request' });
+    setIsSubmitting(true);
     try {
       await realtime.respondRequest(order.id, 'reject');
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo rechazar la solicitud.', type: 'error' });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleCancelOrder = async () => {
+    if (isCancelling) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'CANCEL_ORDER', origin: 'FOCUS_PROVIDER' });
     if (!order?.id || !realtime?.cancelOrder) {
@@ -167,14 +266,46 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'CANCEL_ORDER', result: 'cancel_order' });
+    setIsCancelling(true);
     try {
       await realtime.cancelOrder(order.id);
       showNotification({ title: 'Orden cancelada', message: 'Has cancelado la orden de servicio.', type: 'info' });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
+
+  const handleConfirmArrival = async () => {
+    if (isConfirmingArrival || !order?.id) return;
+    const actionId = nextBottomSheetActionId();
+    bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'CONFIRM_ARRIVAL', origin: 'FOCUS_PROVIDER' });
+    if (!realtime?.confirmArrival) {
+      bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_provider', action: 'CONFIRM_ARRIVAL', reason: 'missing_realtime_executor' });
+      return;
+    }
+    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'CONFIRM_ARRIVAL', result: 'confirm_arrival' });
+    setIsConfirmingArrival(true);
+    try {
+      await realtime.confirmArrival(order.id, providerCoords?.latitude, providerCoords?.longitude);
+      setOrderState('ARRIVED');
+      showNotification({
+        title: 'Llegada confirmada',
+        message: 'Has confirmado tu llegada al domicilio. Esperando inicio por parte del cliente.',
+        type: 'success',
+      });
+    } catch (err: any) {
+      showNotification({
+        title: 'Error de llegada',
+        message: err?.message || 'Debes encontrarte a menos de 100 metros para confirmar llegada.',
+        type: 'error',
+      });
+    } finally {
+      setIsConfirmingArrival(false);
+    }
+  };
 
   const handleCompleteWork = async () => {
     const actionId = nextBottomSheetActionId();
@@ -187,6 +318,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     try {
       await realtime.finishOrder(order.id);
       setOrderState('COMPLETED');
+      handleFinish('COMPLETED');
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo completar el trabajo.', type: 'error' });
     }
@@ -203,12 +335,12 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_provider', action: 'RETURN_PANEL', origin: 'FOCUS_PROVIDER' });
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_provider', action: 'RETURN_PANEL', target: orderState === 'COMPLETED' ? 'Rating' : 'MainApp' });
-    handleFinish();
+    handleFinish(orderState);
   };
 
   if (isCollapsed) {
     return (
-      <View style={styles.compactContainer}>
+      <BottomSheetView style={styles.compactContainer}>
         <TouchableOpacity
           style={styles.compactHeaderRow}
           onPress={() => setIndex?.(1)}
@@ -263,6 +395,8 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               <Button
                 title="Aceptar"
                 onPress={handleAcceptCounterOffer}
+                loading={isSubmitting}
+                disabled={isSubmitting || isCancelling}
                 size="md"
                 style={styles.compactGroupBtn}
               />
@@ -270,23 +404,45 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                 title="Rechazar"
                 variant="outline"
                 onPress={handleRejectCounterOffer}
+                loading={isSubmitting}
+                disabled={isSubmitting || isCancelling}
                 size="md"
                 style={styles.compactGroupBtn}
               />
             </View>
           )}
 
-          {orderState === 'WAITING_CLIENT_RESPONSE' && !acceptCounterVisible && (
+          {orderState === 'WAITING_CLIENT_RESPONSE' && !acceptCounterVisible && !isEditingQuote && (
             <Button
               title="Actualizar Oferta"
               variant="secondary"
               size="md"
-              onPress={handleSendQuote}
+              onPress={handleStartEditingQuote}
+              disabled={isSubmitting || isCancelling}
               style={styles.compactActionBtn}
             />
           )}
 
-          {(orderState === 'EN_CAMINO' || orderState === 'ARRIVED') && (
+          {((orderState === 'EN_CAMINO' || (orderState === 'ARRIVED' && order?.status === 'ACCEPTED' && !order?.arrivedAt)) && isWithinArrivalRadius) ? (
+            <View style={styles.compactActionGroup}>
+              <Button
+                title="Confirmar llegada"
+                size="md"
+                onPress={handleConfirmArrival}
+                loading={isConfirmingArrival}
+                disabled={isConfirmingArrival}
+                style={styles.compactGroupBtn}
+              />
+              <Button
+                title="Chat"
+                variant="secondary"
+                icon="MessageCircle"
+                size="md"
+                onPress={handleOpenChat}
+                style={styles.compactGroupBtn}
+              />
+            </View>
+          ) : (orderState === 'EN_CAMINO' || orderState === 'ARRIVED') ? (
             <Button
               title="Abrir Chat"
               variant="secondary"
@@ -295,7 +451,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
               onPress={handleOpenChat}
               style={styles.compactActionBtn}
             />
-          )}
+          ) : null}
 
           {orderState === 'IN_PROGRESS' && (
             <Button
@@ -315,7 +471,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             />
           )}
         </View>
-      </View>
+      </BottomSheetView>
     );
   }
 
@@ -364,12 +520,16 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                   <Button
                     title="Aceptar"
                     onPress={handleAcceptCounterOffer}
+                    loading={isSubmitting}
+                    disabled={isSubmitting || isCancelling}
                     style={styles.actionBtn}
                   />
                   <Button
                     title="Rechazar"
                     variant="outline"
                     onPress={handleRejectCounterOffer}
+                    loading={isSubmitting}
+                    disabled={isSubmitting || isCancelling}
                     style={styles.actionBtn}
                   />
                 </View>
@@ -492,15 +652,111 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                   Propuesta: {order.counterOfferHours}h / {order.counterOfferTransport}km
                 </Text>
                 <View style={styles.counterOfferActionStack}>
-                  <Button title="Aceptar" onPress={handleAcceptCounterOffer} style={styles.actionBtn} />
-                  <Button title="Rechazar" variant="danger-outline" size="md" onPress={handleRejectCounterOffer} style={{ marginTop: 8 }} />
+                  <Button
+                    title="Aceptar"
+                    onPress={handleAcceptCounterOffer}
+                    loading={isSubmitting}
+                    disabled={isSubmitting || isCancelling}
+                    style={styles.actionBtn}
+                  />
+                  <Button
+                    title="Rechazar"
+                    variant="danger-outline"
+                    size="md"
+                    onPress={handleRejectCounterOffer}
+                    loading={isSubmitting}
+                    disabled={isSubmitting || isCancelling}
+                    style={{ marginTop: 8 }}
+                  />
                 </View>
                 <Button
                   title="Cancelar orden"
                   variant="subtle"
                   size="md"
                   onPress={handleCancelOrder}
+                  loading={isCancelling}
+                  disabled={isSubmitting || isCancelling}
                   style={{ marginTop: 8 }}
+                />
+              </View>
+            ) : isEditingQuote ? (
+              <View style={[styles.quoteCard, { width: '100%', marginBottom: 12 }]}>
+                <View style={styles.quoteCardHeader}>
+                  <Text style={styles.priceAdjusterLabel}>Modificar cotización</Text>
+                  <View style={styles.totalBadge}>
+                    <Text style={styles.totalBadgeLabel}>Nuevo Total</Text>
+                    <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
+                  </View>
+                </View>
+                <View style={styles.quoteRowsContainer}>
+                  <View style={styles.quoteRowItem}>
+                    <View style={styles.quoteFieldInfo}>
+                      <Text style={styles.quoteFieldTitle}>Horas de servicio</Text>
+                      <Text style={styles.quoteFieldSub}>Tiempo estimado de trabajo</Text>
+                    </View>
+                    <View style={styles.priceAdjusterRow}>
+                      <TouchableOpacity
+                        onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Disminuir horas de oferta"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                      </TouchableOpacity>
+                      <Text style={styles.quoteFieldValue}>{quoteHours}h</Text>
+                      <TouchableOpacity
+                        onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Aumentar horas de oferta"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.quoteRowItem}>
+                    <View style={styles.quoteFieldInfo}>
+                      <Text style={styles.quoteFieldTitle}>Km de transporte</Text>
+                      <Text style={styles.quoteFieldSub}>Traslado al domicilio</Text>
+                    </View>
+                    <View style={styles.priceAdjusterRow}>
+                      <TouchableOpacity
+                        onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Disminuir transporte en kilómetros"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                      </TouchableOpacity>
+                      <Text style={styles.quoteFieldValue}>{quoteTransport}km</Text>
+                      <TouchableOpacity
+                        onPress={() => setQuoteTransport((t) => t + 1)}
+                        style={styles.adjusterBtnSmall}
+                        accessibilityLabel="Aumentar transporte en kilómetros"
+                        accessibilityRole="button"
+                      >
+                        <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                <Button
+                  title="Confirmar nueva oferta"
+                  variant="primary"
+                  onPress={handleUpdateQuote}
+                  loading={isSubmitting}
+                  disabled={isSubmitting || isCancelling}
+                  style={[styles.actionBtn, { marginTop: 12 }]}
+                />
+                <Button
+                  title="Descartar cambios"
+                  variant="ghost"
+                  size="md"
+                  onPress={() => setIsEditingQuote(false)}
+                  disabled={isSubmitting || isCancelling}
+                  style={{ marginTop: 6 }}
                 />
               </View>
             ) : (
@@ -511,7 +767,8 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                 <Button
                   title="Actualizar Oferta"
                   variant="secondary"
-                  onPress={handleSendQuote}
+                  onPress={handleStartEditingQuote}
+                  disabled={isSubmitting || isCancelling}
                   style={styles.actionBtn}
                 />
                 <Button
@@ -519,6 +776,8 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                   variant="subtle"
                   size="md"
                   onPress={handleCancelOrder}
+                  loading={isCancelling}
+                  disabled={isSubmitting || isCancelling}
                   style={{ marginTop: 8 }}
                 />
               </>
@@ -547,12 +806,23 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             <Text style={styles.guideText}>Conduce hacia la ubicación del cliente para iniciar el servicio.</Text>
 
             <Button
+              title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 100m'})`}
+              variant={isWithinArrivalRadius ? 'primary' : 'outline'}
+              disabled={!isWithinArrivalRadius || isConfirmingArrival}
+              loading={isConfirmingArrival}
+              icon="CheckCircle"
+              size="md"
+              onPress={handleConfirmArrival}
+              style={{ marginTop: 16 }}
+            />
+
+            <Button
               title="Abrir Chat"
               variant="secondary"
               icon="MessageCircle"
               size="md"
               onPress={handleOpenChat}
-              style={{ marginTop: 12 }}
+              style={{ marginTop: 8 }}
             />
           </>
         )}
@@ -584,6 +854,19 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                 </Text>
               </View>
             </View>
+
+            {(!order?.arrivedAt || order?.status === 'ACCEPTED') && (
+              <Button
+                title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 100m'})`}
+                variant={isWithinArrivalRadius ? 'primary' : 'outline'}
+                disabled={!isWithinArrivalRadius || isConfirmingArrival}
+                loading={isConfirmingArrival}
+                icon="CheckCircle"
+                size="md"
+                onPress={handleConfirmArrival}
+                style={{ marginTop: 12 }}
+              />
+            )}
 
             <Button
               title="Abrir Chat"
@@ -665,7 +948,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: 12,
+    paddingBottom: 28,
   },
   stateHeader: {
     flexDirection: 'row',

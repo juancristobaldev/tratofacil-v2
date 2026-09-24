@@ -73,30 +73,22 @@ export function fuseNavigationHeading(
     };
   }
 
-  // 4. Caso En Ruta a velocidad normal (Combina rumbo de calzada con rumbo GPS)
+  // 4. Caso En Ruta a velocidad normal: Mantener la calle actual siempre VERTICAL en pantalla
   if (routeProgress && !routeProgress.isOffRoute) {
-    const rawHeading = sample.heading;
-    const hasGpsHeading = rawHeading != null && Number.isFinite(rawHeading) && rawHeading >= 0;
+    // La verdad geométrica que alinea la calzada verticalmente (apuntando hacia arriba en pantalla)
+    // es estrictamente el rumbo del segmento actual de la ruta (routeBearing).
+    const roadBearing = routeProgress.routeBearing;
+    const deltaToRoad = Math.abs(shortestAngularDelta(lastReliableHeading, roadBearing));
 
-    if (hasGpsHeading && estimate.speedMps > 4.0 && (estimate.quality === 'EXCELLENT' || estimate.quality === 'GOOD')) {
-      // A velocidad rápida, el rumbo GPS tiene alta fiabilidad, pero se mezcla con la calzada para eliminar micro-oscilaciones
-      const roadDiff = shortestAngularDelta(routeProgress.routeBearing, rawHeading);
-      if (Math.abs(roadDiff) < 30) {
-        const fused = smoothHeadingEMA(routeProgress.routeBearing, rawHeading, 0.5);
-        const smoothed = smoothHeadingEMA(lastReliableHeading, fused, 0.3);
-        return {
-          targetHeading: smoothed,
-          confidence: 0.95,
-          source: 'GPS_COURSE',
-        };
-      }
-    }
+    // Si el usuario está en movimiento sobre la ruta, la cámara se orienta de inmediato
+    // hacia la ruta marcada de forma que la calle actual quede estrictamente VERTICAL en pantalla.
+    // Con velocidad vehicular/movimiento (speedMps > 1.0) o desalineación > 8°, adopción inmediata (alpha: 0.95).
+    const alpha = (lastReliableHeading === 0 || deltaToRoad > 8 || estimate.speedMps >= 1.0) ? 0.95 : 0.85;
+    const smoothed = smoothHeadingEMA(lastReliableHeading, roadBearing, alpha);
 
-    // A velocidad media/baja en ruta, el rumbo de la calzada es la señal más limpia
-    const smoothed = smoothHeadingEMA(lastReliableHeading, routeProgress.routeBearing, 0.35);
     return {
       targetHeading: smoothed,
-      confidence: 0.9,
+      confidence: 0.98,
       source: 'ROUTE_BEARING',
     };
   }

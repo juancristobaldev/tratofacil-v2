@@ -48,6 +48,29 @@ export interface DynamicEdgePadding {
   left: number;
 }
 
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+
+export interface NavigationAnchorParams {
+  windowWidth: number;
+  windowHeight: number;
+  headerBottom: number;
+  sheetTop: number | null;
+  bottomNavHeight?: number;
+  horizontalSafety?: number;
+  verticalSafety?: number;
+}
+
+export interface CameraCenterForAnchorParams {
+  subjectCoord: RouteCoordinate;
+  latitudeDelta: number;
+  longitudeDelta: number;
+  desiredScreenPoint: ScreenPoint;
+  windowDimensions: { width: number; height: number };
+}
+
 export interface UsableMapRectParams {
   windowWidth: number;
   windowHeight: number;
@@ -67,7 +90,7 @@ export const DEFAULT_TEMUCO_PLC_REGION = {
 
 export const NAVIGATION_LATITUDE_DELTA = 0.0035;
 export const NAVIGATION_LONGITUDE_DELTA = 0.0035;
-export const NAVIGATION_PITCH = 40;
+export const NAVIGATION_PITCH = 65;
 export const NAVIGATION_ZOOM_LEVEL = 18;
 export const NAVIGATION_ALTITUDE = 300;
 
@@ -94,29 +117,36 @@ export interface AdaptivePolylineWidth {
 /**
  * Calcula el ancho adaptativo del trazo y halo de la Polyline según el nivel de zoom (latitudeDelta).
  *
- * Niveles:
- * - Zoom muy cercano / calle (latitudeDelta <= 0.003): strokeWidth: 10-11px, glowWidth: 16-17px (cubre la calzada)
- * - Zoom barrio / medio (0.003 < latitudeDelta <= 0.015): strokeWidth: 7-9px, glowWidth: 12-14px
- * - Zoom ciudad / intermedio (0.015 < latitudeDelta <= 0.04): strokeWidth: 5-6px, glowWidth: 9-10px
- * - Zoom amplio / general (latitudeDelta > 0.04): strokeWidth: 4px, glowWidth: 7px
+ * Estándar de Visualización:
+ * - Trazo 100% continuo (nunca segmentado ni punteado).
+ * - Zoom muy cercano / calle / navegación (latitudeDelta <= 0.0015): strokeWidth: 18-20px, glowWidth: 26-28px (cubre todo el ancho de la calzada).
+ * - Zoom barrio cercano (0.0015 < latitudeDelta <= 0.004): strokeWidth: 13-15px, glowWidth: 19-21px.
+ * - Zoom sector / comuna (0.004 < latitudeDelta <= 0.012): strokeWidth: 9-11px, glowWidth: 14-16px.
+ * - Zoom ciudad intermedio (0.012 < latitudeDelta <= 0.04): strokeWidth: 6-7px, glowWidth: 10-11px.
+ * - Zoom regional / lejano (latitudeDelta > 0.04): strokeWidth: 4px, glowWidth: 7px (trazo nítido sin oclusión de manzanas ni pins).
  */
 export function getAdaptivePolylineWidth(latitudeDelta?: number | null): AdaptivePolylineWidth {
   if (latitudeDelta == null || !Number.isFinite(latitudeDelta) || latitudeDelta <= 0) {
-    return { strokeWidth: 6, glowWidth: 11 };
+    return { strokeWidth: 8, glowWidth: 14 };
   }
 
-  if (latitudeDelta <= 0.0025) {
-    return { strokeWidth: 11, glowWidth: 17 };
+  // Zoom cercano / navegación de calle (cubre la calzada completa: 10-14m)
+  if (latitudeDelta <= 0.0015) {
+    return { strokeWidth: 19, glowWidth: 27 };
   }
-  if (latitudeDelta <= 0.006) {
-    return { strokeWidth: 9, glowWidth: 14 };
+  // Zoom de barrio cercano
+  if (latitudeDelta <= 0.004) {
+    return { strokeWidth: 14, glowWidth: 20 };
   }
-  if (latitudeDelta <= 0.015) {
-    return { strokeWidth: 7, glowWidth: 12 };
+  // Zoom sectorial / comunal
+  if (latitudeDelta <= 0.012) {
+    return { strokeWidth: 10, glowWidth: 15 };
   }
+  // Zoom ciudad / vista general
   if (latitudeDelta <= 0.04) {
-    return { strokeWidth: 5, glowWidth: 9 };
+    return { strokeWidth: 6, glowWidth: 10 };
   }
+  // Zoom macro / regional: trazo ultra nítido, mínima oclusión
   return { strokeWidth: 4, glowWidth: 7 };
 }
 
@@ -334,6 +364,46 @@ export function projectCoordinateToScreen(
   const x = ((coord.longitude - leftLng) / region.longitudeDelta) * windowDimensions.width;
   const y = ((topLat - coord.latitude) / region.latitudeDelta) * windowDimensions.height;
   return { x, y };
+}
+
+/**
+ * Punto visual donde debe quedar anclado el sujeto de navegación dentro del viewport útil.
+ * Es el centro del área visible no cubierta por header, bottom nav ni BottomSheet.
+ */
+export function calculateNavigationAnchorPoint(params: NavigationAnchorParams): ScreenPoint {
+  const usable = calculateUsableMapRect(params);
+  return {
+    x: usable.left + usable.width / 2,
+    y: usable.top + usable.height / 2,
+  };
+}
+
+/**
+ * Calcula el centro de cámara necesario para que subjectCoord se proyecte en desiredScreenPoint.
+ * No altera la coordenada real; solo desplaza el centro de cámara para composición sheet-aware.
+ */
+export function calculateCameraCenterForSubjectAnchor(params: CameraCenterForAnchorParams): RouteCoordinate {
+  const { subjectCoord, latitudeDelta, longitudeDelta, desiredScreenPoint, windowDimensions } = params;
+  if (
+    !Number.isFinite(subjectCoord.latitude) ||
+    !Number.isFinite(subjectCoord.longitude) ||
+    !Number.isFinite(latitudeDelta) ||
+    !Number.isFinite(longitudeDelta) ||
+    latitudeDelta <= 0 ||
+    longitudeDelta <= 0 ||
+    windowDimensions.width <= 0 ||
+    windowDimensions.height <= 0
+  ) {
+    return subjectCoord;
+  }
+
+  const xRatio = desiredScreenPoint.x / windowDimensions.width;
+  const yRatio = desiredScreenPoint.y / windowDimensions.height;
+
+  return {
+    latitude: subjectCoord.latitude + (yRatio - 0.5) * latitudeDelta,
+    longitude: subjectCoord.longitude - (xRatio - 0.5) * longitudeDelta,
+  };
 }
 
 /**

@@ -6,12 +6,18 @@ export const GET_MY_REALTIME_ORDERS_AS_PROVIDER = gql`
       id
       status
       createdAt
+      arrivedAt
       startedAt
       completedAt
+      respondedAt
+      expiresAt
+      paymentExpiresAt
+      commission
       clientAddress
       clientDescription
       clientLat
       clientLng
+      providerAddress
       providerLat
       providerLng
       quotedPrice
@@ -22,6 +28,14 @@ export const GET_MY_REALTIME_ORDERS_AS_PROVIDER = gql`
       counterOfferTransport
       payment {
         amount
+      }
+      provider {
+        id
+        name
+        logoImage {
+          id
+          cdnUrl
+        }
       }
       client {
         id
@@ -49,6 +63,7 @@ export const GET_MY_REALTIME_ORDERS_AS_CLIENT = gql`
       id
       status
       createdAt
+      arrivedAt
       startedAt
       completedAt
       clientAddress
@@ -232,6 +247,42 @@ export const CREATE_REALTIME_CONTACT_REQUEST = gql`
     createRealtimeContactRequest(input: $input) {
       id
       status
+      clientLat
+      clientLng
+      providerLat
+      providerLng
+      clientAddress
+      clientDescription
+      provider {
+        id
+        name
+        lat
+        lng
+        logoImage {
+          id
+          cdnUrl
+        }
+        reviews {
+          id
+          rating
+        }
+        realtimeReviews {
+          id
+          rating
+        }
+        certificates {
+          id
+          verified
+        }
+      }
+      serviceProvider {
+        id
+        price
+        service {
+          id
+          name
+        }
+      }
     }
   }
 `;
@@ -257,6 +308,7 @@ export const UPDATE_REALTIME_QUOTE = gql`
   mutation UpdateRealtimeQuote($orderRealtimeId: Int!, $quotedHours: Int!, $quotedTransport: Int!, $quotedPrice: Int!) {
     updateRealtimeQuote(orderRealtimeId: $orderRealtimeId, quotedHours: $quotedHours, quotedTransport: $quotedTransport, quotedPrice: $quotedPrice) {
       id
+      status
       quotedPrice
       quotedHours
       quotedTransport
@@ -293,12 +345,25 @@ export const RESPOND_REALTIME_CONTACT_REQUEST = gql`
   }
 `;
 
+export const CONFIRM_REALTIME_ARRIVAL = gql`
+  mutation ConfirmRealtimeArrival($orderRealtimeId: Int!, $lat: Float, $lng: Float) {
+    confirmRealtimeArrival(orderRealtimeId: $orderRealtimeId, lat: $lat, lng: $lng) {
+      id
+      status
+      arrivedAt
+      providerLat
+      providerLng
+    }
+  }
+`;
+
 export const START_REALTIME_ORDER = gql`
   mutation StartRealtimeOrder($orderRealtimeId: Int!) {
     startRealtimeOrder(orderRealtimeId: $orderRealtimeId) {
       id
       status
       startedAt
+      arrivedAt
     }
   }
 `;
@@ -428,7 +493,46 @@ export const REQUEST_PROVIDER_TO_CONNECT = gql`
 export const GUEST_CREATE_REALTIME_CONTACT_REQUEST = gql`
   mutation GuestCreateRealtimeContactRequest($input: GuestCreateRealtimeOrderInput!) {
     guestCreateRealtimeContactRequest(input: $input) {
-      order { id status }
+      order {
+        id
+        status
+        clientLat
+        clientLng
+        providerLat
+        providerLng
+        clientAddress
+        clientDescription
+        provider {
+          id
+          name
+          lat
+          lng
+          logoImage {
+            id
+            cdnUrl
+          }
+          reviews {
+            id
+            rating
+          }
+          realtimeReviews {
+            id
+            rating
+          }
+          certificates {
+            id
+            verified
+          }
+        }
+        serviceProvider {
+          id
+          price
+          service {
+            id
+            name
+          }
+        }
+      }
       accessToken
       user { id displayName email phone }
     }

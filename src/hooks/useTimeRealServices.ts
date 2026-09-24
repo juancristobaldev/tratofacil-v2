@@ -11,9 +11,11 @@ import { useRole } from '../context/RoleContext';
 import { useNotification } from '../context/NotificationContext';
 import { logSocketIn, logSocketOut, setSocketLogIdentifiers } from '../utils/socketLogger';
 import { startLocationTracking, stopLocationTracking } from '../native/locationTracker';
+import { locationSimulator } from '../dev/joystick/locationSimulator';
 import {
   GET_MY_REALTIME_STATE,
   GET_MY_REALTIME_ORDERS_AS_CLIENT,
+  GET_MY_REALTIME_ORDERS_AS_PROVIDER,
   SET_MY_REALTIME_AVAILABILITY,
   CREATE_REALTIME_CONTACT_REQUEST,
   QUOTE_REALTIME_ORDER,
@@ -21,6 +23,7 @@ import {
   ACCEPT_REALTIME_ORDER_QUOTE,
   REJECT_REALTIME_ORDER_QUOTE,
   RESPOND_REALTIME_CONTACT_REQUEST,
+  CONFIRM_REALTIME_ARRIVAL,
   START_REALTIME_ORDER,
   FINISH_REALTIME_ORDER,
   CANCEL_REALTIME_ORDER,
@@ -103,12 +106,15 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   activeOrder: OrderRealTime | null;
   localActiveOrder: OrderRealTime | null;
   setLocalActiveOrder: React.Dispatch<React.SetStateAction<OrderRealTime | null>>;
+  setLocalProviderActiveOrder: React.Dispatch<React.SetStateAction<OrderRealTime | null>>;
   cancellingRef: React.MutableRefObject<boolean>;
   clientOrders: OrderRealTime[];
+  providerOrders: OrderRealTime[];
   providerState: RealtimeStateData['me']['provider'];
   isRealtimeActive: boolean;
   providerActiveOrder: OrderRealTime | null;
   socketStatus: SocketStatus;
+  connectionGeneration: number;
   clientId: number | null;
   refetch: () => void;
   toggleAvailability: (active: boolean, lat?: number | null, lng?: number | null) => void;
@@ -119,6 +125,7 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   acceptQuote: (orderRealtimeId: number) => Promise<void>;
   rejectQuote: (orderRealtimeId: number) => Promise<void>;
   respondRequest: (orderRealtimeId: number, decision: string) => Promise<void>;
+  confirmArrival: (orderRealtimeId: number, lat?: number, lng?: number) => Promise<any>;
   startOrder: (orderRealtimeId: number) => Promise<void>;
   finishOrder: (orderRealtimeId: number) => Promise<void>;
   cancelOrder: (orderRealtimeId: number) => Promise<void>;
@@ -129,7 +136,12 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   sendMessage: (orderRealtimeId: number, message: string) => Promise<ChatMessageEntity>;
   createProviderReview: (input: CreateRealtimeProviderReviewInput) => Promise<void>;
   createClientReview: (input: CreateClientReviewInput) => Promise<void>;
-    requestProviderToConnect: (serviceProviderId: number) => Promise<void>;
+  isOrderReviewed: (orderId: number) => boolean;
+  markOrderReviewed: (orderId: number) => void;
+  requestProviderToConnect: (serviceProviderId: number) => Promise<void>;
+  subscribe: (event: string, handler: (...args: any[]) => void) => () => void;
+  joinChat: (orderRealtimeId: number) => void;
+  leaveChat: (orderRealtimeId: number) => void;
   socketRef: React.MutableRefObject<Socket | null>;
   guestCreateContactRequest: (input: GuestCreateRealtimeOrderInput) => Promise<{
     order: { id: number; status: string };
@@ -138,15 +150,33 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   }>;
   clientCounterOffer: (orderRealtimeId: number, quotedPrice: number, quotedHours: number, quotedTransport: number) => Promise<any>;
   respondToCounterOffer: (orderRealtimeId: number, decision: string) => Promise<any>;
+  resetOrderSession: (orderId?: number) => void;
+}
+
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 export function useTimeRealServices(): UseTimeRealServicesReturn {
-  const { token } = useAuth();
+  const { token, isAuthenticated } = useAuth();
   const { role, setRole } = useRole();
-  const { showNotification } = useNotification();
+  const { showNotification, clearNotification } = useNotification();
   const apolloClient = useApolloClient();
   const socketRef = useRef<Socket | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
+  const [connectionGeneration, setConnectionGeneration] = useState(0);
+  const subscriptionsRef = useRef<Map<string, Set<Function>>>(new Map());
+  const activeChatRoomRef = useRef<number | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationTsRef = useRef<Record<string, number>>({});
 
@@ -164,12 +194,14 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     notifyRef.current = showNotification;
   }, [showNotification]);
 
+  const shouldSkipRealtimeQueries = !token || !isAuthenticated || role === 'guest';
+
   const { data, loading, refetch } = useQuery<RealtimeStateData>(
     GET_MY_REALTIME_STATE,
     {
       pollInterval: socketStatus === 'connected' ? 0 : 15000,
       fetchPolicy: socketStatus === 'connected' ? 'cache-first' : 'cache-and-network',
-      skip: !token,
+      skip: shouldSkipRealtimeQueries,
     },
   );
 
@@ -179,8 +211,37 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   } = useQuery<any>(GET_MY_REALTIME_ORDERS_AS_CLIENT, {
     pollInterval: socketStatus === 'connected' ? 0 : 30000,
     fetchPolicy: socketStatus === 'connected' ? 'cache-first' : 'cache-and-network',
-    skip: !token,
+    skip: shouldSkipRealtimeQueries,
   });
+
+  const {
+    data: providerOrdersData,
+    refetch: refetchProviderOrders,
+  } = useQuery<any>(GET_MY_REALTIME_ORDERS_AS_PROVIDER, {
+    pollInterval: socketStatus === 'connected' ? 0 : 30000,
+    fetchPolicy: socketStatus === 'connected' ? 'cache-first' : 'cache-and-network',
+    skip: shouldSkipRealtimeQueries || role !== 'provider',
+  });
+
+  const refetchRef = useRef(refetch);
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
+
+  const refetchClientOrdersRef = useRef(refetchClientOrders);
+  useEffect(() => {
+    refetchClientOrdersRef.current = refetchClientOrders;
+  }, [refetchClientOrders]);
+
+  const refetchProviderOrdersRef = useRef(refetchProviderOrders);
+  useEffect(() => {
+    refetchProviderOrdersRef.current = refetchProviderOrders;
+  }, [refetchProviderOrders]);
+
+  const apolloClientRef = useRef(apolloClient);
+  useEffect(() => {
+    apolloClientRef.current = apolloClient;
+  }, [apolloClient]);
 
   const [setAvailability] = useMutation(SET_MY_REALTIME_AVAILABILITY);
   const [updateProviderLocMut] = useMutation(UPDATE_PROVIDER_LOCATION);
@@ -190,6 +251,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const [acceptQuoteMut] = useMutation(ACCEPT_REALTIME_ORDER_QUOTE);
   const [rejectQuoteMut] = useMutation(REJECT_REALTIME_ORDER_QUOTE);
   const [respondMut] = useMutation(RESPOND_REALTIME_CONTACT_REQUEST);
+  const [confirmArrivalMut] = useMutation(CONFIRM_REALTIME_ARRIVAL);
   const [startMut] = useMutation(START_REALTIME_ORDER);
   const [finishMut] = useMutation(FINISH_REALTIME_ORDER, {
     refetchQueries: ['MyWallet'],
@@ -221,6 +283,19 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const isRealtimeActive = providerState?.isRealtimeActive || false;
   const providerActiveOrder = localProviderActiveOrder ?? ((providerState?.activeRealtimeOrder as OrderRealTime) ?? null);
   const clientId = data?.me?.id ?? null;
+  const clientIdRef = useRef(clientId);
+  useEffect(() => {
+    clientIdRef.current = clientId;
+  }, [clientId]);
+
+  const providerId = providerState?.id ?? null;
+  const providerIdRef = useRef(providerId);
+  useEffect(() => {
+    providerIdRef.current = providerId;
+  }, [providerId]);
+
+  const orderStatusHistoryRef = useRef<Map<number, string>>(new Map());
+  const approachingNotifiedRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -229,11 +304,17 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     );
   }, [role, activeOrder?.id, activeOrder?.status, activeOrder?.provider, activeOrder?.serviceProvider, providerActiveOrder?.id, providerActiveOrder?.status]);
 
+  const activeOrderRef = useRef<OrderRealTime | null>(activeOrder);
+  activeOrderRef.current = activeOrder;
+  const providerActiveOrderRef = useRef<OrderRealTime | null>(providerState?.activeRealtimeOrder as OrderRealTime | null);
+  providerActiveOrderRef.current = providerState?.activeRealtimeOrder as OrderRealTime | null;
+
   // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
   // en modo cliente, pasamos a modo proveedor.
   // Al terminar la orden: si el proveedor sigue activo en tiempo real (isRealtimeActive === true),
   // se mantiene en modo proveedor. Solo si NO está activo en tiempo real vuelve a modo cliente.
   const autoProviderOrderRef = useRef<number | null>(null);
+  const lastCounterOfferResolvedAt = useRef<number>(0);
 
   useEffect(() => {
     if (!providerActiveOrder) {
@@ -256,9 +337,17 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     }
     if (autoProviderOrderRef.current === providerActiveOrder.id) return;
     if (role === 'provider') return;
+
+    // Defense-in-depth:
+    // 1. El usuario debe poseer un perfil de proveedor registrado
+    if (!providerState?.id) return;
+    // 2. Si la orden corresponde a la orden activa del usuario como cliente, jamás conmutar a modo proveedor
+    if (activeOrder?.id && activeOrder.id === providerActiveOrder.id) return;
+    if (localActiveOrder?.id && localActiveOrder.id === providerActiveOrder.id) return;
+
     autoProviderOrderRef.current = providerActiveOrder.id;
     setRole('provider');
-  }, [providerActiveOrder, isRealtimeActive, role, setRole]);
+  }, [providerActiveOrder, isRealtimeActive, role, setRole, providerState?.id, activeOrder?.id, localActiveOrder?.id]);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -277,28 +366,91 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [clientOrdersData],
   );
 
+  const providerOrders: OrderRealTime[] = useMemo(
+    () => providerOrdersData?.myRealtimeOrdersAsProvider ?? [],
+    [providerOrdersData],
+  );
+
   useEffect(() => {
     const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+    const STATUS_PROGRESSION: Record<string, number> = {
+      PENDING: 1,
+      QUOTED: 2,
+      PAYMENT_PENDING: 3,
+      ACCEPTED: 4,
+      ARRIVED: 5,
+      IN_PROGRESS: 6,
+      COMPLETED: 7,
+      CANCELLED: 7,
+      REJECTED: 7,
+      EXPIRED: 7,
+    };
 
     // El socket es la fuente de verdad de una orden viva: mientras haya una
     // localActiveOrder no debe pisarse con el snapshot del poll (que puede estar
-    // más atrasado). El poll solo la inicializa (null) y adopta estados terminales.
+    // más atrasado). El poll solo la inicializa (null) y adopta estados terminales o avances.
     if (localActiveOrder) {
       const pollOrder = activeOrder;
       if (pollOrder && pollOrder.id === localActiveOrder.id) {
+        const pollRank = STATUS_PROGRESSION[pollOrder.status] ?? 0;
+        const localRank = STATUS_PROGRESSION[localActiveOrder.status] ?? 0;
+        const isStatusUpgrade = pollRank >= localRank;
+
+        // Reglas de reconciliación de contraofertas:
+        // 1. Si la contraoferta se resolvió recientemente (< 5s), ignorar contraofertas no-nulas del poll (resurrección).
+        // 2. Un pollOrder con counterOfferPrice == null NUNCA debe borrar una contraoferta viva del socket en localActiveOrder.
+        // 3. El poll solo actualiza la contraoferta si trae un valor no-nulo genuinamente nuevo y no es resurrección.
+        const isStaleResurrection =
+          pollOrder.counterOfferPrice != null &&
+          Date.now() - lastCounterOfferResolvedAt.current < 5000;
+
+        const shouldAdoptPollCounterOffer =
+          pollOrder.counterOfferPrice != null &&
+          !isStaleResurrection &&
+          pollOrder.counterOfferPrice !== localActiveOrder.counterOfferPrice;
+
+        const counterOfferPriceChanged = shouldAdoptPollCounterOffer;
+
         const needsUpdate =
-          pollOrder.status !== localActiveOrder.status ||
-          localActiveOrder.quotedPrice !== pollOrder.quotedPrice ||
-          localActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice ||
-          localActiveOrder.counterOfferHours !== pollOrder.counterOfferHours ||
-          localActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport;
+          (isStatusUpgrade && pollOrder.status !== localActiveOrder.status) ||
+          (pollOrder.quotedPrice != null && localActiveOrder.quotedPrice !== pollOrder.quotedPrice) ||
+          counterOfferPriceChanged ||
+          (shouldAdoptPollCounterOffer && pollOrder.counterOfferHours != null && localActiveOrder.counterOfferHours !== pollOrder.counterOfferHours) ||
+          (shouldAdoptPollCounterOffer && pollOrder.counterOfferTransport != null && localActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport);
 
         if (needsUpdate) {
           _setLocalActiveOrder((prev: any) => {
             if (!prev) return pollOrder;
             if (TERMINAL.includes(prev.status)) return prev;
+
+            const nextCounterOfferPrice = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferPrice
+                : prev.counterOfferPrice;
+
+            const nextCounterOfferHours = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferHours
+                : prev.counterOfferHours;
+
+            const nextCounterOfferTransport = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferTransport
+                : prev.counterOfferTransport;
+
+            const nextStartedAt = pollOrder.startedAt || prev.startedAt || ((pollOrder.status === 'IN_PROGRESS' || prev.status === 'IN_PROGRESS') ? (prev.startedAt || new Date().toISOString()) : null);
+
             return {
               ...pollOrder,
+              status: isStatusUpgrade ? pollOrder.status : prev.status,
+              ...(nextStartedAt ? { startedAt: nextStartedAt } : {}),
+              quotedPrice: pollOrder.quotedPrice ?? prev.quotedPrice,
+              counterOfferPrice: nextCounterOfferPrice,
+              counterOfferHours: nextCounterOfferHours,
+              counterOfferTransport: nextCounterOfferTransport,
               clientLat: prev.clientLat ?? pollOrder.clientLat,
               clientLng: prev.clientLng ?? pollOrder.clientLng,
               providerLat: prev.providerLat ?? pollOrder.providerLat,
@@ -314,9 +466,6 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         const match = clientOrders.find((o: any) => o.id === localActiveOrder.id);
         if (match && TERMINAL.includes(match.status)) {
           _setLocalActiveOrder(match);
-        } else if (!pollOrder && !TERMINAL.includes(localActiveOrder.status)) {
-          // Si el poll ya no la reporta ni está en clientOrders activa, se asume cerrada/nula
-          _setLocalActiveOrder(null);
         }
       }
       return;
@@ -330,24 +479,78 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
   useEffect(() => {
     const TERMINAL = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
+    const STATUS_PROGRESSION: Record<string, number> = {
+      PENDING: 1,
+      QUOTED: 2,
+      PAYMENT_PENDING: 3,
+      ACCEPTED: 4,
+      ARRIVED: 5,
+      IN_PROGRESS: 6,
+      COMPLETED: 7,
+      CANCELLED: 7,
+      REJECTED: 7,
+      EXPIRED: 7,
+    };
     const pollOrder = providerState?.activeRealtimeOrder as OrderRealTime | null;
 
     if (localProviderActiveOrder) {
       if (pollOrder && pollOrder.id === localProviderActiveOrder.id) {
+        const pollRank = STATUS_PROGRESSION[pollOrder.status] ?? 0;
+        const localRank = STATUS_PROGRESSION[localProviderActiveOrder.status] ?? 0;
+        const isStatusUpgrade = pollRank >= localRank;
+
+        const isStaleResurrection =
+          pollOrder.counterOfferPrice != null &&
+          Date.now() - lastCounterOfferResolvedAt.current < 5000;
+
+        const shouldAdoptPollCounterOffer =
+          pollOrder.counterOfferPrice != null &&
+          !isStaleResurrection &&
+          pollOrder.counterOfferPrice !== localProviderActiveOrder.counterOfferPrice;
+
+        const counterOfferPriceChanged = shouldAdoptPollCounterOffer;
+
         const needsUpdate =
-          pollOrder.status !== localProviderActiveOrder.status ||
-          localProviderActiveOrder.quotedPrice !== pollOrder.quotedPrice ||
-          localProviderActiveOrder.counterOfferPrice !== pollOrder.counterOfferPrice ||
-          localProviderActiveOrder.counterOfferHours !== pollOrder.counterOfferHours ||
-          localProviderActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport ||
+          (isStatusUpgrade && pollOrder.status !== localProviderActiveOrder.status) ||
+          (pollOrder.quotedPrice != null && localProviderActiveOrder.quotedPrice !== pollOrder.quotedPrice) ||
+          counterOfferPriceChanged ||
+          (shouldAdoptPollCounterOffer && pollOrder.counterOfferHours != null && localProviderActiveOrder.counterOfferHours !== pollOrder.counterOfferHours) ||
+          (shouldAdoptPollCounterOffer && pollOrder.counterOfferTransport != null && localProviderActiveOrder.counterOfferTransport !== pollOrder.counterOfferTransport) ||
           localProviderActiveOrder.clientDescription !== pollOrder.clientDescription;
 
         if (needsUpdate) {
           _setLocalProviderActiveOrder((prev: any) => {
             if (!prev) return pollOrder;
             if (TERMINAL.includes(prev.status)) return prev;
+
+            const nextCounterOfferPrice = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferPrice
+                : prev.counterOfferPrice;
+
+            const nextCounterOfferHours = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferHours
+                : prev.counterOfferHours;
+
+            const nextCounterOfferTransport = isStaleResurrection
+              ? null
+              : shouldAdoptPollCounterOffer
+                ? pollOrder.counterOfferTransport
+                : prev.counterOfferTransport;
+
+            const nextStartedAt = pollOrder.startedAt || prev.startedAt || ((pollOrder.status === 'IN_PROGRESS' || prev.status === 'IN_PROGRESS') ? (prev.startedAt || new Date().toISOString()) : null);
+
             return {
               ...pollOrder,
+              status: isStatusUpgrade ? pollOrder.status : prev.status,
+              ...(nextStartedAt ? { startedAt: nextStartedAt } : {}),
+              quotedPrice: pollOrder.quotedPrice ?? prev.quotedPrice,
+              counterOfferPrice: nextCounterOfferPrice,
+              counterOfferHours: nextCounterOfferHours,
+              counterOfferTransport: nextCounterOfferTransport,
               clientLat: prev.clientLat ?? pollOrder.clientLat,
               clientLng: prev.clientLng ?? pollOrder.clientLng,
               providerLat: prev.providerLat ?? pollOrder.providerLat,
@@ -357,8 +560,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         }
       } else if (pollOrder && pollOrder.id !== localProviderActiveOrder.id) {
         _setLocalProviderActiveOrder(pollOrder);
-      } else if (!pollOrder && !TERMINAL.includes(localProviderActiveOrder.status)) {
-        _setLocalProviderActiveOrder(null);
+      } else {
+        // El poll dejó de reportar esta orden: si providerOrders la marca terminal, la
+        // cerramos; en caso contrario la mantenemos viva (evita el null-clear de R2).
+        const match = providerOrders.find((o: any) => o.id === localProviderActiveOrder.id);
+        if (match && TERMINAL.includes(match.status)) {
+          _setLocalProviderActiveOrder(match);
+        }
       }
       return;
     }
@@ -366,7 +574,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     if (pollOrder) {
       _setLocalProviderActiveOrder(pollOrder);
     }
-  }, [providerState?.activeRealtimeOrder, localProviderActiveOrder]);
+  }, [providerState?.activeRealtimeOrder, providerOrders, localProviderActiveOrder]);
 
   const setLocalActiveOrder = useCallback<React.Dispatch<React.SetStateAction<OrderRealTime | null>>>(
     (value) => {
@@ -375,9 +583,56 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [],
   );
 
+  const setLocalProviderActiveOrder = useCallback<React.Dispatch<React.SetStateAction<OrderRealTime | null>>>(
+    (value) => {
+      _setLocalProviderActiveOrder(value);
+    },
+    [],
+  );
+
+  const subscribe = useCallback((event: string, handler: (...args: any[]) => void) => {
+    let set = subscriptionsRef.current.get(event);
+    if (!set) {
+      set = new Set();
+      subscriptionsRef.current.set(event, set);
+    }
+    set.add(handler);
+    return () => {
+      const currentSet = subscriptionsRef.current.get(event);
+      if (currentSet) {
+        currentSet.delete(handler);
+        if (currentSet.size === 0) {
+          subscriptionsRef.current.delete(event);
+        }
+      }
+    };
+  }, []);
+
+  const joinChat = useCallback((orderRealtimeId: number) => {
+    activeChatRoomRef.current = orderRealtimeId;
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('chat:join', { orderRealtimeId });
+    }
+  }, []);
+
+  const leaveChat = useCallback((orderRealtimeId: number) => {
+    if (activeChatRoomRef.current === orderRealtimeId) {
+      activeChatRoomRef.current = null;
+    }
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('chat:leave', { orderRealtimeId });
+    }
+  }, []);
+
+  const isGuest = role === 'guest';
+
   useEffect(() => {
-    if (!token) {
+    if (!token || !isAuthenticated || isGuest) {
       setSocketStatus('disconnected');
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
       return;
     }
 
@@ -394,96 +649,303 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     socketRef.current = socket;
 
+    const dispatch = (event: string, ...args: any[]) => {
+      const set = subscriptionsRef.current.get(event);
+      if (set) {
+        set.forEach((handler) => {
+          try {
+            handler(...args);
+          } catch (err) {
+            if (__DEV__) {
+              console.error(`[RT:SUBSCRIBE] Error in subscriber callback for "${event}":`, err);
+            }
+          }
+        });
+      }
+    };
+
     socket.on('connect', () => {
       setSocketStatus('connected');
-      setSocketLogIdentifiers(socket.id || '', String(clientId ?? ''));
+      setConnectionGeneration((prev) => prev + 1);
+      setSocketLogIdentifiers(socket.id || '', String(clientIdRef.current ?? ''));
       logSocketIn('connect', { socketId: socket.id });
       if (__DEV__) console.log(`[RT:EVENT] source=BOOT type=socket_connect orderId=null status=null role=${roleRef.current}`);
-      refetch();
-      refetchClientOrders();
+      if (roleRef.current !== 'guest') {
+        refetchRef.current();
+        refetchClientOrdersRef.current();
+        refetchProviderOrdersRef.current();
+      }
+      if (activeChatRoomRef.current != null) {
+        socket.emit('chat:join', { orderRealtimeId: activeChatRoomRef.current });
+      }
+      dispatch('connect', { socketId: socket.id });
     });
 
     socket.on('connect_error', (err) => {
       setSocketStatus('error');
       logSocketIn('connect_error', { message: err.message });
+      dispatch('connect_error', err);
     });
 
     socket.on('disconnect', (reason) => {
       if (reason === 'io client disconnect') return;
       setSocketStatus('disconnected');
       logSocketIn('disconnect', { reason });
+      dispatch('disconnect', { reason });
+      if (reason === 'io server disconnect') {
+        // Desconexión forzada por el servidor (p. ej. token expirado o no autorizado).
+        socket.disconnect();
+      }
     });
 
     socket.on('reconnect_attempt', () => {
       setSocketStatus('connecting');
       logSocketIn('reconnect_attempt');
+      dispatch('reconnect_attempt');
     });
 
     socket.on('order-realtime:created', (payload) => {
       logSocketIn('order-realtime:created', payload);
       if (__DEV__) console.log(`[RT:EVENT] source=SOCKET type=order-realtime:created orderId=${payload?.orderRealtimeId ?? payload?.id ?? 'null'} status=${payload?.status ?? 'null'} role=${roleRef.current}`);
-      refetch();
-      refetchClientOrders();
-      if (roleRef.current === 'provider') {
-        notifyRef.current({ title: 'Nueva Solicitud', message: 'Tienes una nueva solicitud de servicio', type: 'info' });
+      refetchRef.current();
+      refetchClientOrdersRef.current();
+      refetchProviderOrdersRef.current();
+      const orderId = payload?.orderRealtimeId ?? payload?.id ?? 0;
+      const isMyProviderOrder = payload?.providerId && providerIdRef.current ? payload.providerId === providerIdRef.current : roleRef.current === 'provider';
+      if (isMyProviderOrder) {
+        notifyRef.current({
+          id: `orderCreated:${orderId}`,
+          title: 'Nueva Solicitud',
+          message: 'Tienes una nueva solicitud de servicio',
+          type: 'info',
+        });
       }
+      dispatch('order-realtime:created', payload);
     });
 
-    socket.on('order-realtime:updated', (payload: { orderRealtimeId: number; status: string }) => {
+    socket.on('order-realtime:updated', (payload: {
+      orderRealtimeId: number;
+      status: string;
+      clientId?: number;
+      providerId?: number;
+      respondedAt?: string;
+      startedAt?: string | null;
+      arrivedAt?: string | null;
+      quotedPrice?: number | null;
+      quotedHours?: number | null;
+      quotedTransport?: number | null;
+      counterOfferPrice?: number | null;
+      counterOfferHours?: number | null;
+      counterOfferTransport?: number | null;
+      paymentExpiresAt?: string | null;
+    }) => {
       logSocketIn('order-realtime:updated', payload);
-      if (__DEV__) console.log(`[RT:EVENT] source=SOCKET type=order-realtime:updated orderId=${payload.orderRealtimeId} status=${payload.status} role=${roleRef.current}`);
-      
-      const currentRole = roleRef.current;
-      if (payload.status === 'PROVIDER_ON_THE_WAY' && currentRole === 'client') {
-        notifyRef.current({ title: 'Proveedor en camino', message: 'El profesional va hacia tu ubicación.', type: 'info' });
-      } else if (payload.status === 'ARRIVED' && currentRole === 'client') {
-        notifyRef.current({ title: 'Proveedor ha llegado', message: 'El profesional se encuentra en tu ubicación.', type: 'success' });
-      } else if (payload.status === 'COMPLETED') {
-        notifyRef.current({ title: 'Servicio Finalizado', message: 'El servicio ha sido completado exitosamente.', type: 'success' });
-      } else if (payload.status === 'CANCELLED') {
-        notifyRef.current({
-          title: 'Servicio Cancelado',
-          message: currentRole === 'provider' ? 'El cliente ha cancelado la orden.' : 'El servicio ha sido cancelado.',
-          type: 'error',
-        });
-      } else if (payload.status === 'REJECTED' && currentRole === 'client') {
-        notifyRef.current({ title: 'Oferta Rechazada', message: 'El profesional ha rechazado tu solicitud.', type: 'error' });
-      } else if (payload.status === 'ACCEPTED' && currentRole === 'provider') {
-        notifyRef.current({ title: 'Servicio Aceptado', message: 'El cliente ha aceptado el trato.', type: 'success' });
-      } else if (payload.status === 'NEGOTIATING' && currentRole === 'client') {
-        notifyRef.current({ title: 'Oferta Recibida', message: 'El profesional ha enviado una oferta.', type: 'info' });
+      if (!payload?.orderRealtimeId) return;
+
+      const orderId = payload.orderRealtimeId;
+      const status = payload.status;
+      const prevStatus = orderStatusHistoryRef.current.get(orderId);
+      const isStatusChanged = prevStatus !== status;
+      orderStatusHistoryRef.current.set(orderId, status);
+
+      if (payload.counterOfferPrice === null) {
+        lastCounterOfferResolvedAt.current = Date.now();
+      }
+
+      const myUserId = clientIdRef.current;
+      const myProviderId = providerIdRef.current;
+      const isClient = payload.clientId && myUserId ? payload.clientId === myUserId : roleRef.current === 'client';
+      const isProvider = payload.providerId && myProviderId ? payload.providerId === myProviderId : roleRef.current === 'provider';
+
+      if (isStatusChanged) {
+        if (status === 'ARRIVED') {
+          if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:ARRIVED`,
+              title: 'Proveedor ha llegado',
+              message: 'El profesional se encuentra en tu ubicación.',
+              type: 'success',
+            });
+          } else if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:ARRIVED`,
+              title: 'Llegada a Destino',
+              message: 'Has llegado a la ubicación del cliente.',
+              type: 'success',
+            });
+          }
+        } else if (status === 'COMPLETED') {
+          approachingNotifiedRef.current.delete(orderId);
+          notifyRef.current({
+            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:COMPLETED`,
+            title: 'Servicio Finalizado',
+            message: 'El servicio ha sido completado exitosamente.',
+            type: 'success',
+          });
+        } else if (status === 'CANCELLED') {
+          approachingNotifiedRef.current.delete(orderId);
+          notifyRef.current({
+            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:CANCELLED`,
+            title: 'Servicio Cancelado',
+            message: isProvider ? 'El cliente ha cancelado la orden.' : 'El servicio ha sido cancelado.',
+            type: 'error',
+          });
+        } else if (status === 'REJECTED') {
+          approachingNotifiedRef.current.delete(orderId);
+          notifyRef.current({
+            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:REJECTED`,
+            title: 'Solicitud Rechazada',
+            message: isClient ? 'El profesional ha rechazado tu solicitud.' : 'Has rechazado la solicitud.',
+            type: 'error',
+          });
+        } else if (status === 'ACCEPTED') {
+          if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:ACCEPTED`,
+              title: '¡Pago Confirmado!',
+              message: 'El cliente ha procesado el pago. Inicia tu ruta.',
+              type: 'success',
+            });
+          } else {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:ACCEPTED`,
+              title: '¡Pago Confirmado!',
+              message: 'Tu servicio ha sido confirmado. El proveedor está en camino.',
+              type: 'success',
+            });
+          }
+        } else if (status === 'PAYMENT_PENDING') {
+          if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:PAYMENT_PENDING`,
+              title: 'Pago en Proceso',
+              message: 'El cliente está procesando el pago del servicio.',
+              type: 'info',
+            });
+          } else {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:PAYMENT_PENDING`,
+              title: 'Pago en Proceso',
+              message: 'Completa tu pago para confirmar el servicio.',
+              type: 'info',
+            });
+          }
+        } else if (status === 'IN_PROGRESS') {
+          if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:IN_PROGRESS`,
+              title: 'Servicio en Curso',
+              message: 'El profesional ha iniciado el trabajo.',
+              type: 'info',
+            });
+          } else {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:IN_PROGRESS`,
+              title: 'Servicio en Curso',
+              message: 'Cronómetro activo. Buen trabajo.',
+              type: 'info',
+            });
+          }
+        } else if (status === 'EXPIRED') {
+          approachingNotifiedRef.current.delete(orderId);
+          notifyRef.current({
+            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:EXPIRED`,
+            title: 'Solicitud Expirada',
+            message: isProvider ? 'El tiempo límite de la orden ha concluido.' : 'La solicitud ha expirado.',
+            type: 'error',
+          });
+        }
+      }
+
+      if (status === 'QUOTED') {
+        if (payload.counterOfferPrice != null && isProvider) {
+          notifyRef.current({
+            id: `counterOffer:${orderId}:${payload.counterOfferPrice}`,
+            title: 'Contraoferta Recibida',
+            message: 'El cliente ha enviado una contraoferta.',
+            type: 'info',
+          });
+        } else if (!payload.counterOfferPrice && isClient && (isStatusChanged || payload.quotedPrice !== undefined)) {
+          notifyRef.current({
+            id: `quote:${orderId}:${payload.quotedPrice}`,
+            title: 'Oferta Recibida',
+            message: 'El profesional ha enviado una oferta.',
+            type: 'info',
+          });
+        }
       }
 
       _setLocalActiveOrder((prev: any) => {
-        if (prev && prev.id === payload.orderRealtimeId) {
-          return { ...prev, status: payload.status };
-        }
-        return prev;
+        const target = prev || activeOrderRef.current;
+        if (!target || target.id !== payload.orderRealtimeId) return prev;
+        const resolvedStartedAt = payload.startedAt ?? target.startedAt ?? (payload.status === 'IN_PROGRESS' ? (target.startedAt || new Date().toISOString()) : undefined);
+        return {
+          ...target,
+          status: payload.status,
+          ...(resolvedStartedAt ? { startedAt: resolvedStartedAt } : {}),
+          ...(payload.arrivedAt !== undefined ? { arrivedAt: payload.arrivedAt } : {}),
+          ...(payload.quotedPrice !== undefined && { quotedPrice: payload.quotedPrice }),
+          ...(payload.quotedHours !== undefined && { quotedHours: payload.quotedHours }),
+          ...(payload.quotedTransport !== undefined && { quotedTransport: payload.quotedTransport }),
+          ...(payload.counterOfferPrice !== undefined && { counterOfferPrice: payload.counterOfferPrice }),
+          ...(payload.counterOfferHours !== undefined && { counterOfferHours: payload.counterOfferHours }),
+          ...(payload.counterOfferTransport !== undefined && { counterOfferTransport: payload.counterOfferTransport }),
+        };
       });
 
       _setLocalProviderActiveOrder((prev: any) => {
-        if (prev && prev.id === payload.orderRealtimeId) {
-          return { ...prev, status: payload.status };
-        }
-        return prev;
+        const target = prev || providerActiveOrderRef.current;
+        if (!target || target.id !== payload.orderRealtimeId) return prev;
+        const resolvedStartedAt = payload.startedAt ?? target.startedAt ?? (payload.status === 'IN_PROGRESS' ? (target.startedAt || new Date().toISOString()) : undefined);
+        return {
+          ...target,
+          status: payload.status,
+          ...(resolvedStartedAt ? { startedAt: resolvedStartedAt } : {}),
+          ...(payload.arrivedAt !== undefined ? { arrivedAt: payload.arrivedAt } : {}),
+          ...(payload.quotedPrice !== undefined && { quotedPrice: payload.quotedPrice }),
+          ...(payload.quotedHours !== undefined && { quotedHours: payload.quotedHours }),
+          ...(payload.quotedTransport !== undefined && { quotedTransport: payload.quotedTransport }),
+          ...(payload.counterOfferPrice !== undefined && { counterOfferPrice: payload.counterOfferPrice }),
+          ...(payload.counterOfferHours !== undefined && { counterOfferHours: payload.counterOfferHours }),
+          ...(payload.counterOfferTransport !== undefined && { counterOfferTransport: payload.counterOfferTransport }),
+        };
       });
       
       try {
-        apolloClient.cache.modify({
+        apolloClientRef.current.cache.modify({
           id: `OrderRealTime:${payload.orderRealtimeId}`,
           fields: {
             status: () => payload.status,
+            ...(payload.arrivedAt !== undefined && { arrivedAt: () => payload.arrivedAt }),
+            ...(payload.startedAt !== undefined && { startedAt: () => payload.startedAt }),
+            ...(payload.quotedPrice !== undefined && { quotedPrice: () => payload.quotedPrice }),
+            ...(payload.quotedHours !== undefined && { quotedHours: () => payload.quotedHours }),
+            ...(payload.quotedTransport !== undefined && { quotedTransport: () => payload.quotedTransport }),
+            ...(payload.counterOfferPrice !== undefined && { counterOfferPrice: () => payload.counterOfferPrice }),
+            ...(payload.counterOfferHours !== undefined && { counterOfferHours: () => payload.counterOfferHours }),
+            ...(payload.counterOfferTransport !== undefined && { counterOfferTransport: () => payload.counterOfferTransport }),
           },
         });
       } catch {}
+
+      if (['CANCELLED', 'REJECTED', 'EXPIRED'].includes(payload.status)) {
+        delete locationTsRef.current[payload.orderRealtimeId];
+        try {
+          apolloClientRef.current.cache.evict({ id: `OrderRealTime:${payload.orderRealtimeId}` });
+          apolloClientRef.current.cache.gc();
+        } catch {}
+      }
 
       if (refetchTimerRef.current) {
         clearTimeout(refetchTimerRef.current);
       }
       refetchTimerRef.current = setTimeout(() => {
-        refetch();
-        refetchClientOrders();
+        refetchRef.current();
+        refetchClientOrdersRef.current();
+        refetchProviderOrdersRef.current();
       }, 500);
+
+      dispatch('order-realtime:updated', payload);
     });
 
     socket.on('order-realtime:location-updated', (payload: {
@@ -496,6 +958,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       source?: 'client' | 'provider';
     }) => {
       logSocketIn('order-realtime:location-updated', payload);
+      if (!payload?.orderRealtimeId) return;
 
       const sourceKey = payload.source || 'default';
       const actorKey = `${payload.orderRealtimeId}:${sourceKey}`;
@@ -511,77 +974,162 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         console.log(`[RT:SOCKET_LOCATION_RECEIVED] receiverRole=${roleRef.current} source=${sourceKey} orderId=${payload.orderRealtimeId} clientLat=${payload.clientLat} clientLng=${payload.clientLng} providerLat=${payload.providerLat} providerLng=${payload.providerLng}`);
       }
 
+      const isValidCoord = (c: number | null | undefined) =>
+        c != null && Number.isFinite(c) && Math.abs(c) > 1e-4;
+
       setLocalActiveOrder((prev) => {
-        if (!prev || prev.id !== payload.orderRealtimeId) return prev;
+        const target = prev || activeOrderRef.current;
+        if (!target || target.id !== payload.orderRealtimeId) return prev;
         return {
-          ...prev,
-          clientLat: payload.clientLat,
-          clientLng: payload.clientLng,
-          providerLat: payload.providerLat ?? prev.providerLat,
-          providerLng: payload.providerLng ?? prev.providerLng,
+          ...target,
+          clientLat: isValidCoord(payload.clientLat) ? payload.clientLat : target.clientLat,
+          clientLng: isValidCoord(payload.clientLng) ? payload.clientLng : target.clientLng,
+          providerLat: isValidCoord(payload.providerLat) ? payload.providerLat : target.providerLat,
+          providerLng: isValidCoord(payload.providerLng) ? payload.providerLng : target.providerLng,
         };
       });
 
       _setLocalProviderActiveOrder((prev: any) => {
-        if (!prev || prev.id !== payload.orderRealtimeId) return prev;
+        const target = prev || providerActiveOrderRef.current;
+        if (!target || target.id !== payload.orderRealtimeId) return prev;
         return {
-          ...prev,
-          clientLat: payload.clientLat,
-          clientLng: payload.clientLng,
-          providerLat: payload.providerLat ?? prev.providerLat,
-          providerLng: payload.providerLng ?? prev.providerLng,
+          ...target,
+          clientLat: isValidCoord(payload.clientLat) ? payload.clientLat : target.clientLat,
+          clientLng: isValidCoord(payload.clientLng) ? payload.clientLng : target.clientLng,
+          providerLat: isValidCoord(payload.providerLat) ? payload.providerLat : target.providerLat,
+          providerLng: isValidCoord(payload.providerLng) ? payload.providerLng : target.providerLng,
         };
       });
 
       try {
-        apolloClient.cache.modify({
+        apolloClientRef.current.cache.modify({
           id: `OrderRealTime:${payload.orderRealtimeId}`,
           fields: {
-            clientLat: () => payload.clientLat,
-            clientLng: () => payload.clientLng,
-            providerLat: (existing: number | null) => payload.providerLat ?? existing,
-            providerLng: (existing: number | null) => payload.providerLng ?? existing,
+            clientLat: (existing: number | null) => (isValidCoord(payload.clientLat) ? payload.clientLat : existing),
+            clientLng: (existing: number | null) => (isValidCoord(payload.clientLng) ? payload.clientLng : existing),
+            providerLat: (existing: number | null) => (isValidCoord(payload.providerLat) ? payload.providerLat : existing),
+            providerLng: (existing: number | null) => (isValidCoord(payload.providerLng) ? payload.providerLng : existing),
           },
         });
       } catch {}
+
+      // Fallback local de proximidad (<= 400m) en modo cliente cuando la orden está ACCEPTED
+      const currentActive = activeOrderRef.current;
+      if (
+        roleRef.current === 'client' &&
+        currentActive?.id === payload.orderRealtimeId &&
+        currentActive?.status === 'ACCEPTED' &&
+        !approachingNotifiedRef.current.has(payload.orderRealtimeId) &&
+        isValidCoord(payload.clientLat) &&
+        isValidCoord(payload.clientLng) &&
+        isValidCoord(payload.providerLat) &&
+        isValidCoord(payload.providerLng)
+      ) {
+        const distM = getDistanceMeters(
+          payload.providerLat!,
+          payload.providerLng!,
+          payload.clientLat,
+          payload.clientLng,
+        );
+        if (distM <= 400) {
+          approachingNotifiedRef.current.add(payload.orderRealtimeId);
+          if (notifyRef.current) {
+            notifyRef.current({
+              id: `clientOrder:${payload.orderRealtimeId}:APPROACHING`,
+              title: 'Profesional por llegar',
+              message: `El profesional está a menos de ${Math.max(50, Math.round(distM))}m de tu ubicación.`,
+              type: 'info',
+            });
+          }
+        }
+      }
+
+      dispatch('order-realtime:location-updated', payload);
+    });
+
+    socket.on('order-realtime:approaching', (payload: { orderRealtimeId: number; distanceMeters?: number }) => {
+      logSocketIn('order-realtime:approaching', payload);
+      if (!payload?.orderRealtimeId) return;
+      const orderId = payload.orderRealtimeId;
+      if (!approachingNotifiedRef.current.has(orderId)) {
+        approachingNotifiedRef.current.add(orderId);
+        if (roleRef.current === 'client' && notifyRef.current) {
+          notifyRef.current({
+            id: `clientOrder:${orderId}:APPROACHING`,
+            title: 'Profesional por llegar',
+            message: payload.distanceMeters
+              ? `El profesional está a menos de ${payload.distanceMeters}m de tu ubicación.`
+              : 'El profesional está por llegar a tu ubicación.',
+            type: 'info',
+          });
+        }
+      }
+      dispatch('order-realtime:approaching', payload);
     });
 
     socket.on('chat:received', (payload) => {
       logSocketIn('chat:received', payload);
-      // Optional: Solo notificar si no estamos con el panel abierto o similares
+      if (payload) {
+        const isFromOtherUser = payload.senderId !== clientIdRef.current;
+        const isChatClosed = activeChatRoomRef.current !== payload.orderRealtimeId;
+        if (isFromOtherUser && isChatClosed && notifyRef.current) {
+          const sender = payload.senderName || 'Contacto';
+          const msg = payload.message || (payload.imageUrl ? '[Imagen]' : 'Nuevo mensaje');
+          notifyRef.current({
+            id: `chat:${payload.id || Date.now()}:${payload.orderRealtimeId}`,
+            title: `Mensaje de ${sender}`,
+            message: msg.length > 80 ? msg.slice(0, 80) + '...' : msg,
+            type: 'info',
+          });
+        }
+      }
+      dispatch('chat:received', payload);
     });
 
     socket.on('provider:realtime:status', (payload) => {
       logSocketIn('provider:realtime:status', payload);
-      refetch();
+      refetchRef.current();
+      dispatch('provider:realtime:status', payload);
     });
 
-    socket.on('provider:location-updated', (payload: { providerId: number; clientLat: number; clientLng: number; timestamp?: number }) => {
+    socket.on('provider:location-updated', (payload: { providerId: number; lat?: number; lng?: number; clientLat?: number; clientLng?: number; timestamp?: number }) => {
       logSocketIn('provider:location-updated', payload);
       if (!payload?.providerId) return;
+      const lat = payload.lat ?? payload.clientLat;
+      const lng = payload.lng ?? payload.clientLng;
+      if (lat == null || lng == null) return;
       try {
-        apolloClient.cache.modify({
+        apolloClientRef.current.cache.modify({
           id: `Provider:${payload.providerId}`,
           fields: {
-            clientLat: () => payload.clientLat,
-            clientLng: () => payload.clientLng,
+            lat: () => lat,
+            lng: () => lng,
           },
         });
       } catch {}
+      dispatch('provider:location-updated', payload);
     });
 
     socket.on('provider:disconnected', (payload: { orderRealtimeId: number }) => {
       logSocketIn('provider:disconnected', payload);
       if (roleRef.current === 'client') {
-        notifyRef.current({ title: 'Proveedor desconectado', message: 'El proveedor ha perdido la conexión.', type: 'error' });
+        notifyRef.current({
+          id: `providerDisconnected:${payload.orderRealtimeId}`,
+          title: 'Proveedor desconectado',
+          message: 'El proveedor ha perdido la conexión.',
+          type: 'error',
+        });
       }
-      refetch();
-      refetchClientOrders();
+      refetchRef.current();
+      refetchClientOrdersRef.current();
+      refetchProviderOrdersRef.current();
+      dispatch('provider:disconnected', payload);
     });
 
     socket.on('provider:connect-requested', (payload) => {
       logSocketIn('provider:connect-requested', payload);
-      refetch();
+      refetchRef.current();
+      dispatch('provider:connect-requested', payload);
     });
 
     socket.on('review:received', (payload: {
@@ -594,19 +1142,27 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       createdAt: string;
     }) => {
       logSocketIn('review:received', payload);
-      if (notifyRef.current) {
-        const stars = '★'.repeat(Math.max(1, Math.min(5, payload.rating || 5)));
+      if (!payload) return;
+      const isTargetProvider = payload.type === 'PROVIDER_REVIEW' && (roleRef.current === 'provider' || Boolean(providerIdRef.current));
+      const isTargetClient = payload.type === 'CLIENT_REVIEW' && roleRef.current !== 'provider';
+      if (notifyRef.current && (isTargetProvider || isTargetClient)) {
+        const rawRating = Number(payload?.rating);
+        const safeRating = Number.isFinite(rawRating) ? Math.max(1, Math.min(5, Math.floor(rawRating))) : 5;
+        const stars = '★'.repeat(safeRating);
         notifyRef.current({
+          id: `review:${payload.id}:${payload.orderRealtimeId}`,
           title: 'Nueva reseña recibida',
-          message: `${payload.authorName ? `${payload.authorName}: ` : ''}${stars} (${payload.rating}/5)${payload.comment ? ` - "${payload.comment}"` : ''}`,
+          message: `${payload.authorName ? `${payload.authorName}: ` : ''}${stars} (${safeRating}/5)${payload.comment ? ` - "${payload.comment}"` : ''}`,
           type: 'success',
         });
       }
-      refetch();
-      refetchClientOrders();
+      refetchRef.current();
+      refetchClientOrdersRef.current();
+      refetchProviderOrdersRef.current();
       try {
-        apolloClient.refetchQueries({ include: ['Me', 'GetMyRealtimeOrdersAsClient', 'GetMyRealtimeOrdersAsProvider'] });
+        apolloClientRef.current.refetchQueries({ include: ['Me', 'GetMyRealtimeOrdersAsClient', 'GetMyRealtimeOrdersAsProvider'] });
       } catch {}
+      dispatch('review:received', payload);
     });
 
     const appStateHandler = (nextAppState: AppStateStatus) => {
@@ -618,7 +1174,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     const appStateSub = AppState.addEventListener('change', appStateHandler);
 
     return () => {
-      appStateSub.remove();
+      appStateSub?.remove?.();
       if (refetchTimerRef.current) {
         clearTimeout(refetchTimerRef.current);
       }
@@ -627,13 +1183,14 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       socketRef.current = null;
       setSocketStatus('disconnected');
     };
-  }, [token, refetch, refetchClientOrders, apolloClient, clientId]);
+  }, [token, isAuthenticated, isGuest]);
 
   const toggleAvailability = useCallback(
-    (active: boolean, lat?: number | null, lng?: number | null) => {
-      return setAvailability({ variables: { active, lat, lng } });
+    async (active: boolean, lat?: number | null, lng?: number | null) => {
+      await setAvailability({ variables: { active, lat, lng } });
+      refetch();
     },
-    [setAvailability],
+    [setAvailability, refetch],
   );
 
   const updateProviderLocation = useCallback(
@@ -645,33 +1202,77 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [updateProviderLocMut],
   );
 
+  const lastProviderSentCoordsRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
+
   useEffect(() => {
     if (!isRealtimeActive) return;
 
     let watchId: number | null = null;
+    let unsubSim: (() => void) | null = null;
+
+    const dispatchProviderLocation = (position: {
+      coords: { latitude: number; longitude: number };
+      timestamp?: number;
+    }) => {
+      const now = Date.now();
+      const last = lastProviderSentCoordsRef.current;
+      if (last) {
+        const dt = now - last.time;
+        if (dt < 2000) return; // Mínimo 2s entre emisiones
+
+        const dLat = (position.coords.latitude - last.lat) * 111000;
+        const dLng = (position.coords.longitude - last.lng) * 111000 * Math.cos((last.lat * Math.PI) / 180);
+        const distMeters = Math.sqrt(dLat * dLat + dLng * dLng);
+
+        // Si se movió menos de 5 metros y pasaron menos de 15s (heartbeat), omitir
+        if (distMeters < 5 && dt < 15000) return;
+      }
+
+      lastProviderSentCoordsRef.current = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        time: now,
+      };
+
+      updateProviderLocation(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.timestamp,
+      ).catch(() => {});
+    };
 
     try {
       watchId = Geolocation.watchPosition(
         (position) => {
-          updateProviderLocation(
-            position.coords.latitude,
-            position.coords.longitude,
-            position.timestamp,
-          ).catch(() => {});
+          if (__DEV__ && locationSimulator.isSimulating()) {
+            return;
+          }
+          dispatchProviderLocation(position);
         },
         () => {},
         {
           enableHighAccuracy: true,
-          distanceFilter: 10,
-          interval: 5000,
-          fastestInterval: 2000,
+          distanceFilter: 2,
+          interval: 2000,
+          fastestInterval: 1000,
         },
       );
     } catch (_) {}
 
+    if (__DEV__) {
+      unsubSim = locationSimulator.subscribe((simulatedPos) => {
+        if (simulatedPos && locationSimulator.isSimulating()) {
+          dispatchProviderLocation(simulatedPos);
+        }
+      });
+    }
+
     return () => {
       if (watchId != null) {
         Geolocation.clearWatch(watchId);
+      }
+      if (unsubSim != null) {
+        unsubSim();
       }
     };
   }, [isRealtimeActive, updateProviderLocation]);
@@ -691,6 +1292,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         },
       });
       const order = result!.createRealtimeContactRequest;
+      if (order) {
+        _setLocalActiveOrder(order as any);
+      }
       if (__DEV__) console.log(`[RT:EVENT] source=CREATE_REQUEST type=result orderId=${order.id} status=${order.status} role=${roleRef.current}`);
       await refetch();
       await refetchClientOrders();
@@ -701,61 +1305,190 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
   const quoteOrder = useCallback(
     async (params: MutationQuoteRealtimeOrderArgs) => {
-      await quoteMut({ variables: params });
+      _setLocalProviderActiveOrder((prev: any) => {
+        if (!prev || prev.id !== params.orderRealtimeId) return prev;
+        return {
+          ...prev,
+          status: 'QUOTED',
+          quotedPrice: params.quotedPrice,
+          quotedHours: params.quotedHours,
+          quotedTransport: params.quotedTransport,
+        };
+      });
+      try {
+        await quoteMut({ variables: params });
+      } finally {
+        refetch();
+      }
     },
-    [quoteMut],
+    [quoteMut, refetch],
   );
 
   const updateQuote = useCallback(
     async (params: MutationQuoteRealtimeOrderArgs) => {
-      await updateQuoteMut({ variables: params });
+      const res = await updateQuoteMut({ variables: params });
+      const updated = (res as any)?.data?.updateRealtimeQuote;
+      const patch = {
+        ...(params.quotedPrice != null && { quotedPrice: params.quotedPrice }),
+        ...(params.quotedHours != null && { quotedHours: params.quotedHours }),
+        ...(params.quotedTransport != null && { quotedTransport: params.quotedTransport }),
+        ...(updated?.quotedPrice != null && { quotedPrice: updated.quotedPrice }),
+        ...(updated?.quotedHours != null && { quotedHours: updated.quotedHours }),
+        ...(updated?.quotedTransport != null && { quotedTransport: updated.quotedTransport }),
+      };
+      _setLocalProviderActiveOrder((prev: any) => {
+        if (!prev || prev.id !== params.orderRealtimeId) return prev;
+        return { ...prev, ...patch };
+      });
+      _setLocalActiveOrder((prev: any) => {
+        if (!prev || prev.id !== params.orderRealtimeId) return prev;
+        return { ...prev, ...patch };
+      });
+      try {
+        apolloClient.cache.modify({
+          id: `OrderRealTime:${params.orderRealtimeId}`,
+          fields: {
+            ...(patch.quotedPrice != null ? { quotedPrice: () => patch.quotedPrice } : {}),
+            ...(patch.quotedHours != null ? { quotedHours: () => patch.quotedHours } : {}),
+            ...(patch.quotedTransport != null ? { quotedTransport: () => patch.quotedTransport } : {}),
+          },
+        });
+      } catch {}
+      refetch();
+      refetchClientOrders();
+      return updated;
     },
-    [updateQuoteMut],
+    [updateQuoteMut, apolloClient, refetch, refetchClientOrders],
   );
 
   const acceptQuote = useCallback(
     async (orderRealtimeId: number) => {
-      await acceptQuoteMut({
-        variables: { orderRealtimeId },
+      _setLocalActiveOrder((prev: any) => {
+        if (!prev || prev.id !== orderRealtimeId) return prev;
+        return { ...prev, status: 'ACCEPTED' };
       });
+      try {
+        await acceptQuoteMut({
+          variables: { orderRealtimeId },
+        });
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
     },
-    [acceptQuoteMut],
+    [acceptQuoteMut, refetch, refetchClientOrders],
   );
 
   const rejectQuote = useCallback(
     async (orderRealtimeId: number) => {
-      await rejectQuoteMut({
-        variables: { orderRealtimeId },
+      _setLocalActiveOrder((prev: any) => {
+        if (!prev || prev.id !== orderRealtimeId) return prev;
+        return { ...prev, status: 'REJECTED' };
       });
+      try {
+        await rejectQuoteMut({
+          variables: { orderRealtimeId },
+        });
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
     },
-    [rejectQuoteMut],
+    [rejectQuoteMut, refetch, refetchClientOrders],
   );
 
   const respondRequest = useCallback(
     async (orderRealtimeId: number, decision: string) => {
-      await respondMut({
-        variables: { orderRealtimeId, decision },
+      const nextStatus = decision.toUpperCase() === 'ACCEPTED' ? 'ACCEPTED' : 'REJECTED';
+      _setLocalProviderActiveOrder((prev: any) => {
+        if (!prev || prev.id !== orderRealtimeId) return prev;
+        return { ...prev, status: nextStatus };
       });
+      try {
+        await respondMut({
+          variables: { orderRealtimeId, decision },
+        });
+      } finally {
+        refetch();
+      }
     },
-    [respondMut],
+    [respondMut, refetch],
+  );
+
+  const confirmArrival = useCallback(
+    async (orderRealtimeId: number, lat?: number, lng?: number) => {
+      const nowIso = new Date().toISOString();
+      _setLocalActiveOrder((prev: any) =>
+        prev?.id === orderRealtimeId ? { ...prev, status: 'ARRIVED', arrivedAt: prev.arrivedAt || nowIso } : prev
+      );
+      _setLocalProviderActiveOrder((prev: any) =>
+        prev?.id === orderRealtimeId ? { ...prev, status: 'ARRIVED', arrivedAt: prev.arrivedAt || nowIso } : prev
+      );
+      try {
+        const res = await confirmArrivalMut({ variables: { orderRealtimeId, lat, lng } });
+        const arrived = (res as any)?.data?.confirmRealtimeArrival;
+        if (arrived) {
+          _setLocalActiveOrder((prev: any) =>
+            prev?.id === orderRealtimeId ? { ...prev, status: arrived.status || 'ARRIVED', arrivedAt: arrived.arrivedAt } : prev
+          );
+          _setLocalProviderActiveOrder((prev: any) =>
+            prev?.id === orderRealtimeId ? { ...prev, status: arrived.status || 'ARRIVED', arrivedAt: arrived.arrivedAt } : prev
+          );
+        }
+        return arrived;
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
+    },
+    [confirmArrivalMut, refetch, refetchClientOrders],
   );
 
   const startOrder = useCallback(
     async (orderRealtimeId: number) => {
-      await startMut({ variables: { orderRealtimeId } });
-      refetch();
-      refetchClientOrders();
+      const nowIso = new Date().toISOString();
+      _setLocalActiveOrder((prev: any) =>
+        prev?.id === orderRealtimeId ? { ...prev, status: 'IN_PROGRESS', startedAt: prev.startedAt || nowIso } : prev
+      );
+      _setLocalProviderActiveOrder((prev: any) =>
+        prev?.id === orderRealtimeId ? { ...prev, status: 'IN_PROGRESS', startedAt: prev.startedAt || nowIso } : prev
+      );
+      try {
+        const res = await startMut({ variables: { orderRealtimeId } });
+        const started = (res as any)?.data?.startRealtimeOrder;
+        if (started?.startedAt) {
+          _setLocalActiveOrder((prev: any) =>
+            prev?.id === orderRealtimeId ? { ...prev, status: started.status || 'IN_PROGRESS', startedAt: started.startedAt } : prev
+          );
+          _setLocalProviderActiveOrder((prev: any) =>
+            prev?.id === orderRealtimeId ? { ...prev, status: started.status || 'IN_PROGRESS', startedAt: started.startedAt } : prev
+          );
+        }
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
     },
     [startMut, refetch, refetchClientOrders],
   );
 
   const finishOrder = useCallback(
     async (orderRealtimeId: number) => {
-      await finishMut({ variables: { orderRealtimeId } });
-      refetch();
-      refetchClientOrders();
+      try {
+        await finishMut({ variables: { orderRealtimeId } });
+      } finally {
+        _setLocalProviderActiveOrder(null);
+        _setLocalActiveOrder(null);
+        clearNotification();
+        try {
+          apolloClient.cache.evict({ id: `OrderRealTime:${orderRealtimeId}` });
+          apolloClient.cache.gc();
+        } catch {}
+        refetch();
+        refetchClientOrders();
+      }
     },
-    [finishMut, refetch, refetchClientOrders],
+    [finishMut, clearNotification, apolloClient, refetch, refetchClientOrders],
   );
 
   const cancellingRef = useRef(false);
@@ -764,8 +1497,6 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     async (orderRealtimeId: number) => {
       if (__DEV__) console.log(`[RT:CANCEL_START] orderId=${orderRealtimeId} role=${roleRef.current}`);
       cancellingRef.current = true;
-      _setLocalActiveOrder((prev: any) => (prev?.id === orderRealtimeId ? { ...prev, status: 'CANCELLED' } : prev));
-      _setLocalProviderActiveOrder((prev: any) => (prev?.id === orderRealtimeId ? { ...prev, status: 'CANCELLED' } : prev));
       try {
         const { data: cancelResult } = await cancelMut({ variables: { orderRealtimeId } });
         const result = (cancelResult as any)?.cancelRealtimeOrder;
@@ -774,12 +1505,19 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         if (__DEV__) console.warn('[RT:CANCEL_ERROR]', err);
         throw err;
       } finally {
+        _setLocalActiveOrder(null);
+        _setLocalProviderActiveOrder(null);
+        clearNotification();
+        try {
+          apolloClient.cache.evict({ id: `OrderRealTime:${orderRealtimeId}` });
+          apolloClient.cache.gc();
+        } catch {}
         refetch();
         refetchClientOrders();
         setTimeout(() => { cancellingRef.current = false; }, 1000);
       }
     },
-    [cancelMut, refetch, refetchClientOrders],
+    [cancelMut, clearNotification, apolloClient, refetch, refetchClientOrders],
   );
 
   const updateLocation = useCallback(
@@ -791,19 +1529,23 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [updateLocMut],
   );
 
+  // P0-1: Solo el proveedor transmite telemetría continua de GPS para la orden.
+  // El cliente mantiene un punto de encuentro fijo (destino del servicio) y no transmite GPS continuo.
   const trackingOrder = role === 'provider'
     ? (localProviderActiveOrder ?? (providerState?.activeRealtimeOrder as OrderRealTime | null))
-    : (localActiveOrder ?? activeOrder);
+    : null;
 
   const trackingOrderId = trackingOrder?.id ?? null;
   const trackingOrderStatus = trackingOrder?.status ?? null;
 
   useEffect(() => {
     if (!trackingOrderId) return;
-    if (trackingOrderStatus !== 'ACCEPTED' && trackingOrderStatus !== 'IN_PROGRESS') return;
+    if (trackingOrderStatus !== 'ACCEPTED' && trackingOrderStatus !== 'ARRIVED' && trackingOrderStatus !== 'IN_PROGRESS') return;
 
     let watchId: number | null = null;
+    let unsubSim: (() => void) | null = null;
     const lastSentRef = { current: 0 };
+    const lastSentCoordsRef = { current: null as { lat: number; lng: number } | null };
 
     // Foreground service (Android) que mantiene vivo el proceso para que este
     // watchPosition siga reportando la ubicación con la app en segundo plano.
@@ -816,28 +1558,56 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       Geolocation.requestAuthorization?.('always')?.catch?.(() => {});
     }
 
+    const dispatchOrderLocation = (position: {
+      coords: { latitude: number; longitude: number };
+      timestamp?: number;
+    }) => {
+      const now = Date.now();
+      const dt = now - lastSentRef.current;
+      if (dt < 1500) return; // Throttle 1.5s mínimo
+
+      const lastCoords = lastSentCoordsRef.current;
+      if (lastCoords) {
+        const dLat = (position.coords.latitude - lastCoords.lat) * 111000;
+        const dLng = (position.coords.longitude - lastCoords.lng) * 111000 * Math.cos((lastCoords.lat * Math.PI) / 180);
+        const distMeters = Math.sqrt(dLat * dLat + dLng * dLng);
+
+        // Si el desplazamiento es insignificante (< 4m) y pasaron menos de 10s, no saturar
+        if (distMeters < 4 && dt < 10000) return;
+      }
+
+      lastSentRef.current = now;
+      lastSentCoordsRef.current = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+
+      if (__DEV__) {
+        console.log(`[RT:LOCATION_SEND] actor=${roleRef.current} orderId=${trackingOrderId} lat=${position.coords.latitude} lng=${position.coords.longitude} ts=${position.timestamp}`);
+      }
+      updateLocation(
+        trackingOrderId,
+        position.coords.latitude,
+        position.coords.longitude,
+        position.timestamp,
+      ).catch(() => {});
+    };
+
     try {
       watchId = Geolocation.watchPosition(
         (position) => {
-          const now = Date.now();
-          if (now - lastSentRef.current < 4000) return;
-          lastSentRef.current = now;
-          if (__DEV__) {
-            console.log(`[RT:LOCATION_SEND] actor=${roleRef.current} orderId=${trackingOrderId} lat=${position.coords.latitude} lng=${position.coords.longitude} ts=${position.timestamp}`);
+          if (__DEV__ && locationSimulator.isSimulating()) {
+            return;
           }
-          updateLocation(
-            trackingOrderId,
-            position.coords.latitude,
-            position.coords.longitude,
-            position.timestamp,
-          ).catch(() => {});
+          dispatchOrderLocation(position);
         },
         () => {},
         {
           enableHighAccuracy: true,
-          distanceFilter: 10,
-          interval: 5000,
-          fastestInterval: 2000,
+          distanceFilter: 2,
+          interval: 2000,
+          fastestInterval: 1000,
+          showsBackgroundLocationIndicator: true,
         },
       );
       if (__DEV__) {
@@ -845,12 +1615,23 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       }
     } catch (_) {}
 
+    if (__DEV__) {
+      unsubSim = locationSimulator.subscribe((simulatedPos) => {
+        if (simulatedPos && locationSimulator.isSimulating()) {
+          dispatchOrderLocation(simulatedPos);
+        }
+      });
+    }
+
     return () => {
       if (watchId != null) {
         if (__DEV__) {
           console.log(`[RT:ORDER_GPS_STOP] actor=${roleRef.current} orderId=${trackingOrderId} watchId=${watchId}`);
         }
         Geolocation.clearWatch(watchId);
+      }
+      if (unsubSim != null) {
+        unsubSim();
       }
       stopLocationTracking();
     };
@@ -871,19 +1652,39 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       const { data: result } = await confirmPayMut({
         variables: { token: paymentToken },
       });
+      const confirmed = result?.confirmRealtimeFlowPayment;
+      if (confirmed) {
+        _setLocalActiveOrder((prev: any) =>
+          prev?.id === confirmed.id ? { ...prev, status: confirmed.status || 'ACCEPTED' } : prev
+        );
+      }
+      refetch();
+      refetchClientOrders();
       return result!.confirmRealtimeFlowPayment;
     },
-    [confirmPayMut],
+    [confirmPayMut, refetch, refetchClientOrders],
   );
 
   const payWithSavedCard = useCallback(
     async (orderRealtimeId: number) => {
-      const { data: result } = await paySavedCardMut({
-        variables: { orderRealtimeId },
-      });
-      await refetch();
-      await refetchClientOrders();
-      return result!.payRealtimeOrderWithSavedCard;
+      _setLocalActiveOrder((prev: any) =>
+        prev?.id === orderRealtimeId ? { ...prev, status: 'ACCEPTED' } : prev
+      );
+      try {
+        const { data: result } = await paySavedCardMut({
+          variables: { orderRealtimeId },
+        });
+        const paid = result?.payRealtimeOrderWithSavedCard;
+        if (paid) {
+          _setLocalActiveOrder((prev: any) =>
+            prev?.id === orderRealtimeId ? { ...prev, ...paid, status: paid.status || 'ACCEPTED' } : prev
+          );
+        }
+        return paid!;
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
     },
     [paySavedCardMut, refetch, refetchClientOrders],
   );
@@ -898,20 +1699,64 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [sendMsgMut],
   );
 
+  const reviewedOrderIdsRef = useRef<Set<number>>(new Set());
+
+  const markOrderReviewed = useCallback((orderId: number) => {
+    if (orderId) {
+      reviewedOrderIdsRef.current.add(orderId);
+    }
+  }, []);
+
+  const isOrderReviewed = useCallback((orderId: number) => {
+    return Boolean(orderId && reviewedOrderIdsRef.current.has(orderId));
+  }, []);
+
   const createProviderReview = useCallback(
     async (input: CreateRealtimeProviderReviewInput) => {
+      markOrderReviewed(input.orderRealtimeId);
+      _setLocalActiveOrder(null);
+      try {
+        apolloClient.cache.evict({ id: `OrderRealTime:${input.orderRealtimeId}` });
+        apolloClient.cache.gc();
+      } catch {}
       await reviewProviderMut({ variables: { input } });
       refetch();
+      refetchClientOrders();
     },
-    [reviewProviderMut, refetch],
+    [apolloClient, markOrderReviewed, reviewProviderMut, refetch, refetchClientOrders],
   );
 
   const createClientReview = useCallback(
     async (input: CreateClientReviewInput) => {
+      markOrderReviewed(input.orderRealtimeId);
+      _setLocalProviderActiveOrder(null);
+      try {
+        apolloClient.cache.evict({ id: `OrderRealTime:${input.orderRealtimeId}` });
+        apolloClient.cache.gc();
+      } catch {}
       await reviewClientMut({ variables: { input } });
       refetch();
+      refetchClientOrders();
     },
-    [reviewClientMut, refetch],
+    [apolloClient, markOrderReviewed, reviewClientMut, refetch, refetchClientOrders],
+  );
+
+  const resetOrderSession = useCallback(
+    (orderId?: number) => {
+      _setLocalActiveOrder(null);
+      _setLocalProviderActiveOrder(null);
+      clearNotification();
+      if (orderId) {
+        delete locationTsRef.current[orderId];
+        try {
+          apolloClient.cache.evict({ id: `OrderRealTime:${orderId}` });
+          apolloClient.cache.gc();
+        } catch {}
+      } else {
+        locationTsRef.current = {};
+      }
+    },
+    [apolloClient, clearNotification],
   );
 
   const requestProviderToConnect = useCallback(
@@ -926,9 +1771,19 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       const { data: result } = await guestCreateContactMut({
         variables: { input },
       });
-      return result!.guestCreateRealtimeContactRequest;
+      const response = result!.guestCreateRealtimeContactRequest;
+      if (response?.order) {
+        _setLocalActiveOrder(response.order as any);
+      }
+      try {
+        await refetch();
+      } catch {}
+      try {
+        await refetchClientOrders();
+      } catch {}
+      return response;
     },
-    [guestCreateContactMut],
+    [guestCreateContactMut, refetch, refetchClientOrders],
   );
 
   const clientCounterOffer = useCallback(
@@ -938,19 +1793,81 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           input: { orderRealtimeId, quotedPrice, quotedHours, quotedTransport },
         },
       });
-      return (result as any)!.clientCounterOfferRealtimeOrder;
+      const updated = (result as any)?.clientCounterOfferRealtimeOrder;
+      if (updated) {
+        const updater = (prev: any) => {
+          if (!prev || prev.id !== orderRealtimeId) return prev;
+          return {
+            ...prev,
+            ...updated,
+            counterOfferPrice: quotedPrice,
+            counterOfferHours: quotedHours,
+            counterOfferTransport: quotedTransport,
+          };
+        };
+        _setLocalActiveOrder(updater);
+        try {
+          apolloClient.cache.modify({
+            id: `OrderRealTime:${orderRealtimeId}`,
+            fields: {
+              counterOfferPrice: () => quotedPrice,
+              counterOfferHours: () => quotedHours,
+              counterOfferTransport: () => quotedTransport,
+            },
+          });
+        } catch {}
+        refetch();
+        refetchClientOrders();
+      }
+      return updated;
     },
-    [counterOfferMut],
+    [counterOfferMut, apolloClient, refetch, refetchClientOrders],
   );
 
   const respondToCounterOffer = useCallback(
     async (orderRealtimeId: number, decision: string) => {
+      lastCounterOfferResolvedAt.current = Date.now();
       const { data: result } = await respondCounterOffMut({
         variables: { orderRealtimeId, decision },
       });
-      return (result as any)!.respondToCounterOffer;
+      const updated = (result as any)?.respondToCounterOffer;
+      if (updated) {
+        const updater = (prev: any) => {
+          if (!prev || prev.id !== orderRealtimeId) return prev;
+          return {
+            ...prev,
+            ...updated,
+            counterOfferPrice: null,
+            counterOfferHours: null,
+            counterOfferTransport: null,
+            ...(decision === 'ACCEPTED' && updated.quotedPrice != null ? {
+              quotedPrice: updated.quotedPrice,
+              quotedHours: updated.quotedHours ?? prev.quotedHours,
+              quotedTransport: updated.quotedTransport ?? prev.quotedTransport,
+            } : {}),
+          };
+        };
+        _setLocalProviderActiveOrder(updater);
+        _setLocalActiveOrder(updater);
+        try {
+          apolloClient.cache.modify({
+            id: `OrderRealTime:${orderRealtimeId}`,
+            fields: {
+              counterOfferPrice: () => null,
+              counterOfferHours: () => null,
+              counterOfferTransport: () => null,
+              ...(decision === 'ACCEPTED' && updated.quotedPrice != null ? {
+                quotedPrice: () => updated.quotedPrice,
+              } : {}),
+            },
+          });
+        } catch {}
+        refetch();
+        refetchClientOrders();
+      }
+      return updated;
     },
-    [respondCounterOffMut],
+    [respondCounterOffMut, apolloClient, refetch, refetchClientOrders],
   );
 
   return useMemo(
@@ -961,9 +1878,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       setLocalActiveOrder,
       cancellingRef,
       clientOrders,
+      providerOrders,
       providerState,
       isRealtimeActive,
       socketStatus,
+      connectionGeneration,
       providerActiveOrder,
       clientId,
       refetch,
@@ -974,6 +1893,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       acceptQuote,
       rejectQuote,
       respondRequest,
+      confirmArrival,
       startOrder,
       finishOrder,
       cancelOrder,
@@ -985,20 +1905,29 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       sendMessage,
       createProviderReview,
       createClientReview,
+      isOrderReviewed,
+      markOrderReviewed,
       requestProviderToConnect,
+      subscribe,
+      joinChat,
+      leaveChat,
       guestCreateContactRequest,
       clientCounterOffer,
       respondToCounterOffer,
+      resetOrderSession,
       socketRef,
+      setLocalProviderActiveOrder: _setLocalProviderActiveOrder,
     }),
     [
       loading,
       activeOrder,
       localActiveOrder,
       clientOrders,
+      providerOrders,
       providerState,
       isRealtimeActive,
       socketStatus,
+      connectionGeneration,
       providerActiveOrder,
       clientId,
       refetch,
@@ -1009,6 +1938,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       acceptQuote,
       rejectQuote,
       respondRequest,
+      confirmArrival,
       startOrder,
       finishOrder,
       cancelOrder,
@@ -1020,11 +1950,18 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       sendMessage,
       createProviderReview,
       createClientReview,
+      isOrderReviewed,
+      markOrderReviewed,
       requestProviderToConnect,
+      subscribe,
+      joinChat,
+      leaveChat,
       guestCreateContactRequest,
       clientCounterOffer,
       respondToCounterOffer,
-      setLocalActiveOrder,
+      resetOrderSession,
+      _setLocalActiveOrder,
+      _setLocalProviderActiveOrder,
     ],
   );
 }

@@ -20,7 +20,7 @@ import type { PaymentReturnRef } from './parsePaymentReturnUrl';
  * the authoritative order state independently of this call's outcome.
  */
 export function PaymentReturnGate() {
-  const { authResolved } = useAuth();
+  const { authResolved, refetch } = useAuth();
   const realtime = useRealtime();
   const confirmRealtimeRef = useRef(realtime.confirmPayment);
   confirmRealtimeRef.current = realtime.confirmPayment;
@@ -32,14 +32,29 @@ export function PaymentReturnGate() {
       if (ref.type === 'realtime') {
         if (__DEV__) console.log('[PAY:NAVIGATION] to=MainApp reason=realtime_payment_return');
         navigate('MainApp');
-        confirmRealtimeRef.current(ref.token).catch(() => {
-          if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${ref.token} status=CONFIRMATION_UNAVAILABLE`);
-        });
+        const paymentToken = ref.token || ref.attemptId || '';
+        if (paymentToken) {
+          confirmRealtimeRef.current(paymentToken).catch(() => {
+            if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${paymentToken} status=CONFIRMATION_UNAVAILABLE`);
+          });
+        }
+        return;
+      }
+
+      if (ref.type === 'card') {
+        if (__DEV__) console.log('[PAY:NAVIGATION] to=MainApp reason=card_registration_return');
+        refetch?.().catch(() => {});
+        navigate('MainApp');
         return;
       }
 
       if (__DEV__) console.log('[PAY:NAVIGATION] to=PaymentConfirming reason=normal_payment_return');
-      navigate('PaymentConfirming', { type: ref.type, token: ref.token });
+      navigate('PaymentConfirming', {
+        type: ref.type,
+        token: ref.token,
+        attemptId: ref.attemptId,
+        orderId: ref.orderId,
+      });
     });
 
     return () => setPaymentReturnConsumer(null);

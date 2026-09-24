@@ -42,8 +42,8 @@ describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
     });
   });
 
-  describe('Suite 6 & 24: Client PENDING Realtime & NO_SHEET_BY_DESIGN Contract', () => {
-    it('client PENDING order keeps realtime focus active without presenting a sheet (NO_SHEET_BY_DESIGN)', () => {
+  describe('Suite 6 & 24: Client PENDING Realtime Contract (Rule 2.20)', () => {
+    it('client PENDING order returns NO_SHEET_BY_DESIGN (Rule 2.20: map with radar overlay, no bottom sheet)', () => {
       const surface = deriveDesiredMapSurface({
         role: 'client',
         clientActiveOrder: { id: 101, status: 'PENDING' },
@@ -51,11 +51,11 @@ describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
 
       expect(surface).toEqual({
         kind: 'NO_SHEET_BY_DESIGN',
-        reason: 'WAITING_PROVIDER_QUOTE',
+        reason: 'client_order_pending_quote',
       });
     });
 
-    it('distinguishes NO_SHEET_BY_DESIGN from NO TARGET (categories bootstrap)', () => {
+    it('distinguishes client PENDING from NO TARGET (categories bootstrap)', () => {
       const pendingSurface = deriveDesiredMapSurface({
         role: 'client',
         clientActiveOrder: { id: 101, status: 'PENDING' },
@@ -293,6 +293,14 @@ describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
       expect(registry.categories.replaceFrom).toContain('provider_preview');
       expect(registry.provider_preview.replaceFrom).toContain('categories');
     });
+
+    it('ensures provider_preview CANNOT replace active focus_client session directly', () => {
+      expect(registry.provider_preview.replaceFrom).not.toContain('focus_client');
+    });
+
+    it('ensures focus_client CANNOT replace provider_preview directly (requires clean PRESENT flow)', () => {
+      expect(registry.focus_client.replaceFrom).not.toContain('provider_preview');
+    });
   });
 
   describe('Suite 34 & 35: Central Master State Matrix', () => {
@@ -321,7 +329,7 @@ describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
         expectedKey: 'provider_dashboard',
       },
       {
-        name: 'Client PENDING waiting quote',
+        name: 'Client PENDING waiting quote (Rule 2.20)',
         role: 'client',
         clientOrder: { id: 1, status: 'PENDING' },
         expectedKind: 'NO_SHEET_BY_DESIGN',
@@ -435,5 +443,46 @@ describe('BottomSheet State Machine & Policy Layer (Layer 1)', () => {
 
       expect(selectClientRealtimeOrder(activeLocal, terminalDomain)).toBe(activeLocal);
     });
+
+    it('selectClientRealtimeOrder prefers live socket QUOTED order over stale GraphQL PENDING order', () => {
+      const staleDomain = { id: 12, status: 'PENDING', provider: { id: 1 } };
+      const liveLocal = { id: 12, status: 'QUOTED', quotedPrice: 25000 };
+
+      const result = selectClientRealtimeOrder(liveLocal, staleDomain);
+      expect(result?.status).toBe('QUOTED');
+      expect(result?.quotedPrice).toBe(25000);
+      expect(result?.provider).toEqual({ id: 1 });
+    });
+  });
+
+  describe('Suite 39: Regression PENDING -> QUOTED Transition & focus_client Presentation', () => {
+    it('transitions smoothly from NO_SHEET_BY_DESIGN (radar) to focus_client at expanded initialIndex=1', () => {
+      // 1. When client order is PENDING, desired surface is NO_SHEET_BY_DESIGN (radar covers map)
+      const pendingSurface = deriveDesiredMapSurface({
+        role: 'client',
+        clientActiveOrder: { id: 223, status: 'PENDING' },
+      });
+      expect(pendingSurface.kind).toBe('NO_SHEET_BY_DESIGN');
+
+      // 2. When provider sends quote, status updates to QUOTED
+      const quotedSurface = deriveDesiredMapSurface({
+        role: 'client',
+        clientActiveOrder: { id: 223, status: 'QUOTED', provider: { id: 50, name: 'Mario' } },
+      });
+      expect(quotedSurface).toEqual({
+        kind: 'SHEET',
+        key: 'focus_client',
+        reason: 'client_domain_order_with_provider',
+      });
+
+      // 3. focus_client registry invariants: must start at index 1 (expanded offer), dynamic sizing enabled
+      const descriptor = registry.focus_client;
+      expect(descriptor.initialIndex).toBe(1);
+      expect(descriptor.enableDynamicSizing).toBe(true);
+      expect(descriptor.collapsible).toBe(true);
+      expect(descriptor.snapPoints).toEqual([156]);
+      expect(descriptor.allowedRoles).toContain('client');
+    });
   });
 });
+

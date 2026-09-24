@@ -40,6 +40,7 @@ export interface RouteProgress {
   remainingDistance: number; // metros hasta el destino
   routeBearing: number; // rumbo del segmento actual [0, 360)
   lookAheadBearing: number; // rumbo ponderado en la ventana de anticipación
+  closestPoint?: RouteCoordinate;
 }
 
 export interface TurnAnalysis {
@@ -59,6 +60,12 @@ export interface SmartCameraTarget {
   altitude: number;
   duration: number;
   reason: string;
+  rawPosition?: RouteCoordinate;
+  filteredPosition?: RouteCoordinate;
+  snappedPosition?: RouteCoordinate | null;
+  navigationPosition?: RouteCoordinate;
+  routeProgress?: RouteProgress | null;
+  turn?: TurnAnalysis | null;
 }
 
 export interface NavigationEngineMetrics {
@@ -74,8 +81,8 @@ export interface NavigationEngineMetrics {
 }
 
 export const SMART_NAV_CONSTANTS = {
-  CANONICAL_PITCH: 40, // 40° para perspectiva vehicular óptima
-  DEFAULT_ALTITUDE: 350,
+  CANONICAL_PITCH: 65, // 65° para máxima perspectiva vehicular rasante
+  DEFAULT_ALTITUDE: 240,
   BASE_ZOOM: 18.0,
   MIN_ZOOM: 15.8,
   MAX_ZOOM: 18.2,

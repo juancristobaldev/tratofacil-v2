@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { RatingScreen } from './RatingScreen';
 
 const mockNavigate = jest.fn();
+const mockReplace = jest.fn();
 const mockReset = jest.fn();
 const mockCreateProviderReview = jest.fn();
 const mockCreateClientReview = jest.fn();
@@ -20,6 +21,7 @@ let mockRouteParams: any = {
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({
     navigate: mockNavigate,
+    replace: mockReplace,
     reset: mockReset,
   }),
   useRoute: () => ({
@@ -102,7 +104,7 @@ describe('RatingScreen component', () => {
         orderRealtimeId: 101,
         providerId: 202,
       });
-      expect(mockNavigate).toHaveBeenCalledWith('ServiceSuccess');
+      expect(mockReplace).toHaveBeenCalledWith('ServiceSuccess');
     });
   });
 
@@ -130,14 +132,14 @@ describe('RatingScreen component', () => {
         orderRealtimeId: 101,
         clientId: 303,
       });
-      expect(mockNavigate).toHaveBeenCalledWith('ServiceSuccess');
+      expect(mockReplace).toHaveBeenCalledWith('ServiceSuccess');
     });
   });
 
   it('COMPONENT: submits job review for worker and resets navigation to MainApp', async () => {
     mockRouteParams = {
       role: 'client',
-      jobId: 55,
+      orderJobId: 55,
       workerId: 66,
       targetUser: { name: 'Pedro Electricista' },
       amount: 40000,
@@ -155,7 +157,7 @@ describe('RatingScreen component', () => {
       expect(mockReviewJob).toHaveBeenCalledWith({
         rating: 5,
         comment: 'Trabajo impecable',
-        jobId: 55,
+        orderJobId: 55,
         workerId: 66,
       });
       expect(mockReset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'MainApp' }] });

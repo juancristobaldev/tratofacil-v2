@@ -132,7 +132,7 @@ describe('Smart Navigation Engine — Real-World Field Simulation & Validation S
       });
 
       expect(target).not.toBeNull();
-      expect(target!.pitch).toBe(40);
+      expect(target!.pitch).toBe(65);
       expect(target!.heading).toBeCloseTo(roadHeading, 0);
       expect(target!.zoom).toBeGreaterThanOrEqual(17.5);
     });
@@ -217,8 +217,8 @@ describe('Smart Navigation Engine — Real-World Field Simulation & Validation S
     // Heading blends towards South (180°)
     expect(target!.heading).toBeGreaterThan(95);
     expect(target!.heading).toBeLessThan(180);
-    // Pitch is invariant at 40°
-    expect(target!.pitch).toBe(40);
+    // Pitch is invariant at 65°
+    expect(target!.pitch).toBe(65);
   });
 
   // =========================================================================
@@ -289,7 +289,7 @@ describe('Smart Navigation Engine — Real-World Field Simulation & Validation S
 
     expect(t2).not.toBeNull();
     expect(t2!.heading).toBeGreaterThan(0);
-    expect(t2!.pitch).toBe(40);
+    expect(t2!.pitch).toBe(65);
   });
 
   // =========================================================================
@@ -315,7 +315,7 @@ describe('Smart Navigation Engine — Real-World Field Simulation & Validation S
 
     expect(target).not.toBeNull();
     expect(target!.zoom).toBeLessThanOrEqual(16.5); // Highway zoom
-    expect(target!.pitch).toBe(40);
+    expect(target!.pitch).toBe(65);
   });
 
   // =========================================================================

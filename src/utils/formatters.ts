@@ -18,6 +18,7 @@ export const formatDate = (date: string) => {
 export const formatPhoneDisplay = (phone: string) => {
   let clean = phone.replace(/\D/g, '');
   if (clean.length === 0) return '';
+  if (clean === '56' || clean === '5') return '';
   
   if (clean.startsWith('56')) clean = clean.slice(2);
   if (clean.startsWith('9')) clean = clean.slice(1);
@@ -28,11 +29,30 @@ export const formatPhoneDisplay = (phone: string) => {
   return res;
 };
 
-export const parsePhoneValue = (phone: string) => {
+export const formatPhoneNational = (phone: string) => {
   let clean = phone.replace(/\D/g, '');
+  if (clean.length === 0) return '';
+  if (clean === '56' || clean === '5') return '';
+  
   if (clean.startsWith('56')) clean = clean.slice(2);
   if (clean.startsWith('9')) clean = clean.slice(1);
   
+  let res = '9';
+  if (clean.length > 0) res += ` ${clean.slice(0, 4)}`;
+  if (clean.length > 4) res += ` ${clean.slice(4, 8)}`;
+  return res;
+};
+
+export const parsePhoneValue = (phone: string) => {
+  let clean = phone.replace(/\D/g, '');
   if (clean.length === 0) return '';
+  if (clean === '56' || clean === '5') return '';
+
+  if (clean === '9' || clean === '569') return '+569';
+
+  if (clean.startsWith('56')) clean = clean.slice(2);
+  if (clean.startsWith('9')) clean = clean.slice(1);
+  
+  if (clean.length === 0) return '+569';
   return `+569${clean.slice(0, 8)}`;
 };

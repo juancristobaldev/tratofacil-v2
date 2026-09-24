@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch, Image, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
-import { Button, Input, Icon, Modal } from '../../components/ui';
+import { Button, Input, Icon, Modal, RegionCitySelect } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { uploadImage } from '../../utils/uploadImage';
 import { getImageUrl } from '../../utils/imageUrl';
-import { UBICACIONES_CHILE, containsPhoneNumber } from '../../utils/chile';
+import { containsPhoneNumber } from '../../utils/chile';
 import { MARKETPLACE_LIMITS, getProductPriceBreakdown } from '../../utils/comission';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 import { FIND_ALL_CATEGORIES, PRODUCTS_COUNT_BY_USER } from '../../graphql/operations/products';
 import { useQuery } from '@apollo/client/react';
 
@@ -32,6 +33,10 @@ export const PublishProductScreen: React.FC = () => {
   const [price, setPrice] = useState('');
   const [stock, setStock] = useState('1');
 
+  const descInputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToFocusedField = () => scrollRef.current?.scrollToEnd({ animated: true });
+
   const [selectedRegion, setSelectedRegion] = useState('');
   const [city, setCity] = useState('');
   const [shippingPayer, setShippingPayer] = useState<'Comprador' | 'Vendedor'>('Comprador');
@@ -41,7 +46,7 @@ export const PublishProductScreen: React.FC = () => {
   const [parentCatId, setParentCatId] = useState<number | ''>('');
   const [categoryProductId, setCategoryProductId] = useState<number | ''>('');
 
-  const [activePicker, setActivePicker] = useState<'parent' | 'child' | 'region' | 'city' | null>(null);
+  const [activePicker, setActivePicker] = useState<'parent' | 'child' | null>(null);
 
   const { createProduct, createLoading: loading } = useMarketplace();
 
@@ -50,7 +55,7 @@ export const PublishProductScreen: React.FC = () => {
 
   const marketplacePlan = useMemo(() => {
     const orders = user?.marketplacePlanOrders;
-    if (orders && orders.length && orders[0].planActive) return orders[0].plan;
+    if (orders && orders.length && orders[0]?.planActive) return orders[0]?.plan;
     return 'FREE';
   }, [user]);
 
@@ -73,11 +78,6 @@ export const PublishProductScreen: React.FC = () => {
 
   const selectedCategoryObj = categories.find((c: any) => c.id === categoryProductId);
   const categoryShippingDisabled = selectedCategoryObj?.shippingDisabled ?? false;
-
-  const ciudadesDisponibles = useMemo(() => {
-    const regionObj = UBICACIONES_CHILE.find((r) => r.region === selectedRegion);
-    return regionObj ? regionObj.ciudades : [];
-  }, [selectedRegion]);
 
   const breakdown = getProductPriceBreakdown(Number(price) || 0);
 
@@ -204,24 +204,24 @@ export const PublishProductScreen: React.FC = () => {
         return rootCategories.map((c: any) => ({ value: String(c.id), label: c.name }));
       case 'child':
         return availableChildren.map((c: any) => ({ value: String(c.id), label: c.name }));
-      case 'region':
-        return UBICACIONES_CHILE.map((r) => ({ value: r.region, label: r.region }));
-      case 'city':
-        return ciudadesDisponibles.map((c) => ({ value: c, label: c }));
       default:
         return [];
     }
   })();
 
-  const pickerTitle = { parent: 'Categoría', child: 'Subcategoría', region: 'Región', city: 'Ciudad / Comuna' }[activePicker ?? 'parent'];
+  const pickerTitle = { parent: 'Categoría', child: 'Subcategoría' }[activePicker ?? 'parent'];
 
   const parentLabel = rootCategories.find((c: any) => c.id === parentCatId)?.name || '';
   const childLabel = availableChildren.find((c: any) => c.id === categoryProductId)?.name || '';
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(true, insets.top)}
+      >
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
 
           {isAtPublicationLimit && (
             <View style={styles.limitBanner}>
@@ -283,11 +283,30 @@ export const PublishProductScreen: React.FC = () => {
               </View>
             )}
 
-            <Input label="Título del anuncio *" placeholder="Ej: Cámara Sony A7III con lente..." value={title} onChangeText={setTitle} containerStyle={styles.inputGroup} />
+            <Input
+              label="Título del anuncio *"
+              placeholder="Ej: Cámara Sony A7III con lente..."
+              value={title}
+              onChangeText={setTitle}
+              returnKeyType="next"
+              onSubmitEditing={() => descInputRef.current?.focus()}
+              containerStyle={styles.inputGroup}
+            />
 
             <View style={styles.inputGroup}>
               <Text style={styles.fieldLabel}>Descripción detallada</Text>
-              <TextInput style={[styles.textAreaInput]} placeholder="Escribe todo lo que el comprador necesita saber: estado, accesorios, etc." placeholderTextColor={TOKENS.colors.textMuted} multiline numberOfLines={4} maxLength={200} value={desc} onChangeText={setDesc} />
+              <TextInput
+                ref={descInputRef}
+                style={[styles.textAreaInput]}
+                placeholder="Escribe todo lo que el comprador necesita saber: estado, accesorios, etc."
+                placeholderTextColor={TOKENS.colors.textMuted}
+                multiline
+                numberOfLines={4}
+                maxLength={200}
+                value={desc}
+                onChangeText={setDesc}
+                onFocus={scrollToFocusedField}
+              />
             </View>
           </View>
 
@@ -298,9 +317,9 @@ export const PublishProductScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Precio y Disponibilidad</Text>
             </View>
 
-            <Input label="¿Cuánto quieres recibir? ($) *" placeholder="0" keyboardType="numeric" value={price} onChangeText={setPrice} leftIcon="DollarSign" helperText="Este es el monto libre que recibirás por cada venta." containerStyle={styles.inputGroup} />
+            <Input label="¿Cuánto quieres recibir? ($) *" placeholder="0" keyboardType="numeric" value={price} onChangeText={setPrice} onFocus={scrollToFocusedField} leftIcon="DollarSign" helperText="Este es el monto libre que recibirás por cada venta." containerStyle={styles.inputGroup} />
 
-            <Input label="Stock disponible *" placeholder="Cantidad" keyboardType="numeric" value={stock} onChangeText={setStock} containerStyle={styles.inputGroup} />
+            <Input label="Stock disponible *" placeholder="Cantidad" keyboardType="numeric" value={stock} onChangeText={setStock} onFocus={scrollToFocusedField} containerStyle={styles.inputGroup} />
 
             <View style={styles.breakdownBox}>
               <Text style={styles.breakdownTitle}>RESUMEN DE PUBLICACIÓN</Text>
@@ -336,8 +355,17 @@ export const PublishProductScreen: React.FC = () => {
 
             {!shippingDisabled && (
               <>
-                <SelectField label="Región del producto *" value={selectedRegion} placeholder="Selecciona una región" onPress={() => setActivePicker('region')} containerStyle={styles.inputGroup} />
-                <SelectField label="Ciudad / Comuna *" value={city} placeholder={!selectedRegion ? 'Primero elige región' : 'Selecciona tu ciudad'} disabled={!selectedRegion} onPress={() => setActivePicker('city')} containerStyle={styles.inputGroup} />
+                <RegionCitySelect
+                  region={selectedRegion}
+                  city={city}
+                  onRegionChange={setSelectedRegion}
+                  onCityChange={setCity}
+                  regionLabel="Región del producto *"
+                  cityLabel="Ciudad / Comuna *"
+                  regionPlaceholder="Selecciona una región"
+                  cityPlaceholder="Selecciona tu ciudad o comuna"
+                  testIDPrefix="publish-product"
+                />
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.fieldLabel}>¿Quién paga el envío?</Text>
@@ -350,21 +378,25 @@ export const PublishProductScreen: React.FC = () => {
                   </View>
                 </View>
 
-                <Input label="Días para despachar" keyboardType="numeric" value={maxDispatchDays} onChangeText={setMaxDispatchDays} helperText="Días hábiles máximos para entregar al courier." containerStyle={styles.inputGroup} />
+                <Input label="Días para despachar" keyboardType="numeric" value={maxDispatchDays} onChangeText={setMaxDispatchDays} onFocus={scrollToFocusedField} helperText="Días hábiles máximos para entregar al courier." containerStyle={styles.inputGroup} />
               </>
             )}
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      {/* FIXED FOOTER */}
-      <View style={[styles.fixedFooter, { paddingBottom: insets.bottom + TOKENS.spacing.md }]}>
-        <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
-        <View style={styles.footerButtons}>
-          <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
-          <Button title={loading ? 'Publicando...' : 'Publicar Ahora'} onPress={handlePublish} loading={loading} disabled={loading || !title || !price || categoryProductId === '' || (isAtPublicationLimit) || (!shippingDisabled && !city)} style={{ flex: 2 }} />
+        {/* FIXED FOOTER INSIDE KEYBOARD AVOIDING VIEW */}
+        <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, TOKENS.spacing.sm) }]}>
+          <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
+          <Button
+            title={loading ? 'Publicando...' : 'Publicar Ahora'}
+            onPress={handlePublish}
+            loading={loading}
+            disabled={loading || !title || !price || categoryProductId === '' || (isAtPublicationLimit) || (!shippingDisabled && !city)}
+            size="lg"
+            fullWidth
+          />
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* PICKER MODAL */}
       <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
@@ -379,13 +411,6 @@ export const PublishProductScreen: React.FC = () => {
                   break;
                 case 'child':
                   setCategoryProductId(Number(opt.value));
-                  break;
-                case 'region':
-                  setSelectedRegion(opt.value);
-                  setCity('');
-                  break;
-                case 'city':
-                  setCity(opt.value);
                   break;
               }
               setActivePicker(null);
@@ -423,7 +448,7 @@ const SelectField: React.FC<SelectFieldProps> = ({ label, value, placeholder, di
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 120 },
+  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 160 },
   section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100, marginBottom: TOKENS.spacing.md },
   sectionTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
@@ -466,9 +491,8 @@ const styles = StyleSheet.create({
   payerText: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle },
   payerTextActive: { color: TOKENS.colors.brand600 },
 
-  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
+  fixedFooter: { backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
-  footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
 
   selectField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput, borderWidth: 1, borderColor: TOKENS.colors.surface200, paddingHorizontal: TOKENS.spacing.md, height: 52, ...TOKENS.shadows.soft },
   selectFieldDisabled: { backgroundColor: TOKENS.colors.surface50, borderColor: TOKENS.colors.surface100 },

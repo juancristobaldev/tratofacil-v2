@@ -210,7 +210,7 @@ const AdModal = ({ isOpen = false, onClose = () => {}, data = null }: { isOpen?:
               </>
             ) : (
               <View style={modalStyles.noImage}>
-                <ImageIcon size={48} color="#94a3b8" />
+                <ImageIcon size={48} color="#CBD5E1" />
                 <Text style={modalStyles.noImageText}>Sin imagen</Text>
               </View>
             )}
@@ -473,7 +473,7 @@ const modalStyles = StyleSheet.create({
     opacity: 0.7,
   },
   noImageText: {
-    color: TOKENS.colors.textMuted,
+    color: TOKENS.colors.surface300,
     marginTop: 8,
     fontWeight: '500',
   },

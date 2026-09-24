@@ -4,6 +4,12 @@ import {
   isUsableRoutingCoordinate,
   sanitizeRouteCoordinates,
   clearClientRouteCache,
+  computeGeodesicDistance,
+  isSensibleRoute,
+  MIN_ROUTING_PROXIMITY_METERS,
+  MIN_RENDERABLE_POLYLINE_METERS,
+  SHORT_RANGE_GEODESIC_THRESHOLD_METERS,
+  MAX_SHORT_RANGE_DETOUR_RATIO,
 } from './directions';
 
 describe('Directions Subsystem (Mobile Frontend)', () => {
@@ -222,6 +228,59 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
       );
       expect(res2).not.toBeNull();
       expect((globalThis as any).fetch).toHaveBeenCalledTimes(1); // No new network call
+    });
+
+    it('should suppress directions when origin and destination are in the same house (<= 30m)', async () => {
+      // Coordenadas a ~11 metros de distancia
+      const origin = { latitude: -33.44890, longitude: -70.66930 };
+      const dest = { latitude: -33.44899, longitude: -70.66930 };
+
+      const dist = computeGeodesicDistance(origin, dest);
+      expect(dist).toBeLessThanOrEqual(MIN_ROUTING_PROXIMITY_METERS);
+
+      const result = await getDirections(origin, dest);
+      expect(result).toBeNull();
+      expect((globalThis as any).fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Intelligent Route Sanity & Detour Filtering (isSensibleRoute)', () => {
+    const origin = { latitude: -33.4489, longitude: -70.6693 };
+    const destNearby = { latitude: -33.4493, longitude: -70.6693 }; // ~44m
+
+    it('should reject routes where distance is less than MIN_RENDERABLE_POLYLINE_METERS (35m)', () => {
+      const mockResult: any = {
+        coordinates: [origin, { latitude: -33.4490, longitude: -70.6693 }],
+        distanceMeters: 20, // menor a 35m
+      };
+      expect(isSensibleRoute(mockResult, origin, { latitude: -33.4494, longitude: -70.6693 })).toBe(false);
+    });
+
+    it('should reject routes where origin and destination are in the same house (<= 30m)', () => {
+      const inHouseDest = { latitude: -33.4490, longitude: -70.6693 }; // ~11m
+      const mockResult: any = {
+        coordinates: [origin, inHouseDest],
+        distanceMeters: 50,
+      };
+      expect(isSensibleRoute(mockResult, origin, inHouseDest)).toBe(false);
+    });
+
+    it('should reject absurd detour loops around blocks for short distances (detourRatio > 3.5)', () => {
+      // 44 metros en línea recta, pero ruta vial devuelta de 650 metros (vuelta a la manzana)
+      const mockLoopResult: any = {
+        coordinates: [origin, { latitude: -33.450, longitude: -70.670 }, destNearby],
+        distanceMeters: 650,
+      };
+      expect(isSensibleRoute(mockLoopResult, origin, destNearby)).toBe(false);
+    });
+
+    it('should accept coherent, realistic driving routes', () => {
+      const destFar = { latitude: -33.4589, longitude: -70.6793 }; // ~1.4 km
+      const mockGoodResult: any = {
+        coordinates: [origin, { latitude: -33.4530, longitude: -70.6740 }, destFar],
+        distanceMeters: 1600,
+      };
+      expect(isSensibleRoute(mockGoodResult, origin, destFar)).toBe(true);
     });
   });
 });

@@ -255,3 +255,15 @@ export const REGISTER_PUSH_TOKEN_MUTATION = gql`
   }
 `;
 
+export const UNREGISTER_PUSH_TOKEN_MUTATION = gql`
+  mutation UnregisterPushToken($token: String!) {
+    unregisterPushToken(token: $token)
+  }
+`;
+
+export const DELETE_ACCOUNT_MUTATION = gql`
+  mutation DeleteAccount {
+    deleteAccount
+  }
+`;
+

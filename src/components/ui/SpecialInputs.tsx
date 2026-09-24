@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { TOKENS } from '../../theme';
 import { Icon } from './Icon';
-import { formatPhoneDisplay, parsePhoneValue } from '../../utils/formatters';
+import { formatPhoneNational, parsePhoneValue } from '../../utils/formatters';
 
 // --- PHONE INPUT ---
 export interface PhoneInputProps {
@@ -23,9 +23,11 @@ export interface PhoneInputProps {
   containerStyle?: StyleProp<ViewStyle>;
   placeholder?: string;
   testID?: string;
+  returnKeyType?: TextInput['props']['returnKeyType'];
+  onSubmitEditing?: TextInput['props']['onSubmitEditing'];
 }
 
-export const PhoneInput: React.FC<PhoneInputProps> = ({
+export const PhoneInput = React.forwardRef<TextInput, PhoneInputProps>(({
   label,
   value,
   onChangeText,
@@ -35,7 +37,9 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
   containerStyle,
   placeholder = '9 1234 5678',
   testID,
-}) => {
+  returnKeyType,
+  onSubmitEditing,
+}, ref) => {
   const [isFocused, setIsFocused] = useState(false);
 
   const handleChange = (text: string) => {
@@ -57,14 +61,17 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
           <Text style={styles.countryPrefixText}>{countryCode}</Text>
         </View>
         <TextInput
+          ref={ref}
           testID={testID}
-          value={formatPhoneDisplay(value)}
+          value={formatPhoneNational(value)}
           onChangeText={handleChange}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={placeholder}
           placeholderTextColor={TOKENS.colors.textMuted}
           keyboardType="phone-pad"
+          returnKeyType={returnKeyType}
+          onSubmitEditing={onSubmitEditing}
           style={styles.phoneTextInput}
         />
       </View>
@@ -72,7 +79,9 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
       {!error && helperText && <Text style={styles.helperText}>{helperText}</Text>}
     </View>
   );
-};
+});
+
+PhoneInput.displayName = 'PhoneInput';
 
 // --- PRICE / HERO AMOUNT INPUT ---
 export interface PriceInputProps {
@@ -83,9 +92,11 @@ export interface PriceInputProps {
   editable?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
   testID?: string;
+  returnKeyType?: TextInput['props']['returnKeyType'];
+  onSubmitEditing?: TextInput['props']['onSubmitEditing'];
 }
 
-export const PriceInput: React.FC<PriceInputProps> = ({
+export const PriceInput = React.forwardRef<TextInput, PriceInputProps>(({
   label = 'MONTO A COBRAR',
   value,
   onChangeText,
@@ -93,7 +104,9 @@ export const PriceInput: React.FC<PriceInputProps> = ({
   editable = true,
   containerStyle,
   testID,
-}) => {
+  returnKeyType,
+  onSubmitEditing,
+}, ref) => {
   const displayValue = typeof value === 'number' ? value.toLocaleString('es-CL') : String(value);
 
   return (
@@ -103,10 +116,13 @@ export const PriceInput: React.FC<PriceInputProps> = ({
         <Text style={styles.priceSymbol}>{currencySymbol}</Text>
         {editable ? (
           <TextInput
+            ref={ref}
             testID={testID}
             value={displayValue}
             onChangeText={onChangeText}
             keyboardType="numeric"
+            returnKeyType={returnKeyType}
+            onSubmitEditing={onSubmitEditing}
             style={styles.priceTextInput}
             placeholder="0"
             placeholderTextColor={TOKENS.colors.textMuted}
@@ -117,7 +133,9 @@ export const PriceInput: React.FC<PriceInputProps> = ({
       </View>
     </View>
   );
-};
+});
+
+PriceInput.displayName = 'PriceInput';
 
 // --- SELECT / PICKER TRIGGER ---
 export interface SelectPickerTriggerProps {

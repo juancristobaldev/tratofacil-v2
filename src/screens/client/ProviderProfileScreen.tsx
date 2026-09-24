@@ -7,20 +7,23 @@ import {
   ActivityIndicator,
   TextInput,
   TouchableOpacity,
-  Dimensions,
   Image,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Badge, Button, ErrorState, StatsOverviewCard, ReviewCard, RatingDistribution, SegmentedTabs } from '../../components';
+import { Icon, Avatar, ErrorState, StatsOverviewCard, ReviewCard, RatingDistribution, SegmentedTabs } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useProfile } from '../../hooks/useProfile';
 import { useNotification } from '../../context/NotificationContext';
 import { getImageUrl } from '../../utils/imageUrl';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
+import { reverseGeocode } from '../../utils/geocode';
 
 type TabType = 'servicios' | 'sobre_mi' | 'resenas';
 
@@ -33,19 +36,22 @@ export const ProviderProfileScreen: React.FC = () => {
   const { createContactRequest } = useRealtime();
   const { showNotification } = useNotification();
   const { providerId } = route.params || {};
+  const parsedProviderId = providerId ? parseInt(String(providerId), 10) : undefined;
 
   const [activeTab, setActiveTab] = useState<TabType>('servicios');
   const [description, setDescription] = useState('¡Necesito tu servicio ahora!');
   const [submitting, setSubmitting] = useState(false);
   const [selectedServiceIndex, setSelectedServiceIndex] = useState(0);
   const [activePhotoModalIndex, setActivePhotoModalIndex] = useState<number | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   const {
     publicProfile: profileData,
     publicProfileLoading: loading,
     publicProfileError: error,
+    publicProfileFetched,
     fetchPublicProfile,
-  } = useProfile();
+  } = useProfile(parsedProviderId);
 
   const renderCountRef = useRef(0);
   if (__DEV__) {
@@ -54,8 +60,8 @@ export const ProviderProfileScreen: React.FC = () => {
   }
 
   useEffect(() => {
-    if (providerId) fetchPublicProfile(parseInt(providerId, 10));
-  }, [providerId, fetchPublicProfile]);
+    if (parsedProviderId) fetchPublicProfile(parsedProviderId);
+  }, [parsedProviderId, fetchPublicProfile]);
 
   const provider = useMemo(() => {
     if (profileData?.provider) {
@@ -78,41 +84,14 @@ export const ProviderProfileScreen: React.FC = () => {
 
       // Galería de fotos del proveedor (casos de éxito / trabajos realizados / portafolio)
       const rawGallery = p.portfolio || (p as any).gallery || (p as any).workImages || [];
-      const defaultPhotos = [
-        {
-          uri: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80',
-          title: 'Mantenimiento General',
-          description: 'Trabajo profesional garantizado',
-        },
-        {
-          uri: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?auto=format&fit=crop&w=800&q=80',
-          title: 'Instalación Especializada',
-          description: 'Seguridad y certificación',
-        },
-        {
-          uri: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=800&q=80',
-          title: 'Reparación y Diagnóstico',
-          description: 'Materiales de alta durabilidad',
-        },
-        {
-          uri: 'https://images.unsplash.com/photo-1607472586893-edb57bdc0e39?auto=format&fit=crop&w=800&q=80',
-          title: 'Terminaciones',
-          description: 'Acabados de calidad',
-        },
-        {
-          uri: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?auto=format&fit=crop&w=800&q=80',
-          title: 'Servicio en Terreno',
-          description: 'Atención puntual y confiable',
-        },
-      ];
-      const galleryItems = rawGallery.length > 0
-        ? rawGallery.map((item: any) => ({
-            id: item?.id,
-            uri: getImageUrl(item?.image?.cdnUrl || item?.imageUrl || item?.cdnUrl || item?.url || item),
-            title: item?.title || null,
-            description: item?.description || null,
-          }))
-        : defaultPhotos;
+      const galleryItems = rawGallery
+        .map((item: any) => ({
+          id: item?.id,
+          uri: getImageUrl(item?.image?.cdnUrl || item?.imageUrl || item?.cdnUrl || item?.url || item),
+          title: item?.title || null,
+          description: item?.description || null,
+        }))
+        .filter((item: any) => Boolean(item.uri));
       const gallery = galleryItems.map((g: any) => g.uri);
 
       // Monto acordado/aceptado si proviene de orden previa o parámetro
@@ -152,8 +131,10 @@ export const ProviderProfileScreen: React.FC = () => {
     return null;
   }, [profileData, selectedServiceIndex, route.params?.acceptedPrice]);
 
+  const submittingRef = useRef(false);
+
   const handleBooking = async () => {
-    if (!provider) return;
+    if (!provider || submitting || submittingRef.current) return;
 
     if (!isAuthenticated) {
       navigation.navigate('GuestCheckout', { provider, description: description.trim() });
@@ -170,23 +151,36 @@ export const ProviderProfileScreen: React.FC = () => {
       return;
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
+      let resolvedAddress: string | undefined = undefined;
+      try {
+        const addr = await reverseGeocode(location.coords.latitude, location.coords.longitude);
+        if (addr) resolvedAddress = addr;
+      } catch {}
+
       await createContactRequest({
         serviceProviderId: Number(provider.serviceProviderId),
         clientDescription: description.trim(),
         clientLat: location.coords.latitude,
         clientLng: location.coords.longitude,
+        clientAddress: resolvedAddress,
       });
       showNotification({ title: 'Solicitud enviada', message: `Espera la oferta de ${provider.name}`, type: 'success' });
-      navigation.navigate('MainApp', { screen: 'Home' });
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('MainApp', { screen: 'Home' });
+      }
     } catch {
+      submittingRef.current = false;
+      setSubmitting(false);
       showNotification({ title: 'Error', message: 'No se pudo enviar la solicitud.', type: 'error' });
     }
-    setSubmitting(false);
   };
 
-  if (loading) {
+  if (loading || (!profileData && !error && !publicProfileFetched && parsedProviderId)) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={TOKENS.colors.brand500} />
@@ -197,17 +191,33 @@ export const ProviderProfileScreen: React.FC = () => {
   if (error || !provider) {
     return (
       <View style={styles.center}>
-        <ErrorState message="No se pudo cargar el perfil del profesional." onRetry={() => navigation.goBack()} />
+        <ErrorState
+          message="No se pudo cargar el perfil del profesional."
+          onRetry={() => {
+            if (parsedProviderId) {
+              fetchPublicProfile(parsedProviderId);
+            } else {
+              navigation.goBack();
+            }
+          }}
+        />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 96 }]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(true, insets.top)}
       >
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[styles.scrollBody, { paddingBottom: Math.max(insets.bottom, 24) + 100 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* HERO COVER & AVATAR */}
         <View style={styles.heroWrapper}>
           <View style={styles.coverHeader}>
@@ -273,9 +283,9 @@ export const ProviderProfileScreen: React.FC = () => {
         <View style={styles.tabsContainer}>
           <SegmentedTabs
             tabs={[
-              { key: 'servicios' as const, label: 'Servicios' },
-              { key: 'sobre_mi' as const, label: 'Sobre Mí' },
-              { key: 'resenas' as const, label: 'Reseñas' },
+              { key: 'servicios' as const, label: 'Servicios', icon: 'Wrench' },
+              { key: 'sobre_mi' as const, label: 'Sobre Mí', icon: 'User' },
+              { key: 'resenas' as const, label: 'Reseñas', icon: 'Star', count: provider.reviewsCount > 0 ? provider.reviewsCount : undefined },
             ]}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -364,6 +374,7 @@ export const ProviderProfileScreen: React.FC = () => {
                 placeholderTextColor={TOKENS.colors.textMuted}
                 value={description}
                 onChangeText={setDescription}
+                onFocus={() => scrollRef.current?.scrollToEnd({ animated: true })}
                 multiline
                 style={styles.requirementInput}
               />
@@ -380,34 +391,49 @@ export const ProviderProfileScreen: React.FC = () => {
               <Text style={styles.aboutText}>{provider.description}</Text>
             </View>
 
-            {/* Galería de 5 Fotos (Punto 14) */}
+            {/* Galería de Trabajos / Casos de Éxito */}
             <View style={styles.galleryCard}>
               <View style={styles.galleryHeaderRow}>
                 <Text style={styles.sectionHeaderTitle}>Galería de Trabajos</Text>
-                <View style={styles.galleryCountBadge}>
-                  <Icon name="Camera" size={13} color={TOKENS.colors.brand700} />
-                  <Text style={styles.galleryCountText}>{provider.gallery.length} fotos</Text>
-                </View>
+                {provider.gallery.length > 0 && (
+                  <View style={styles.galleryCountBadge}>
+                    <Icon name="Camera" size={13} color={TOKENS.colors.brand700} />
+                    <Text style={styles.galleryCountText}>
+                      {provider.gallery.length} {provider.gallery.length === 1 ? 'foto' : 'fotos'}
+                    </Text>
+                  </View>
+                )}
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.galleryScroll}
-              >
-                {provider.gallery.map((imgUri: string, idx: number) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.galleryThumbCard}
-                    activeOpacity={0.85}
-                    onPress={() => setActivePhotoModalIndex(idx)}
-                  >
-                    <Image source={{ uri: imgUri }} style={styles.galleryThumbImg} />
-                    <View style={styles.galleryThumbBadge}>
-                      <Text style={styles.galleryThumbBadgeText}>{idx + 1}/5</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {provider.gallery.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.galleryScroll}
+                >
+                  {provider.gallery.map((imgUri: string, idx: number) => (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.galleryThumbCard}
+                      activeOpacity={0.85}
+                      onPress={() => setActivePhotoModalIndex(idx)}
+                    >
+                      <Image source={{ uri: imgUri }} style={styles.galleryThumbImg} />
+                      <View style={styles.galleryThumbBadge}>
+                        <Text style={styles.galleryThumbBadgeText}>
+                          {idx + 1}/{provider.gallery.length}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              ) : (
+                <View style={styles.emptyGalleryCard}>
+                  <Icon name="Camera" size={24} color={TOKENS.colors.textMuted} />
+                  <Text style={styles.emptyGalleryText}>
+                    Sin fotografías de trabajos registradas actualmente.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Validaciones de Confianza y Certificados */}
@@ -505,6 +531,7 @@ export const ProviderProfileScreen: React.FC = () => {
           <Icon name="ArrowRight" size={20} color={TOKENS.colors.white} />
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Lightbox Modal para Galería de Fotos (Punto 14) */}
       <Modal
@@ -574,6 +601,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
+  },
+  keyboardView: {
+    flex: 1,
   },
   center: {
     flex: 1,
@@ -981,6 +1011,19 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
     flex: 1,
   },
+  emptyGalleryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.surface100,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  emptyGalleryText: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    flex: 1,
+  },
 
   // RESEÑAS
   ratingSummaryCard: {
@@ -1338,4 +1381,3 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 });
-

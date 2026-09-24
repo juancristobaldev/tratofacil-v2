@@ -19,12 +19,12 @@ export function calculateCameraLookAhead(
   turnAnalysis: TurnAnalysis | null,
   routeCoords?: RouteCoordinate[] | null,
 ): LookAheadResult {
-  // 1. Distancia base de proyección según velocidad (m/s)
-  // 0 km/h (0 m/s) -> 6m
-  // 36 km/h (10 m/s) -> 16m
-  // 72 km/h (20 m/s) -> 28m
-  // 108 km/h (30 m/s) -> 40m
-  let baseDistance = 6 + Math.min(36, speedMps * 1.15);
+  // 1. Distancia base de proyección según velocidad (m/s) para perspectiva 65°
+  // 0 km/h (0 m/s) -> 14m
+  // 36 km/h (10 m/s) -> 27.5m
+  // 72 km/h (20 m/s) -> 41m
+  // 108 km/h (30 m/s) -> 55m
+  let baseDistance = 14 + Math.min(41, speedMps * 1.35);
 
   // 2. Si hay un giro inminente cercano (< 30m), contraer la proyección para mantener el cruce centrado
   if (turnAnalysis && turnAnalysis.turnDetected && turnAnalysis.distanceToTurn < 30) {

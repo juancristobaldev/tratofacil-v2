@@ -140,6 +140,29 @@ export function extractNetworkErrorMessage(netErr: any): string {
   return 'Error de conexión con el servidor';
 }
 
+function serializeErrorForDebug(err: any): any {
+  if (!err) return null;
+  if (typeof err === 'string') return err;
+  if (Array.isArray(err)) return err.map(serializeErrorForDebug);
+  if (err instanceof Error || (typeof err === 'object' && err !== null)) {
+    const plain: Record<string, any> = {};
+    const propNames = Object.getOwnPropertyNames(err);
+    for (const key of propNames) {
+      plain[key] = (err as any)[key];
+    }
+    if (err.result) plain.result = err.result;
+    if (err.statusCode) plain.statusCode = err.statusCode;
+    if (err.response) {
+      plain.response = {
+        status: err.response.status,
+        statusText: err.response.statusText,
+      };
+    }
+    return plain;
+  }
+  return err;
+}
+
 export function extractApolloErrorMessage(
   graphQLErrors?: readonly any[] | null,
   networkError?: any,
@@ -170,7 +193,11 @@ export const errorLink = new ErrorLink(({ graphQLErrors, networkError, operation
 
   if (graphQLErrors) {
     const authError = graphQLErrors.find(
-      (e: any) => e.extensions?.code === 'UNAUTHENTICATED' || e.message?.includes('Not Authenticated'),
+      (e: any) =>
+        e.extensions?.code === 'UNAUTHENTICATED' ||
+        e.extensions?.code === 'FORBIDDEN' ||
+        e.message?.includes('Not Authenticated') ||
+        e.message?.includes('Unauthorized'),
     );
     if (authError) {
       isUnauthenticated = true;
@@ -179,13 +206,37 @@ export const errorLink = new ErrorLink(({ graphQLErrors, networkError, operation
     }
   }
 
-  // Sanitize: do not clutter logs with expected auth errors on RegisterPushToken for guests
+  if (networkError) {
+    if (networkError.statusCode === 401 || networkError.message?.includes('401') || networkError.message?.includes('Unauthorized')) {
+      isUnauthenticated = true;
+      cachedToken = null;
+      onAuthError?.();
+    }
+  }
+
+  // Sanitize: do not clutter logs with expected auth errors on RegisterPushToken or when session expires
   if (operation.operationName === 'RegisterPushToken' && isUnauthenticated) {
     return;
   }
 
+  if (isUnauthenticated) {
+    if (__DEV__) {
+      console.log(`[APOLLO:AUTH_EXPIRED] ${operation.operationName} -> Sesión expirada o no autenticada`);
+    }
+    return;
+  }
+
   const errorMessage = extractApolloErrorMessage(graphQLErrors, networkError);
-  console.error('[APOLLO:ERROR]', operation.operationName, '|', errorMessage, '\n[FULL_GRAPHQL_ERRORS]:', JSON.stringify(graphQLErrors, null, 2), '\n[NETWORK_ERROR]:', JSON.stringify(networkError, null, 2));
+  console.error(
+    '[APOLLO:ERROR]',
+    operation.operationName,
+    '|',
+    errorMessage,
+    '\n[FULL_GRAPHQL_ERRORS]:',
+    JSON.stringify(serializeErrorForDebug(graphQLErrors), null, 2),
+    '\n[NETWORK_ERROR]:',
+    JSON.stringify(serializeErrorForDebug(networkError), null, 2),
+  );
 });
 
 const cache = new InMemoryCache({

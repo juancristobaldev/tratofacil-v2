@@ -16,7 +16,7 @@ describe('SmartNavigationEngine Comprehensive Test Suite', () => {
     { latitude: -38.740, longitude: -72.580 }, // Segment 1: South (180°) -> 90° Right Turn
   ];
 
-  it('generates predictable 40° pitch target for moving vehicle', () => {
+  it('generates predictable 65° pitch target for moving vehicle', () => {
     const s1: NavigationMotionSample = {
       coordinate: baseCoord,
       timestamp: 1000,
@@ -28,7 +28,7 @@ describe('SmartNavigationEngine Comprehensive Test Suite', () => {
 
     const target = engine.processMotionSample(s1, route);
     expect(target).not.toBeNull();
-    expect(target?.pitch).toBe(40);
+    expect(target?.pitch).toBe(65);
     expect(target?.heading).toBeCloseTo(90, 1);
     expect(target?.zoom).toBeGreaterThanOrEqual(17.0);
   });

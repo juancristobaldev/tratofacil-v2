@@ -97,23 +97,30 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
       anchor={{ x: 0.5, y: 0.5 }}
       centerOffset={{ x: 0, y: 0 }}
       zIndex={998}
+      flat={true}
       tracksViewChanges={tracksViewChanges}
     >
       <View style={styles.container}>
         {text ? (
-          <View style={styles.label}>
-            <View style={styles.labelDot} />
-            <View style={styles.labelTextWrap}>
+          <View style={styles.labelWrapper}>
+            <View style={styles.label}>
+              <View style={styles.labelDot} />
               <Text style={styles.labelText}>{text}</Text>
             </View>
+            <View style={styles.labelArrow} />
           </View>
         ) : null}
-        <Animated.View style={[styles.car, { transform: [{ rotate }] }]}>
-          <View style={styles.pulseRing} />
-          <View style={styles.circle}>
-            <Icon name="Briefcase" size={18} color={TOKENS.colors.white} />
-          </View>
+
+        {/* Outer Directional Beacon (rotates with heading) */}
+        <Animated.View style={[styles.headingRing, { transform: [{ rotate }] }]}>
+          <View style={styles.directionalPointer} />
         </Animated.View>
+
+        {/* Static Provider Core (Icon stays upright and legible) */}
+        <View style={styles.pulseRing} />
+        <View style={styles.circle}>
+          <Icon name="Briefcase" size={17} color={TOKENS.colors.white} />
+        </View>
       </View>
     </AnimatedMarker>
   );
@@ -121,24 +128,44 @@ export const AnimatedProviderMarker: React.FC<AnimatedProviderMarkerProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    minWidth: 52,
-    alignItems: 'center',
-  },
-  car: {
-    width: 44,
-    height: 44,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
+  headingRing: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    zIndex: 2,
+  },
+  directionalPointer: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: TOKENS.colors.white,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.35,
+    shadowRadius: 2,
+    elevation: 4,
+  },
   pulseRing: {
     position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(230, 0, 126, 0.25)',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(230, 0, 126, 0.20)',
     borderWidth: 1,
-    borderColor: 'rgba(230, 0, 126, 0.4)',
+    borderColor: 'rgba(230, 0, 126, 0.35)',
+    zIndex: 1,
   },
   circle: {
     width: 36,
@@ -149,36 +176,57 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2.5,
     borderColor: TOKENS.colors.white,
-    shadowColor: TOKENS.colors.brand500,
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
     elevation: 8,
+    zIndex: 3,
+  },
+  labelWrapper: {
+    position: 'absolute',
+    bottom: 52,
+    alignSelf: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
   label: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    backgroundColor: 'rgba(15, 23, 42, 0.94)',
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 4.5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 6,
   },
   labelDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: TOKENS.colors.white,
-    marginRight: 4,
-  },
-  labelTextWrap: {
-    backgroundColor: 'rgba(15, 17, 26, 0.92)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: TOKENS.colors.success500,
+    marginRight: 5,
   },
   labelText: {
     color: TOKENS.colors.white,
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.2,
+    letterSpacing: -0.1,
+  },
+  labelArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 4,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'rgba(15, 23, 42, 0.94)',
+    marginTop: -0.5,
   },
 });

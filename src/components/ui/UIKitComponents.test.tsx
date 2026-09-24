@@ -83,6 +83,21 @@ describe('UI Kit Primitives', () => {
       expect(onChange).toHaveBeenCalledWith('+56987654321');
     });
 
+    it('allows typing single 9 in PhoneInput without blocking', async () => {
+      const onChange = jest.fn();
+      const view = await render(
+        <PhoneInput
+          testID="phone-input-empty"
+          label="Teléfono móvil"
+          value=""
+          onChangeText={onChange}
+        />
+      );
+
+      await fireEvent.changeText(view.getByTestId('phone-input-empty'), '9');
+      expect(onChange).toHaveBeenCalledWith('+569');
+    });
+
     it('renders PriceInput and SelectPickerTrigger', async () => {
       const onSelectPress = jest.fn();
       const view = await render(
@@ -168,6 +183,30 @@ describe('UI Kit Primitives', () => {
       expect(view.getByText('Mensual')).toBeTruthy();
       await fireEvent.press(view.getByText(/Anual/));
       expect(onToggle).toHaveBeenCalledWith(true);
+    });
+
+    it('renders scrollable tabs with icons and handles selection', async () => {
+      const onTabChange = jest.fn();
+      const tabs = [
+        { key: 0, label: 'Mi Empresa', icon: 'Store' as const },
+        { key: 1, label: 'Casos de Éxito', icon: 'Camera' as const },
+        { key: 2, label: 'Reseñas', icon: 'Star' as const, count: 5 },
+        { key: 3, label: 'Banco', icon: 'Landmark' as const },
+        { key: 4, label: 'Certificados', icon: 'FileText' as const },
+      ];
+      const view = await render(
+        <SegmentedTabs tabs={tabs} activeTab={0} onTabChange={onTabChange} scrollable />
+      );
+
+      expect(view.getByText('Mi Empresa')).toBeTruthy();
+      expect(view.getByText('Casos de Éxito')).toBeTruthy();
+      expect(view.getByText('Reseñas')).toBeTruthy();
+      expect(view.getByText('5')).toBeTruthy();
+      expect(view.getByText('Banco')).toBeTruthy();
+      expect(view.getByText('Certificados')).toBeTruthy();
+
+      await fireEvent.press(view.getByText('Casos de Éxito'));
+      expect(onTabChange).toHaveBeenCalledWith(1);
     });
   });
 

@@ -228,6 +228,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
 
   const renderSearchHeader = () => (
     <View style={styles.searchStickyHeader}>
+     {/*
       <SheetHeader
         title={isLoading ? 'Buscando...' : `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`}
         subtitle={searchQuery ? `Servicios para "${searchQuery}"` : undefined}
@@ -252,6 +253,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
           </TouchableOpacity>
         }
       />
+     */}
     </View>
   );
 
@@ -264,6 +266,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
         showsVerticalScrollIndicator={true}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
         contentContainerStyle={styles.searchListContent}
         data={hasError || isLoading ? [] : visibleNodes}
         renderItem={renderNodeCard}
@@ -482,15 +485,18 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: TOKENS.colors.surface200,
+    paddingBottom:40,
     zIndex: 10,
   },
   searchList: {
-    flexGrow: 0,
+    flex: 1,
+    backgroundColor: TOKENS.colors.white,
   },
   searchListContent: {
     paddingHorizontal: TOKENS.spacing.lg,
-    paddingBottom: 4,
+    paddingBottom: 24,
     paddingTop: 4,
+    flexGrow: 1,
   },
   nodeCard: {
     flexDirection: 'row',

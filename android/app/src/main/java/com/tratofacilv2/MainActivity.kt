@@ -20,7 +20,11 @@ class MainActivity : ReactActivity() {
     if (action != null && data != null) {
       val json = org.json.JSONObject()
       json.put("action", action)
-      json.put("data", data)
+      try {
+        json.put("data", org.json.JSONObject(data))
+      } catch (e: Exception) {
+        json.put("data", data)
+      }
       getSharedPreferences("push_pending_actions", Context.MODE_PRIVATE)
         .edit()
         .putString("pending_action", json.toString())
@@ -37,7 +41,11 @@ class MainActivity : ReactActivity() {
     if (action != null && data != null) {
       val json = org.json.JSONObject()
       json.put("action", action)
-      json.put("data", data)
+      try {
+        json.put("data", org.json.JSONObject(data))
+      } catch (e: Exception) {
+        json.put("data", data)
+      }
       getSharedPreferences("push_pending_actions", Context.MODE_PRIVATE)
         .edit()
         .putString("pending_action", json.toString())

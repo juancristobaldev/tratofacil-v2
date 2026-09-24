@@ -133,22 +133,22 @@ describe('PurchaseScreen component', () => {
     mockRole = 'guest';
     const view = await render(<PurchaseScreen />);
 
-    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
+    await fireEvent.press(view.getByText('Pagar con Flow'));
 
     expect(mockNavigate).toHaveBeenCalledWith('Login');
     expect(mockCreateOrder).not.toHaveBeenCalled();
     expect(mockPay).not.toHaveBeenCalled();
   });
 
-  it('COMPONENT: crea orden con shipping y luego inicia pago Flow Webpay si no tiene tarjeta', async () => {
+  it('COMPONENT: crea orden con shipping y luego inicia pago Flow si no tiene tarjeta', async () => {
     const view = await render(<PurchaseScreen />);
 
     expect(view.getByText('Taladro inalámbrico')).toBeTruthy();
     expect(view.getByText('Av Providencia 1234 Depto 501')).toBeTruthy();
     expect(view.getByText('Vincular tarjeta nueva')).toBeTruthy();
-    expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
+    expect(view.getByText('Pagar con Flow')).toBeTruthy();
 
-    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
+    await fireEvent.press(view.getByText('Pagar con Flow'));
 
     await waitFor(() => {
       expect(mockCreateOrder).toHaveBeenCalledWith(
@@ -201,7 +201,7 @@ describe('PurchaseScreen component', () => {
     mockCreateOrder.mockRejectedValueOnce(new Error('Stock insuficiente'));
     const view = await render(<PurchaseScreen />);
 
-    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
+    await fireEvent.press(view.getByText('Pagar con Flow'));
 
     await waitFor(() => {
       expect(mockShowNotification).toHaveBeenCalledWith({
@@ -213,4 +213,3 @@ describe('PurchaseScreen component', () => {
     expect(mockPay).not.toHaveBeenCalled();
   });
 });
-

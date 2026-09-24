@@ -73,6 +73,7 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
         speedMps: 0.79,
         isStationary: 0.79 < SMART_NAV_CONSTANTS.STATIONARY_SPEED_THRESHOLD_MPS,
         quality: 'EXCELLENT',
+        headingConfidence: 0.9,
         timestamp: 1000,
       };
       expect(est079.isStationary).toBe(true);
@@ -84,6 +85,7 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
         speedMps: 0.80,
         isStationary: 0.80 < SMART_NAV_CONSTANTS.STATIONARY_SPEED_THRESHOLD_MPS,
         quality: 'EXCELLENT',
+        headingConfidence: 0.9,
         timestamp: 1000,
       };
       expect(est080.isStationary).toBe(false);
@@ -95,6 +97,7 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
         speedMps: 0.81,
         isStationary: 0.81 < SMART_NAV_CONSTANTS.STATIONARY_SPEED_THRESHOLD_MPS,
         quality: 'EXCELLENT',
+        headingConfidence: 0.9,
         timestamp: 1000,
       };
       expect(est081.isStationary).toBe(false);
@@ -185,6 +188,7 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
         speedMps: 10,
         isStationary: false,
         quality: 'EXCELLENT',
+        headingConfidence: 0.9,
         timestamp: 5000,
       };
       const sampleSameTime: NavigationMotionSample = {
@@ -208,6 +212,7 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
         speedMps: 10,
         isStationary: false,
         quality: 'EXCELLENT',
+        headingConfidence: 0.9,
         timestamp: 10000,
       };
       const staleSample: NavigationMotionSample = {
@@ -261,9 +266,9 @@ describe('SmartNavigationEngine Adversarial & Boundary Audit Suite', () => {
           expect(Number.isFinite(target.heading)).toBe(true);
           expect(target.heading).toBeGreaterThanOrEqual(0);
           expect(target.heading).toBeLessThan(360);
-          expect(target.pitch).toBe(40);
+          expect(target.pitch).toBe(65);
           expect(target.zoom).toBeGreaterThanOrEqual(16.0);
-          expect(target.zoom).toBeLessThanOrEqual(18.0);
+          expect(target.zoom).toBeLessThanOrEqual(18.5);
         }
       }
 

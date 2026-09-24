@@ -5,6 +5,8 @@ import {
   calculateUsableMapRect,
   calculateSafeMapRect,
   calculateDynamicEdgePadding,
+  calculateNavigationAnchorPoint,
+  calculateCameraCenterForSubjectAnchor,
   isPointInSafeRect,
   projectCoordinateToScreen,
   getAdaptivePolylineWidth,
@@ -192,6 +194,51 @@ describe('mapGeometry - calculateUsableMapRect & calculateDynamicEdgePadding', (
   });
 });
 
+describe('mapGeometry - navigation anchor camera placement', () => {
+  const windowDimensions = { width: 390, height: 844 };
+
+  it('places the navigation anchor at the center of the usable viewport above the sheet', () => {
+    const anchor = calculateNavigationAnchorPoint({
+      windowWidth: windowDimensions.width,
+      windowHeight: windowDimensions.height,
+      headerBottom: 100,
+      sheetTop: 500,
+      horizontalSafety: 16,
+      verticalSafety: 12,
+    });
+
+    expect(anchor.x).toBeCloseTo(195, 1);
+    expect(anchor.y).toBeCloseTo((112 + 488) / 2, 1);
+    expect(anchor.y).toBeLessThan(500);
+  });
+
+  it('calculates a camera center that projects the subject onto the desired navigation anchor', () => {
+    const subject = { latitude: -38.75, longitude: -72.6 };
+    const desiredScreenPoint = { x: 195, y: 300 };
+    const cameraCenter = calculateCameraCenterForSubjectAnchor({
+      subjectCoord: subject,
+      latitudeDelta: 0.0035,
+      longitudeDelta: 0.0035,
+      desiredScreenPoint,
+      windowDimensions,
+    });
+
+    const projected = projectCoordinateToScreen(
+      subject,
+      {
+        latitude: cameraCenter.latitude,
+        longitude: cameraCenter.longitude,
+        latitudeDelta: 0.0035,
+        longitudeDelta: 0.0035,
+      },
+      windowDimensions,
+    );
+
+    expect(projected.x).toBeCloseTo(desiredScreenPoint.x, 1);
+    expect(projected.y).toBeCloseTo(desiredScreenPoint.y, 1);
+  });
+});
+
 describe('mapGeometry - calculateSafeMapRect & isPointInSafeRect', () => {
   const usableRect = {
     left: 20,
@@ -252,25 +299,31 @@ describe('mapGeometry - projectCoordinateToScreen', () => {
 });
 
 describe('mapGeometry - getAdaptivePolylineWidth', () => {
-  it('returns high strokeWidth and glowWidth for street-level close zoom (latitudeDelta <= 0.0025)', () => {
-    const width = getAdaptivePolylineWidth(0.002);
-    expect(width.strokeWidth).toBe(11);
-    expect(width.glowWidth).toBe(17);
+  it('returns full street corridor strokeWidth and glowWidth for navigation / street close zoom (latitudeDelta <= 0.0015)', () => {
+    const width = getAdaptivePolylineWidth(0.001);
+    expect(width.strokeWidth).toBe(19);
+    expect(width.glowWidth).toBe(27);
   });
 
-  it('returns medium-high strokeWidth for neighborhood zoom (0.003 - 0.015)', () => {
-    const widthNeighborhood = getAdaptivePolylineWidth(0.01);
-    expect(widthNeighborhood.strokeWidth).toBe(7);
-    expect(widthNeighborhood.glowWidth).toBe(12);
+  it('returns solid street strokeWidth for close neighborhood zoom (0.0015 < delta <= 0.004)', () => {
+    const widthNeighborhood = getAdaptivePolylineWidth(0.003);
+    expect(widthNeighborhood.strokeWidth).toBe(14);
+    expect(widthNeighborhood.glowWidth).toBe(20);
   });
 
-  it('returns compact strokeWidth for city overview (0.015 - 0.04)', () => {
+  it('returns balanced arterial strokeWidth for sector zoom (0.004 < delta <= 0.012)', () => {
+    const widthSector = getAdaptivePolylineWidth(0.01);
+    expect(widthSector.strokeWidth).toBe(10);
+    expect(widthSector.glowWidth).toBe(15);
+  });
+
+  it('returns compact strokeWidth for city overview (0.012 < delta <= 0.04)', () => {
     const widthCity = getAdaptivePolylineWidth(0.03);
-    expect(widthCity.strokeWidth).toBe(5);
-    expect(widthCity.glowWidth).toBe(9);
+    expect(widthCity.strokeWidth).toBe(6);
+    expect(widthCity.glowWidth).toBe(10);
   });
 
-  it('returns crisp base strokeWidth for far zoom (> 0.04)', () => {
+  it('returns crisp minimal strokeWidth for far zoom (> 0.04)', () => {
     const widthFar = getAdaptivePolylineWidth(0.08);
     expect(widthFar.strokeWidth).toBe(4);
     expect(widthFar.glowWidth).toBe(7);
@@ -278,7 +331,7 @@ describe('mapGeometry - getAdaptivePolylineWidth', () => {
 
   it('returns safe fallback when latitudeDelta is undefined or invalid', () => {
     const fallback = getAdaptivePolylineWidth(null);
-    expect(fallback.strokeWidth).toBe(6);
-    expect(fallback.glowWidth).toBe(11);
+    expect(fallback.strokeWidth).toBe(8);
+    expect(fallback.glowWidth).toBe(14);
   });
 });

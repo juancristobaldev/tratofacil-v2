@@ -12,7 +12,7 @@ import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
 import { usePlans } from '../../hooks/usePlans';
 import { useSearchLocation } from '../../hooks/useSearchLocation';
-import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { CARD_DEEP_LINK_CALLBACK, WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
@@ -101,7 +101,7 @@ export const JobsTab: React.FC = () => {
       });
 
       const result = await payWithSavedCard('job', order.id);
-      if (result?.id) {
+      if (result?.success || result?.id) {
         Alert.alert('¡Éxito!', 'Trabajador contratado y pago procesado con tu tarjeta.');
         setShowCandidatesModal(false);
         await refetchMyJobs();
@@ -146,7 +146,7 @@ export const JobsTab: React.FC = () => {
     setActiveAction('register_card');
     setIsProcessingPayment(true);
     try {
-      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      const result = await registerCard(CARD_DEEP_LINK_CALLBACK);
       if (result?.alreadyRegistered) {
         Alert.alert('Tarjeta', 'Ya tienes una tarjeta vinculada.');
       } else if (result?.url) {

@@ -103,6 +103,19 @@ describe('PaymentConfirmingScreen', () => {
     expect(title).toBeTruthy();
   });
 
+  it('CANONICAL: confirms payment with attemptId when token is omitted', async () => {
+    mockRouteParams = { type: 'product', attemptId: 'att_canon_999' };
+    mockConfirm.mockResolvedValue('SUCCESS');
 
+    await render(<PaymentConfirmingScreen />);
 
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith('product', '', 'att_canon_999');
+      expect(mockReplace).toHaveBeenCalledWith('PaymentSuccess', {
+        title: '¡Compra Exitosa!',
+        subtitle: 'Tu producto será enviado pronto.',
+        type: 'product',
+      });
+    });
+  });
 });

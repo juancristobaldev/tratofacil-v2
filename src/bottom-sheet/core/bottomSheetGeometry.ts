@@ -17,9 +17,13 @@ export interface BottomSheetGeometry {
   encuadreBottomOffset: number;
   topClearance: number;
   maxDynamicContentSize: number;
+  categoriesSearchTopClearance: number;
+  categoriesSearchMaxHeight: number;
   bottomNavTop: number;
   availableHeight: number;
 }
+
+const CATEGORIES_SEARCH_GAP = 4; // 4px margin below the App Header
 
 export function getBottomSheetGeometry({
   windowHeight,
@@ -42,11 +46,18 @@ export function getBottomSheetGeometry({
   const availableHeight = windowHeight - topClearance - navbarHeight;
   const maxDynamicContentSize = Math.max(160, availableHeight);
 
+  // Exclusive geometry for Categories Panel search mode (just below Header):
+  const categoriesSearchTopClearance = safeTopInset + APP_HEADER_BAR_HEIGHT + CATEGORIES_SEARCH_GAP;
+  const categoriesSearchAvailableHeight = windowHeight - categoriesSearchTopClearance - navbarHeight;
+  const categoriesSearchMaxHeight = Math.max(160, categoriesSearchAvailableHeight);
+
   return {
     navbarHeight,
     encuadreBottomOffset,
     topClearance,
     maxDynamicContentSize,
+    categoriesSearchTopClearance,
+    categoriesSearchMaxHeight,
     bottomNavTop: windowHeight - navbarHeight,
     availableHeight,
   };

@@ -88,6 +88,7 @@ interface UseProfileReturn {
   publicProfile: User | null;
   publicProfileLoading: boolean;
   publicProfileError: any;
+  publicProfileFetched: boolean;
   registrationStatus: RegistrationStatus | null;
   fetchPublicProfile: (userId: number) => void;
   updateProfile: (input: UpdateUserInput) => Promise<void>;
@@ -107,18 +108,26 @@ interface UseProfileReturn {
   setSaving: Dispatch<SetStateAction<boolean>>;
 }
 
-export function useProfile(): UseProfileReturn {
+export function useProfile(targetUserId?: number | null): UseProfileReturn {
   const { token, role, refetch: refetchAuth, user } = useAuth();
-  const [profileUserId, setProfileUserId] = useState<number | null>(null);
+  const [profileUserId, setProfileUserId] = useState<number | null>(targetUserId ?? null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (targetUserId !== undefined) {
+      setProfileUserId(targetUserId ?? null);
+    }
+  }, [targetUserId]);
+
+  const activeUserId = targetUserId !== undefined ? (targetUserId ?? null) : profileUserId;
 
   const {
     data: publicData,
     loading: publicProfileLoading,
     error: publicProfileError,
   } = useQuery<{ publicProfile: User }>(GET_PUBLIC_PROFILE, {
-    variables: { userId: profileUserId! },
-    skip: !profileUserId,
+    variables: { userId: activeUserId! },
+    skip: !activeUserId,
     fetchPolicy: 'cache-first',
   });
 
@@ -273,6 +282,7 @@ export function useProfile(): UseProfileReturn {
     publicProfile: publicData?.publicProfile || null,
     publicProfileLoading,
     publicProfileError,
+    publicProfileFetched: publicData !== undefined || !!publicProfileError,
     registrationStatus: regData?.getProviderRegistrationStatus || null,
     fetchPublicProfile: setProfileUserId,
     updateProfile,

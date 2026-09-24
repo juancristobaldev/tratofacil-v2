@@ -3,6 +3,7 @@ import ReactTestRenderer, { act } from 'react-test-renderer';
 import { AppState } from 'react-native';
 import {
   AnimatedPolyline,
+  applyAlphaToColor,
   computeHaversineDistance,
   computeCumulativeDistances,
   findSegmentIndex,
@@ -102,6 +103,30 @@ describe('AnimatedPolyline Component Lifecycle & Concurrency', () => {
 
     act(() => {
       renderer.update(<AnimatedPolyline coordinates={[p1]} />);
+    });
+    expect(renderer!.toJSON()).toBeNull();
+  });
+
+  it('renders null when total distance is less than 35m (anti-dot & anti-mancha)', () => {
+    // 2 puntos a ~11 metros de distancia
+    const near1: LatLng = { latitude: -33.44890, longitude: -70.66930 };
+    const near2: LatLng = { latitude: -33.44899, longitude: -70.66930 };
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline coordinates={[near1, near2]} animate={false} />,
+      );
+    });
+    expect(renderer!.toJSON()).toBeNull();
+  });
+
+  it('renders null when points are identical (no circular blob on marker)', () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline coordinates={[p1, p1]} animate={false} />,
+      );
     });
     expect(renderer!.toJSON()).toBeNull();
   });
@@ -219,9 +244,9 @@ describe('AnimatedPolyline Component Lifecycle & Concurrency', () => {
     const polylines = renderer!.root.children as any[];
     expect(polylines.length).toBe(2);
     // Glow layer (first Polyline)
-    expect(polylines[0].props.strokeWidth).toBe(17);
+    expect(polylines[0].props.strokeWidth).toBe(20);
     // Main stroke layer (second Polyline)
-    expect(polylines[1].props.strokeWidth).toBe(11);
+    expect(polylines[1].props.strokeWidth).toBe(14);
   });
 
   it('allows explicit strokeWidth override over adaptive calculations', () => {
@@ -239,5 +264,124 @@ describe('AnimatedPolyline Component Lifecycle & Concurrency', () => {
 
     const polylines = renderer!.root.children as any[];
     expect(polylines[1].props.strokeWidth).toBe(8);
+  });
+
+  it('renders continuous line by default and dashed pattern when dashed is true', () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline coordinates={[p1, p2]} animate={false} />,
+      );
+    });
+
+    let polylines = renderer!.root.children as any[];
+    expect(polylines[0].props.lineCap).toBe('round');
+    expect(polylines[0].props.lineJoin).toBe('round');
+
+    // Capa principal tiene trazo incondicionalmente continuo (nunca segmentada)
+    expect(polylines[1].props.lineCap).toBe('round');
+    expect(polylines[1].props.lineJoin).toBe('round');
+    expect(polylines[1].props.lineDashPattern).toBeUndefined();
+
+    act(() => {
+      renderer.update(
+        <AnimatedPolyline coordinates={[p1, p2]} animate={false} dashed={true} />,
+      );
+    });
+
+    polylines = renderer!.root.children as any[];
+    // Regla cardinal de cero segmentación: lineDashPattern se mantiene incondicionalmente undefined
+    expect(polylines[1].props.lineDashPattern).toBeUndefined();
+  });
+
+  it('modulates hex, rgb and rgba colors correctly via applyAlphaToColor', () => {
+    expect(applyAlphaToColor('#e6007e', 1)).toBe('#e6007e');
+    expect(applyAlphaToColor('#e6007e', 0)).toBe('rgba(0, 0, 0, 0)');
+    expect(applyAlphaToColor('#e6007e', 0.5)).toBe('rgba(230, 0, 126, 0.500)');
+    expect(applyAlphaToColor('rgba(230, 0, 126, 0.22)', 0.5)).toBe('rgba(230, 0, 126, 0.110)');
+    expect(applyAlphaToColor('rgb(255, 0, 0)', 0.8)).toBe('rgba(255, 0, 0, 0.800)');
+  });
+
+  it('performs atomic swap on subsequent coordinate updates without resetting draw-in to 0%', () => {
+    const onInitialComplete = jest.fn();
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline
+          coordinates={[p1, p2, p3]}
+          duration={1000}
+          animate={true}
+          onAnimationComplete={onInitialComplete}
+        />,
+      );
+    });
+
+    // Completar el primer draw-in de 1s
+    act(() => {
+      jest.advanceTimersByTime(1100);
+    });
+    expect(onInitialComplete).toHaveBeenCalledTimes(1);
+
+    // Actualizar coordenadas en movimiento (desvío / nuevo GPS)
+    const newRoute = [p2, p3, p4];
+    act(() => {
+      renderer.update(
+        <AnimatedPolyline
+          coordinates={newRoute}
+          duration={1000}
+          animate={true}
+        />,
+      );
+    });
+
+    // Reemplazo atómico: las nuevas coordenadas se reflejan de inmediato en el render sin esperar 1s
+    const polylines = renderer!.root.children as any[];
+    expect(polylines[1].props.coordinates).toEqual(newRoute);
+  });
+
+  it('fades out smoothly over fadeDuration when coordinates are cleared on arrival', () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline
+          coordinates={[p1, p2, p3]}
+          duration={1000}
+          fadeDuration={250}
+          animate={true}
+        />,
+      );
+    });
+
+    // Completar primer dibujado
+    act(() => {
+      jest.advanceTimersByTime(1100);
+    });
+
+    // Llegada al destino: coordinates pasa a []
+    act(() => {
+      renderer.update(
+        <AnimatedPolyline
+          coordinates={[]}
+          duration={1000}
+          fadeDuration={250}
+          animate={true}
+        />,
+      );
+    });
+
+    // A los 125ms (mitad del fade), la polyline aún está montada con opacidad atenuada
+    act(() => {
+      jest.advanceTimersByTime(125);
+    });
+    let polylines = renderer!.root.children;
+    expect(polylines.length).toBe(2);
+
+    // A los 300ms (después de 250ms de fadeDuration), la polyline se desmonta limpiamente
+    act(() => {
+      jest.advanceTimersByTime(175);
+    });
+    expect(renderer!.toJSON()).toBeNull();
   });
 });

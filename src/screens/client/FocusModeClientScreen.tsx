@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import MapView, { type Region } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
-import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
+import { TOKENS, DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from '../../theme';
 import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../../components/ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
@@ -84,7 +84,7 @@ export const FocusModeClientScreen: React.FC = () => {
     };
   }, [clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude]);
 
-  // Actualización de cámara basada en ruta y pins cuando no está en navegación activa
+  // Actualización y encuadre inicial de cámara basado en ruta y pins al cambiar de estado
   useEffect(() => {
     if (status === 'PENDING') {
       if (clientCoords) {
@@ -102,17 +102,27 @@ export const FocusModeClientScreen: React.FC = () => {
         ...routeCoords,
       ].filter(Boolean) as RouteCoordinate[];
       fitToRoute(points, { reason: 'focus_client_route_fit' });
-    } else if (providerCoords && clientCoords) {
-      fitToRoute(
-        [
-          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
-          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
-        ],
-        { reason: 'focus_client_pins_fit' },
-      );
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    if (providerCoords && clientCoords) {
+      timer = setTimeout(() => {
+        fitToRoute(
+          [
+            { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+            { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+          ],
+          { reason: 'focus_client_pins_fit_fallback' },
+        );
+      }, 350);
     } else if (providerCoords && !isUserExploring) {
       followCoordinate(providerCoords, { reason: 'focus_client_provider_follow' });
     }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [status, isNavigating, routeCoords, clientCoords?.latitude, clientCoords?.longitude, providerCoords?.latitude, providerCoords?.longitude, fitToRoute, followCoordinate, isUserExploring]);
 
   // Seguimiento continuo del stream GPS/proveedor
@@ -148,29 +158,38 @@ export const FocusModeClientScreen: React.FC = () => {
     }
   };
 
-  // Finalización: cuando la orden se completa con proveedor, navega a Rating.
+  const hasNavigatedToRatingRef = useRef<number | null>(null);
+
+  // Finalización: cuando la orden se completa con proveedor, navega a Rating (una sola vez por orden).
   useEffect(() => {
-    if (activeOrder?.status === 'COMPLETED' && activeOrder?.provider) {
-      const providerImg = getImageUrl(activeOrder.provider.logoImage?.cdnUrl || null);
-      const reviews = activeOrder.provider.reviews || [];
+    const orderForRating = activeOrder?.status === 'COMPLETED' && activeOrder?.provider
+      ? activeOrder
+      : completedOrder;
+    if (orderForRating?.status === 'COMPLETED' && orderForRating?.provider && orderForRating?.id) {
+      if (hasNavigatedToRatingRef.current === orderForRating.id || realtime.isOrderReviewed?.(orderForRating.id)) {
+        return;
+      }
+      hasNavigatedToRatingRef.current = orderForRating.id;
+      const providerImg = getImageUrl(orderForRating.provider.logoImage?.cdnUrl || null);
+      const reviews = orderForRating.provider.reviews || [];
       const avgRating = reviews.length
         ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
         : 0;
       navigation.navigate('Rating', {
         role: 'client',
         targetUser: {
-          name: activeOrder.provider.name || 'Profesional',
+          name: orderForRating.provider.name || 'Profesional',
           avatar: providerImg || undefined,
           rating: avgRating,
           reviewsCount: reviews.length,
-          subtext: activeOrder.serviceProvider?.service?.name || '',
+          subtext: orderForRating.serviceProvider?.service?.name || '',
         },
-        serviceDetails: activeOrder.clientDescription || '',
-        amount: activeOrder.payment?.amount || activeOrder.quotedPrice || 0,
-        address: activeOrder.clientAddress || '',
-        paymentMethod: activeOrder.payment ? 'Flow.cl' : '-',
-        orderRealtimeId: activeOrder.id,
-        providerId: activeOrder.provider.id,
+        serviceDetails: orderForRating.clientDescription || '',
+        amount: orderForRating.payment?.amount || orderForRating.quotedPrice || 0,
+        address: orderForRating.clientAddress || '',
+        paymentMethod: orderForRating.payment ? 'Flow.cl' : '-',
+        orderRealtimeId: orderForRating.id,
+        providerId: orderForRating.provider.id,
       });
       dismiss();
       return;
@@ -184,6 +203,7 @@ export const FocusModeClientScreen: React.FC = () => {
   const floatAnim = useRef(new Animated.Value(0)).current;
 
   const mapStyle = DARK_VISIBLE_MAP_STYLE;
+  const [mapLatitudeDelta, setMapLatitudeDelta] = useState<number>(0.003);
 
   useEffect(() => {
     if (__DEV__) console.log('[ANIM:UNMOUNT] component=FocusModeClientScreen mounted=true');
@@ -274,25 +294,32 @@ export const FocusModeClientScreen: React.FC = () => {
           onRegionChangeComplete={(r, d) => {
             handleRegionChangeComplete(r, d);
             onSheetAutoCollapseRegionComplete();
+            if (r?.latitudeDelta && Number.isFinite(r.latitudeDelta) && r.latitudeDelta > 0) {
+              setMapLatitudeDelta(r.latitudeDelta);
+            }
           }}
           customMapStyle={mapStyle}
+          userInterfaceStyle="dark"
+          loadingBackgroundColor={MAP_BACKGROUND_COLOR}
+          loadingEnabled={false}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
         >
-          {clientCoords && <HousePin coordinate={clientCoords} />}
+          {clientCoords && Math.abs(clientCoords.latitude) > 1e-4 && <HousePin coordinate={clientCoords} />}
 
-          {status !== 'PENDING' && providerCoords && (
+          {status !== 'PENDING' && providerCoords && Math.abs(providerCoords.latitude) > 1e-4 && (
             <AnimatedProviderMarker
               coordinate={providerCoords}
-              text={status === 'ACCEPTED' ? 'En camino' : status === 'IN_PROGRESS' ? 'Llegó a tu domicilio' : undefined}
+              text={status === 'ACCEPTED' ? 'En camino' : (status === 'ARRIVED' || status === 'IN_PROGRESS') ? 'Llegó a tu domicilio' : undefined}
             />
           )}
 
-          {polylineCoords.length >= 2 && (
+          {status === 'ACCEPTED' && polylineCoords.length >= 2 && (
             <AnimatedPolyline
               coordinates={polylineCoords}
               strokeColor={TOKENS.colors.brand500}
+              latitudeDelta={mapLatitudeDelta}
             />
           )}
         </MapView>
@@ -301,8 +328,6 @@ export const FocusModeClientScreen: React.FC = () => {
           <MapFloatingNavigationControls
             isNavigating={false}
             targetCoordinate={providerCoords || clientCoords}
-            heading={null}
-            onToggleNavigation={() => {}}
             onSmartFraming={handleFollow}
             showNavigation={false}
             showSmartFraming={true}
@@ -415,13 +440,15 @@ export const FocusModeClientScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: TOKENS.colors.surface100,
+    backgroundColor: MAP_BACKGROUND_COLOR,
   },
   mapContainer: {
     flex: 1,
+    backgroundColor: MAP_BACKGROUND_COLOR,
   },
   map: {
     ...StyleSheet.absoluteFill,
+    backgroundColor: MAP_BACKGROUND_COLOR,
   },
   followBtn: {
     position: 'absolute',

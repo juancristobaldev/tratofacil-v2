@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useLazyQuery } from '@apollo/client/react';
@@ -11,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { CHECK_LOGIN_EMAIL_EXISTS } from '../../graphql/operations/auth';
+import { reverseGeocode } from '../../utils/geocode';
 
 export const GuestCheckoutScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -30,6 +41,9 @@ export const GuestCheckoutScreen: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const emailRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
 
   const handleSubmit = async () => {
     const tempErrors: Record<string, string> = {};
@@ -66,6 +80,12 @@ export const GuestCheckoutScreen: React.FC = () => {
         return;
       }
 
+      let resolvedAddress: string | undefined = undefined;
+      try {
+        const addr = await reverseGeocode(lat, lng);
+        if (addr) resolvedAddress = addr;
+      } catch {}
+
       const result = await guestCreateContactRequest({
         guestEmail: normalizedEmail,
         guestPhone: phone.trim(),
@@ -73,6 +93,7 @@ export const GuestCheckoutScreen: React.FC = () => {
         serviceProviderId: provider.serviceProviderId,
         clientLat: lat,
         clientLng: lng,
+        clientAddress: resolvedAddress,
         clientDescription: description,
       });
 
@@ -96,56 +117,69 @@ export const GuestCheckoutScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
-          </TouchableOpacity>
-        </View>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <Icon name="ArrowLeft" size={24} color={TOKENS.colors.textMain} />
+            </TouchableOpacity>
+          </View>
 
-        <View style={styles.titleSection}>
-          <Text style={styles.title}>Datos de contacto</Text>
-          <Text style={styles.subtitle}>
-            Completa tus datos para solicitar el servicio de {provider?.name || 'el profesional'}
-          </Text>
-        </View>
+          <View style={styles.titleSection}>
+            <Text style={styles.title}>Datos de contacto</Text>
+            <Text style={styles.subtitle}>
+              Completa tus datos para solicitar el servicio de {provider?.name || 'el profesional'}
+            </Text>
+          </View>
 
-        <View style={styles.form}>
-          <Input
-            label="Nombre completo"
-            placeholder="Ej: Juan Pérez"
-            value={name}
-            onChangeText={setName}
-            error={errors.name}
-          />
+          <View style={styles.form}>
+            <Input
+              label="Nombre completo"
+              placeholder="Ej: Juan Pérez"
+              value={name}
+              onChangeText={setName}
+              returnKeyType="next"
+              onSubmitEditing={() => emailRef.current?.focus()}
+              error={errors.name}
+            />
 
-          <Input
-            label="Correo electrónico"
-            placeholder="Ej: juan@correo.cl"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={errors.email}
-          />
+            <Input
+              ref={emailRef}
+              label="Correo electrónico"
+              placeholder="Ej: juan@correo.cl"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+              onSubmitEditing={() => phoneRef.current?.focus()}
+              error={errors.email}
+            />
 
-          <Input
-            label="Teléfono"
-            placeholder="Ej: 912345678"
-            value={phone}
-            onChangeText={setPhone}
-            mask="phone"
-            error={errors.phone}
-          />
+            <Input
+              ref={phoneRef}
+              label="Teléfono"
+              placeholder="Ej: 912345678"
+              value={phone}
+              onChangeText={setPhone}
+              mask="phone"
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+              error={errors.phone}
+            />
 
-          <Button
-            title="Solicitar servicio"
-            onPress={handleSubmit}
-            loading={loading}
-            style={styles.submitBtn}
-          />
-        </View>
-      </ScrollView>
+            <Button
+              title="Solicitar servicio"
+              onPress={handleSubmit}
+              loading={loading}
+              style={styles.submitBtn}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -155,9 +189,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: TOKENS.colors.white,
   },
+  keyboardView: {
+    flex: 1,
+  },
   scrollContent: {
     padding: TOKENS.spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: 80,
   },
   header: {
     marginBottom: TOKENS.spacing.lg,

@@ -42,6 +42,10 @@ jest.mock('react-native-gesture-handler', () => {
       hitSlop: () => chain,
       maxPointers: () => chain,
       minPointers: () => chain,
+      activeOffsetY: () => chain,
+      activeOffsetX: () => chain,
+      failOffsetY: () => chain,
+      failOffsetX: () => chain,
     };
     return chain;
   };
@@ -97,11 +101,11 @@ jest.mock('@gorhom/bottom-sheet', () => {
   const BottomSheetModal = React.forwardRef((props: any, ref: any) => {
     React.useImperativeHandle(ref, () => ({
       present: jest.fn(),
-      dismiss: jest.fn(),
-      snapToIndex: jest.fn(),
-      collapse: jest.fn(),
-      expand: jest.fn(),
-      close: jest.fn(),
+      dismiss: jest.fn(() => props.onDismiss?.()),
+      snapToIndex: jest.fn((index: number) => props.onChange?.(index)),
+      collapse: jest.fn(() => props.onChange?.(0)),
+      expand: jest.fn(() => props.onChange?.(1)),
+      close: jest.fn(() => props.onDismiss?.()),
     }));
     return React.createElement(View, { testID: 'gorhom-bottom-sheet-modal', ...props }, props.children);
   });

@@ -36,19 +36,21 @@ class PushNotificationService : FirebaseMessagingService() {
     val body = data["body"] ?: ""
     val orderId = data["orderId"] ?: "0"
 
-    ensureChannel(type)
+    val channelId = ensureChannel(type)
 
     val reactContext = getReactContext()
-    if (reactContext != null && reactContext.hasActiveReactInstance()) {
+    val isInForeground = reactContext != null && reactContext.hasActiveReactInstance()
+    if (isInForeground) {
       try {
         val writableMap = Arguments.createMap()
         data.forEach { (k, v) -> writableMap.putString(k, v) }
-        reactContext
+        reactContext!!
           .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
           .emit("onPushReceived", writableMap)
       } catch (e: Exception) {
         Log.w("Push", "No se pudo emitir evento a JS", e)
       }
+      return
     }
 
     val jsonData = JSONObject(data.toMap())
@@ -57,17 +59,20 @@ class PushNotificationService : FirebaseMessagingService() {
       putExtra("push_data", jsonData.toString())
     }
 
+    val notifId = ((type.hashCode() and 0x7FFF) * 31) + (orderId.hashCode() and 0xFFFF)
+
     val openPI = PendingIntent.getActivity(
-      this, orderId.hashCode(), launchIntent,
+      this, notifId, launchIntent,
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    val builder = NotificationCompat.Builder(this, type)
+    val builder = NotificationCompat.Builder(this, channelId)
       .setSmallIcon(applicationInfo.icon)
       .setContentTitle(title)
       .setContentText(body)
       .setContentIntent(openPI)
       .setAutoCancel(true)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
 
     if (type == "TRATO_DIRECTO_CREATED") {
       builder.addAction(makeAction("ACCEPT", "Aceptar", jsonData, orderId, 1))
@@ -78,7 +83,7 @@ class PushNotificationService : FirebaseMessagingService() {
     } else if (type == "CONTRAOFERTA_RECIBIDA") {
       builder.addAction(makeAction("ACCEPT_COUNTER", "Aceptar", jsonData, orderId, 5))
       builder.addAction(makeAction("REJECT_COUNTER", "Rechazar", jsonData, orderId, 6))
-    } else if (type == "PAGO_CONFIRMADO" || type == "PROVIDER_EN_CAMINO") {
+    } else if (type == "PAGO_CONFIRMADO" || type == "PROVIDER_EN_CAMINO" || type == "PROVEEDOR_POR_LLEGAR") {
       builder.addAction(makeAction("NAVIGATE", "Ver ruta", jsonData, orderId, 7))
       builder.addAction(makeAction("CHAT", "Abrir chat", jsonData, orderId, 8))
     } else if (type == "PROVEEDOR_LLEGO") {
@@ -90,7 +95,7 @@ class PushNotificationService : FirebaseMessagingService() {
     }
 
     try {
-      NotificationManagerCompat.from(this).notify(orderId.hashCode(), builder.build())
+      NotificationManagerCompat.from(this).notify(notifId, builder.build())
     } catch (e: SecurityException) {
       Log.w("Push", "POST_NOTIFICATIONS missing")
     }
@@ -117,11 +122,23 @@ class PushNotificationService : FirebaseMessagingService() {
     ).build()
   }
 
-  private fun ensureChannel(channelId: String) {
-    val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    if (mgr.getNotificationChannel(channelId) != null) return
-    val channel = NotificationChannel(channelId, "Tratos Directos", NotificationManager.IMPORTANCE_HIGH)
-    mgr.createNotificationChannel(channel)
+  private fun ensureChannel(type: String): String {
+    val (channelId, channelName, importance) = when (type) {
+      "NUEVO_MENSAJE" -> Triple("chat_channel", "Mensajes y Chat", NotificationManager.IMPORTANCE_HIGH)
+      "PAGO_CONFIRMADO", "COTIZACION_RECIBIDA", "CONTRAOFERTA_RECIBIDA" ->
+        Triple("payments_channel", "Pagos y Cotizaciones", NotificationManager.IMPORTANCE_DEFAULT)
+      else ->
+        Triple("orders_channel", "Tratos y Servicios", NotificationManager.IMPORTANCE_HIGH)
+    }
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      if (mgr.getNotificationChannel(channelId) == null) {
+        val channel = NotificationChannel(channelId, channelName, importance)
+        mgr.createNotificationChannel(channel)
+      }
+    }
+    return channelId
   }
 
   private fun getReactContext(): com.facebook.react.bridge.ReactContext? {

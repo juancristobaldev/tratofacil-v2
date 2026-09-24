@@ -107,10 +107,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         "type": userInfo["type"] as? String ?? "",
         "orderId": userInfo["orderId"] as? Int ?? 0,
       ]
-      UserDefaults.standard.set([
+      let actionDict: [String: Any] = [
         "action": "OPEN",
         "data": payload,
-      ], forKey: "pending_push_action")
+      ]
+      if let jsonData = try? JSONSerialization.data(withJSONObject: actionDict),
+         let jsonString = String(data: jsonData, encoding: .utf8) {
+        UserDefaults.standard.set(jsonString, forKey: "pending_push_action")
+      }
     }
 
     completionHandler()
@@ -137,6 +141,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
       UNNotificationCategory(identifier: "CONTRAOFERTA_RECIBIDA", actions: [acceptCounterAction, rejectCounterAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "PAGO_CONFIRMADO", actions: [navigateAction, chatAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "PROVIDER_EN_CAMINO", actions: [navigateAction], intentIdentifiers: [], options: []),
+      UNNotificationCategory(identifier: "PROVEEDOR_POR_LLEGAR", actions: [navigateAction, chatAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "PROVEEDOR_LLEGO", actions: [startAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "SERVICIO_COMPLETADO", actions: [rateAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "NUEVO_MENSAJE", actions: [replyAction], intentIdentifiers: [], options: []),

@@ -308,12 +308,23 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
 
     if (!currentActive || stateRef.current === 'CLOSED' || stateRef.current === 'DISMISSING') return;
 
+    if (stateRef.current === 'REQUESTED') {
+      pendingSheetRequestRef.current = null;
+      pendingDismissOperationRef.current = null;
+      setSheetIndex(-1);
+      setContentLayoutHeight(0);
+      modalRef.current?.dismiss();
+      setCurrentRequest(null);
+      setState('CLOSED', currentActive);
+      return;
+    }
+
     pendingSheetRequestRef.current = null;
     const dismissOperation = createPhysicalOperation('LOGICAL_DISMISS', currentActive);
     pendingDismissOperationRef.current = dismissOperation;
     setState('DISMISSING', currentActive);
     modalRef.current?.dismiss();
-  }, [createPhysicalOperation, setState]);
+  }, [createPhysicalOperation, setCurrentRequest, setState]);
 
   const dismissAll = useCallback(() => {
     const currentActive = activeRequestRef.current;
@@ -340,6 +351,14 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
 
   const handleHostPresent = useCallback((request: AnyBottomSheetRequest) => {
     if (activeRequestRef.current?.requestId !== request.requestId) return;
+    if (
+      stateRef.current === 'DISMISSING' ||
+      stateRef.current === 'CLOSED' ||
+      stateRef.current === 'SUSPENDING' ||
+      stateRef.current === 'SUSPENDED'
+    ) {
+      return;
+    }
     setSheetIndex(registry[request.key]?.initialIndex ?? 1);
     setState('PRESENTING', request);
   }, [setState]);
@@ -382,6 +401,29 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
 
     if (stale) {
       pendingDismissOperationRef.current = null;
+      if (stateRef.current === 'DISMISSING') {
+        const pending = pendingSheetRequestRef.current;
+        pendingSheetRequestRef.current = null;
+        if (pending) {
+          setActiveOperation('PRESENT');
+          bottomSheetDebug('TRANSITION', {
+            transitionId: nextBottomSheetTransitionId(),
+            requestId: pending.requestId,
+            from: null,
+            to: pending.key,
+            operation: 'PRESENT',
+            physicalState: stateRef.current,
+            reason: 'drained_pending_after_stale_dismiss',
+          });
+          setCurrentRequest(pending);
+          setState('REQUESTED', pending);
+          return;
+        }
+        setSheetIndex(-1);
+        setContentLayoutHeight(0);
+        setCurrentRequest(null);
+        setState('CLOSED', request);
+      }
       return;
     }
 
@@ -730,12 +772,28 @@ export const BottomSheetProvider: React.FC<{ children?: React.ReactNode }> = ({ 
         index: -1,
       };
     }
+    const isCategoriesSearch =
+      activeRequest.key === 'categories' &&
+      Boolean(
+        (activeRequest.payload as any)?.searchQuery &&
+        String((activeRequest.payload as any).searchQuery).trim().length > 0
+      );
+    const maxDynamicSize = isCategoriesSearch
+      ? bottomSheetGeometry.categoriesSearchMaxHeight
+      : bottomSheetGeometry.maxDynamicContentSize;
+    const topClearance = isCategoriesSearch
+      ? bottomSheetGeometry.categoriesSearchTopClearance
+      : bottomSheetGeometry.topClearance;
+
     const descriptor = registry[activeRequest.key];
-    const isCollapsed = descriptor && (descriptor.snapPoints?.length ?? 0) > 1 ? sheetIndex === 0 : false;
+    const isCollapsible =
+      descriptor?.collapsible !== false &&
+      Boolean(descriptor?.snapPoints && descriptor.snapPoints.length > 0 && descriptor.snapPoints.some((p) => p !== 'MAX'));
+    const isCollapsed = isCollapsible ? sheetIndex === 0 : false;
     const collapsedH = descriptor?.collapsedHeight ?? 88;
     const computedContentH = contentLayoutHeight > 0 ? contentLayoutHeight : (collapsedH ? collapsedH * 2.5 : 320);
-    const height = isCollapsed ? collapsedH : Math.min(computedContentH, bottomSheetGeometry.maxDynamicContentSize);
-    const sheetTop = Math.max(bottomSheetGeometry.topClearance, windowHeight - bottomSheetGeometry.navbarHeight - height);
+    const height = isCollapsed ? collapsedH : Math.min(computedContentH, maxDynamicSize);
+    const sheetTop = Math.max(topClearance, windowHeight - bottomSheetGeometry.navbarHeight - height);
     return {
       sheetTop,
       sheetHeight: height,

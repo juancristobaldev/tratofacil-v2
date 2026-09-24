@@ -1,5 +1,17 @@
-import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, TextInput, Alert, RefreshControl } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';
@@ -7,6 +19,7 @@ import { Icon, Card, Button, Input } from '../../components';
 import { useRefresh } from '../../context/RefreshContext';
 import { useAuth } from '../../context/AuthContext';
 import { CREATE_SUPPORT_TICKET } from '../../graphql/operations/support';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 interface FaqItem { question: string; answer: string; }
 
@@ -28,6 +41,9 @@ export const SupportScreen: React.FC = () => {
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const messageInputRef = useRef<TextInput>(null);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -65,56 +81,97 @@ export const SupportScreen: React.FC = () => {
     }
   };
 
+  const handleFocusTicket = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 150);
+  };
+
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + TOKENS.spacing.lg }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
       >
-        <View style={styles.searchBarContainer}>
-          <Icon name="Search" size={18} color={TOKENS.colors.brand500} style={styles.searchIcon} />
-          <TextInput placeholder="Buscar soluciones en ayuda..." placeholderTextColor={TOKENS.colors.textMuted} value={searchQuery} onChangeText={setSearchQuery} style={styles.searchInput} />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
-              <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-        <Text style={styles.sectionTitle}>Preguntas Frecuentes</Text>
-        <View style={styles.faqList}>
-          {filteredFaq.length === 0 ? (
-            <Text style={styles.noResultsText}>No encontramos resultados para tu búsqueda.</Text>
-          ) : (
-            filteredFaq.map((item, idx) => {
-              const isOpen = openFaq === idx;
-              return (
-                <Card key={idx} style={styles.faqCard} padded={false}>
-                  <TouchableOpacity onPress={() => setOpenFaq(isOpen ? null : idx)} style={styles.faqQuestionRow} activeOpacity={0.7}>
-                    <Text style={styles.faqQuestion}>{item.question}</Text>
-                    <Icon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={16} color={TOKENS.colors.textSubtle} />
-                  </TouchableOpacity>
-                  {isOpen && (<View style={styles.faqAnswerContainer}><Text style={styles.faqAnswer}>{item.answer}</Text></View>)}
-                </Card>
-              );
-            })
-          )}
-        </View>
-        <Text style={styles.sectionTitle}>Contáctanos</Text>
-        <Card style={styles.contactFormCard}>
-          <Text style={styles.contactFormTitle}>¿No encontraste solución?</Text>
-          <Text style={styles.contactFormSub}>Déjanos tu mensaje y un agente de TratoFácil te responderá al correo.</Text>
-          <TextInput placeholder="Asunto (ej: Problema con un pago)" placeholderTextColor={TOKENS.colors.textMuted} value={subject} onChangeText={setSubject} style={[styles.textarea, { height: 48, marginBottom: TOKENS.spacing.md }]} />
-          <TextInput placeholder="Describe tu consulta o inconveniente en detalle..." placeholderTextColor={TOKENS.colors.textMuted} value={message} onChangeText={setMessage} multiline style={styles.textarea} />
-          <Button title="Enviar mensaje" onPress={handleSubmitTicket} loading={submitting} disabled={!message.trim() || submitting} style={styles.submitBtn} />
-        </Card>
-      </ScrollView>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 80 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+        >
+          <View style={styles.searchBarContainer}>
+            <Icon name="Search" size={18} color={TOKENS.colors.brand500} style={styles.searchIcon} />
+            <TextInput
+              placeholder="Buscar soluciones en ayuda..."
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              onSubmitEditing={() => Keyboard.dismiss()}
+              style={styles.searchInput}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                <Icon name="X" size={16} color={TOKENS.colors.textSubtle} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <Text style={styles.sectionTitle}>Preguntas Frecuentes</Text>
+          <View style={styles.faqList}>
+            {filteredFaq.length === 0 ? (
+              <Text style={styles.noResultsText}>No encontramos resultados para tu búsqueda.</Text>
+            ) : (
+              filteredFaq.map((item, idx) => {
+                const isOpen = openFaq === idx;
+                return (
+                  <Card key={idx} style={styles.faqCard} padded={false}>
+                    <TouchableOpacity onPress={() => setOpenFaq(isOpen ? null : idx)} style={styles.faqQuestionRow} activeOpacity={0.7}>
+                      <Text style={styles.faqQuestion}>{item.question}</Text>
+                      <Icon name={isOpen ? 'ChevronUp' : 'ChevronDown'} size={16} color={TOKENS.colors.textSubtle} />
+                    </TouchableOpacity>
+                    {isOpen && (<View style={styles.faqAnswerContainer}><Text style={styles.faqAnswer}>{item.answer}</Text></View>)}
+                  </Card>
+                );
+              })
+            )}
+          </View>
+          <Text style={styles.sectionTitle}>Contáctanos</Text>
+          <Card style={styles.contactFormCard}>
+            <Text style={styles.contactFormTitle}>¿No encontraste solución?</Text>
+            <Text style={styles.contactFormSub}>Déjanos tu mensaje y un agente de TratoFácil te responderá al correo.</Text>
+            <TextInput
+              placeholder="Asunto (ej: Problema con un pago)"
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={subject}
+              onChangeText={setSubject}
+              onFocus={handleFocusTicket}
+              returnKeyType="next"
+              onSubmitEditing={() => messageInputRef.current?.focus()}
+              style={[styles.textarea, { height: 48, marginBottom: TOKENS.spacing.md }]}
+            />
+            <TextInput
+              ref={messageInputRef}
+              placeholder="Describe tu consulta o inconveniente en detalle..."
+              placeholderTextColor={TOKENS.colors.textMuted}
+              value={message}
+              onChangeText={setMessage}
+              onFocus={handleFocusTicket}
+              multiline
+              style={styles.textarea}
+            />
+            <Button title="Enviar mensaje" onPress={handleSubmitTicket} loading={submitting} disabled={!message.trim() || submitting} style={styles.submitBtn} />
+          </Card>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface100 },
+  keyboardView: { flex: 1 },
   scrollBody: { padding: TOKENS.spacing.lg, gap: TOKENS.spacing.md },
   searchBarContainer: { height: 48, backgroundColor: TOKENS.colors.white, borderRadius: TOKENS.geometry.radiusInput, borderWidth: 1, borderColor: TOKENS.colors.surface200, flexDirection: 'row', alignItems: 'center', paddingHorizontal: TOKENS.spacing.md, ...TOKENS.shadows.soft },
   searchIcon: { marginRight: TOKENS.spacing.sm },

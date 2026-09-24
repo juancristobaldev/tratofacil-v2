@@ -30,7 +30,7 @@ const PLANS: Plan[] = [
     commission: '20%',
     features: ['Contacto directo', 'Perfil básico', 'Máximo 2 servicios', 'Visibilidad estándar'],
     recommended: false,
-    planEnum: ProviderPlan.FREE,
+    planEnum: ProviderPlan.Free,
   },
   {
     id: 'plan_pro',
@@ -40,7 +40,7 @@ const PLANS: Plan[] = [
     commission: '10%',
     features: ['Perfil verificado', 'Servicios ilimitados', 'Alta visibilidad', 'Soporte prioritario'],
     recommended: true,
-    planEnum: ProviderPlan.TRATOFACIL_SRV_PRO,
+    planEnum: ProviderPlan.TratofacilSrvPro,
   },
   {
     id: 'plan_premium',
@@ -50,7 +50,7 @@ const PLANS: Plan[] = [
     commission: '2%',
     features: ['Perfil verificado VIP', 'Servicios ilimitados', 'Máxima prioridad', 'Marketing destacado', 'Soporte ejecutivo'],
     recommended: false,
-    planEnum: ProviderPlan.TRATOFACIL_SRV_PREMIUM,
+    planEnum: ProviderPlan.TratofacilSrvPremium,
   },
 ];
 
@@ -72,7 +72,7 @@ export const PlansScreen: React.FC = () => {
   const [interval, setInterval] = useState<PlanInterval.Monthly | PlanInterval.Yearly>(PlanInterval.Monthly);
   const [refreshing, setRefreshing] = useState(false);
 
-  const currentPlan = providerPlan?.plan || user?.planOrders?.[0]?.plan || ProviderPlan.FREE;
+  const currentPlan = providerPlan?.plan || user?.planOrders?.[0]?.plan || ProviderPlan.Free;
   const currentPlanActive = providerPlan?.planActive ?? false;
   const subscriptionFlowId = providerPlan?.subscriptionFlowId;
   const planEndsAt = providerPlan?.planEndsAt;
@@ -117,7 +117,7 @@ export const PlansScreen: React.FC = () => {
         style: 'destructive',
         onPress: async () => {
           try {
-            await cancelSubscription({ orderId: currentPlan?.id || 0, type: SubscriptionType.Provider });
+            await cancelSubscription({ orderId: providerPlan?.id || 0, type: SubscriptionType.Provider });
             Alert.alert('Cancelada', 'Tu suscripción quedó cancelada. Conservarás el plan hasta la fecha de vencimiento.');
             refetch();
           } catch (err: any) {
@@ -131,7 +131,7 @@ export const PlansScreen: React.FC = () => {
   const handleReactivate = async () => {
     if (!subscriptionFlowId) return;
     try {
-      await reactivateSubscription({ subscriptionFlowId, type: SubscriptionType.Provider });
+      await reactivateSubscription({ orderId: providerPlan?.id || 0, type: SubscriptionType.Provider });
       Alert.alert('Reactivada', 'Tu suscripción fue reactivada.');
       refetch();
     } catch (err: any) {

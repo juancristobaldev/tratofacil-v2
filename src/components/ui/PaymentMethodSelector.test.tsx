@@ -37,7 +37,7 @@ describe('PaymentMethodSelector', () => {
 
     expect(view.getByText('VISA •••• 4242')).toBeTruthy();
     expect(view.getByText('1-CLICK')).toBeTruthy();
-    expect(view.getByText('Webpay / Flow')).toBeTruthy();
+    expect(view.getByText('Flow')).toBeTruthy();
   });
 
   it('renders CTA to link card when hasCard is false', async () => {
@@ -45,14 +45,14 @@ describe('PaymentMethodSelector', () => {
     const view = await render(
       <PaymentMethodSelector
         hasCard={false}
-        selectedMethod="webpay"
+        selectedMethod="flow"
         onSelectMethod={onSelectMethod}
       />
     );
 
     expect(view.getByText('Vincular tarjeta nueva')).toBeTruthy();
     expect(view.getByText('RECOMENDADO')).toBeTruthy();
-    expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
+    expect(view.getByText('Pagar con Flow')).toBeTruthy();
   });
 
   it('calls onSelectMethod when option is pressed', async () => {
@@ -67,8 +67,8 @@ describe('PaymentMethodSelector', () => {
       />
     );
 
-    await fireEvent.press(view.getByText('Webpay / Flow'));
-    expect(onSelectMethod).toHaveBeenCalledWith('webpay');
+    await fireEvent.press(view.getByText('Flow'));
+    expect(onSelectMethod).toHaveBeenCalledWith('flow');
   });
 
   it('calls onSelectMethod with register_card when CTA is pressed', async () => {
@@ -76,7 +76,7 @@ describe('PaymentMethodSelector', () => {
     const view = await render(
       <PaymentMethodSelector
         hasCard={false}
-        selectedMethod="webpay"
+        selectedMethod="flow"
         onSelectMethod={onSelectMethod}
       />
     );

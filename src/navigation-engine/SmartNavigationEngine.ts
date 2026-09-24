@@ -63,6 +63,12 @@ export class SmartNavigationEngine {
     const estimate = filterResult.estimate;
     this.metrics.lastQuality = estimate.quality;
 
+    if (__DEV__) {
+      console.log(
+        `[NAV:GPS] source=${sample.source} lat=${sample.coordinate.latitude.toFixed(6)} lng=${sample.coordinate.longitude.toFixed(6)} ts=${sample.timestamp} accuracy=${sample.accuracy ?? 'n/a'} speed=${sample.speed ?? 'n/a'} heading=${sample.heading ?? 'n/a'}`,
+      );
+    }
+
     // 2. Análisis de ruta y detección de curvas/giros
     const routeAnalysis = analyzeRouteProgress(
       estimate.coordinate,
@@ -71,6 +77,20 @@ export class SmartNavigationEngine {
       this.lastRouteAnalysis?.progress.currentSegmentIndex ?? 0,
     );
     this.lastRouteAnalysis = routeAnalysis;
+
+    const snappedPosition =
+      routeAnalysis &&
+      !routeAnalysis.progress.isOffRoute &&
+      routeAnalysis.progress.distanceFromRoute <= Math.min(18, Math.max(8, sample.accuracy ?? 12))
+        ? routeAnalysis.progress.closestPoint ?? null
+        : null;
+    const navigationPosition = snappedPosition ?? estimate.coordinate;
+
+    if (__DEV__ && routeAnalysis) {
+      console.log(
+        `[NAV:ROUTE_MATCH] segment=${routeAnalysis.progress.currentSegmentIndex} distanceFromRoute=${routeAnalysis.progress.distanceFromRoute.toFixed(1)} routeBearing=${routeAnalysis.progress.routeBearing.toFixed(1)} lookAheadBearing=${routeAnalysis.progress.lookAheadBearing.toFixed(1)} distanceToTurn=${Number.isFinite(routeAnalysis.turn.distanceToTurn) ? routeAnalysis.turn.distanceToTurn.toFixed(1) : 'inf'} turnType=${routeAnalysis.turn.turnType} isOffRoute=${routeAnalysis.progress.isOffRoute}`,
+      );
+    }
 
     // 3. Fusión adaptativa de rumbo
     const lastHeading = this.lastTarget?.heading ?? estimate.heading;
@@ -82,6 +102,12 @@ export class SmartNavigationEngine {
       lastHeading,
       this.lastSample,
     );
+
+    if (__DEV__) {
+      console.log(
+        `[NAV:HEADING] gps=${sample.heading ?? 'n/a'} route=${routeAnalysis?.progress.routeBearing.toFixed(1) ?? 'n/a'} lookAhead=${routeAnalysis?.progress.lookAheadBearing.toFixed(1) ?? 'n/a'} target=${headingFusion.targetHeading.toFixed(1)} source=${headingFusion.source}`,
+      );
+    }
 
     // 4. Proyección Look-Ahead hacia adelante
     const lookAhead = calculateCameraLookAhead(
@@ -109,6 +135,12 @@ export class SmartNavigationEngine {
       altitude: SMART_NAV_CONSTANTS.DEFAULT_ALTITUDE,
       duration: SMART_NAV_CONSTANTS.DEFAULT_ANIM_DURATION_MS,
       reason: `NAV_${headingFusion.source}`,
+      rawPosition: sample.coordinate,
+      filteredPosition: estimate.coordinate,
+      snappedPosition,
+      navigationPosition,
+      routeProgress: routeAnalysis?.progress ?? null,
+      turn: routeAnalysis?.turn ?? null,
     };
 
     navigationTelemetry.recordFilteredSample(

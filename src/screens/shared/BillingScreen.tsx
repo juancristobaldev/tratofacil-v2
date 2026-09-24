@@ -14,7 +14,7 @@ import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useRefresh } from '../../context/RefreshContext';
-import { REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { CARD_DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { DELETE_SAVED_CARD } from '../../graphql/operations/wallet';
 
 export const BillingScreen: React.FC = () => {
@@ -83,7 +83,7 @@ export const BillingScreen: React.FC = () => {
     if (registering) return;
     setRegistering(true);
     try {
-      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      const result = await registerCard(CARD_DEEP_LINK_CALLBACK);
       if (result.alreadyRegistered) {
         Alert.alert('Tarjeta', 'Ya tienes una tarjeta vinculada.');
       } else if (result.url) {
@@ -135,10 +135,7 @@ export const BillingScreen: React.FC = () => {
     return <ErrorState message="Error al cargar historial de pagos." />;
   }
 
-  const renderSubscription = (
-    plan: { planActive: boolean; planEndsAt?: string | null; subscriptionFlowId?: string | null; plan: string } | null | undefined,
-    type: SubscriptionType.Provider | SubscriptionType.Marketplace
-  ) => {
+  const renderSubscription = (plan: any, type: SubscriptionType.Provider | SubscriptionType.Marketplace) => {
     if (!plan || !plan.subscriptionFlowId) return null;
     const ended = plan.planEndsAt ? new Date(plan.planEndsAt).getTime() < Date.now() : false;
     return (

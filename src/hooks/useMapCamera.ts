@@ -10,6 +10,8 @@ import {
   calculateUsableMapRect,
   calculateSafeMapRect,
   calculateShiftedLatitude,
+  calculateNavigationAnchorPoint,
+  calculateCameraCenterForSubjectAnchor,
   isPointInSafeRect,
   projectCoordinateToScreen,
   isMaterialRouteChange,
@@ -22,9 +24,6 @@ import {
   DEFAULT_TEMUCO_PLC_REGION,
   NAVIGATION_LATITUDE_DELTA,
   NAVIGATION_LONGITUDE_DELTA,
-  NAVIGATION_PITCH,
-  NAVIGATION_ZOOM_LEVEL,
-  NAVIGATION_ALTITUDE,
   type DynamicEdgePadding,
   type BoundingBox,
   type SafeMapRect,
@@ -43,11 +42,13 @@ export interface NavigationModeOptions {
   zoom?: number;
   speed?: number;
   accuracy?: number;
+  timestamp?: number;
   source?: 'LOCAL_GPS' | 'REMOTE_TRACKING';
   routeCoords?: RouteCoordinate[] | null;
   animated?: boolean;
   duration?: number;
   force?: boolean;
+  reason?: string;
 }
 
 export type CameraMode =
@@ -85,6 +86,7 @@ export interface FollowCoordinateOptions {
   heading?: number;
   speed?: number;
   accuracy?: number;
+  timestamp?: number;
   source?: 'LOCAL_GPS' | 'REMOTE_TRACKING';
   routeCoords?: RouteCoordinate[] | null;
 }
@@ -101,6 +103,10 @@ export interface TargetVisibilityResult {
   point?: { x: number; y: number };
 }
 
+const INTERACTIVE_NAVIGATION_PITCH = 65;
+const NAVIGATION_ANCHOR_CORRECTION_THRESHOLD_PX = 24;
+const NAVIGATION_ANCHOR_CORRECTION_DELAY_MS = 120;
+
 export function useMapCamera(options: UseMapCameraOptions) {
   const {
     mapRef,
@@ -112,6 +118,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
   } = options;
 
   const [cameraMode, setCameraMode] = useState<CameraMode>('IDLE');
+  const [navigationPosition, setNavigationPosition] = useState<RouteCoordinate | null>(null);
   const cameraModeRef = useRef<CameraMode>('IDLE');
   const updateCameraMode = useCallback((mode: CameraMode) => {
     cameraModeRef.current = mode;
@@ -129,7 +136,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
   const lastSheetTopRef = useRef<number | null>(sheetTop);
   const lastHeaderBottomRef = useRef<number>(headerBottom);
   const lastHeadingRef = useRef<number>(0);
-  const lastPitchRef = useRef<number>(NAVIGATION_PITCH);
+  const lastPitchRef = useRef<number>(INTERACTIVE_NAVIGATION_PITCH);
+  const lastNavigationSubjectCoordRef = useRef<RouteCoordinate | null>(null);
+  const lastNavigationOptionsRef = useRef<NavigationModeOptions | null>(null);
   const isMountedRef = useRef<boolean>(true);
   const navEngineRef = useRef<SmartNavigationEngine>(new SmartNavigationEngine());
 
@@ -304,8 +313,10 @@ export function useMapCamera(options: UseMapCameraOptions) {
       if (cameraMode === 'NAVIGATION') {
         navigateToCoordinate(coord, {
           heading: followOpts?.heading,
+          pitch: lastNavigationOptionsRef.current?.pitch ?? lastPitchRef.current,
           speed: followOpts?.speed,
           accuracy: followOpts?.accuracy,
+          timestamp: followOpts?.timestamp,
           source: followOpts?.source,
           routeCoords: followOpts?.routeCoords,
           animated,
@@ -375,45 +386,6 @@ export function useMapCamera(options: UseMapCameraOptions) {
   );
 
   /**
-   * Evento de reasentamiento del Bottom Sheet (sheetTop settling).
-   * Si sheetTop cambia materialmente y el target queda fuera de la zona segura,
-   * la cámara se reajusta inmediatamente aunque el GPS no haya cambiado.
-   */
-  useEffect(() => {
-    if (sheetTop === null && lastSheetTopRef.current === null && headerBottom === lastHeaderBottomRef.current) return;
-
-    if (!isMountedRef.current || !mapRef.current) return;
-
-    const sheetTopDelta = lastSheetTopRef.current !== null && sheetTop !== null
-      ? Math.abs(sheetTop - lastSheetTopRef.current)
-      : 0;
-    const headerBottomDelta = Math.abs(headerBottom - lastHeaderBottomRef.current);
-
-    if (sheetTopDelta > 20 || headerBottomDelta > 10) {
-      if (__DEV__) {
-        console.log(`[MAP:VIEWPORT_CHANGE] reason=viewport_settled sheetTop=${sheetTop} headerBottom=${headerBottom}`);
-      }
-
-      if (isFollowing && lastTargetCoordRef.current && cameraMode !== 'NAVIGATION') {
-        followCoordinate(lastTargetCoordRef.current, {
-          force: true,
-          reason: 'viewport_settle_recenter',
-          animated: true,
-        });
-      } else if (cameraMode === 'AUTO_FIT_ROUTE' && lastFittedPointsRef.current) {
-        fitToRoute(lastFittedPointsRef.current, {
-          force: true,
-          reason: 'viewport_settle_route_fit',
-          animated: true,
-        });
-      }
-    }
-
-    lastSheetTopRef.current = sheetTop;
-    lastHeaderBottomRef.current = headerBottom;
-  }, [sheetTop, headerBottom, windowDimensions.height, isFollowing, followCoordinate, cameraMode, fitToRoute]);
-
-  /**
    * Manejador de gesto de arrastre (pan drag) por el usuario.
    * Conmuta limpiamente a USER_EXPLORING y suspende auto-follow.
    */
@@ -426,6 +398,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
       navigationTelemetry.endSession();
     }
     navEngineRef.current.reset();
+    setNavigationPosition(null);
+    lastNavigationSubjectCoordRef.current = null;
+    lastNavigationOptionsRef.current = null;
     setIsFollowing(false);
     updateCameraMode('USER_EXPLORING');
   }, []);
@@ -451,6 +426,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
           navigationTelemetry.endSession();
         }
         navEngineRef.current.reset();
+        setNavigationPosition(null);
         setIsFollowing(false);
         updateCameraMode('USER_EXPLORING');
       }
@@ -472,6 +448,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
         navigationTelemetry.endSession();
       }
       navEngineRef.current.reset();
+      setNavigationPosition(null);
+      lastNavigationSubjectCoordRef.current = null;
+      lastNavigationOptionsRef.current = null;
       lastPitchRef.current = 0;
       lastHeadingRef.current = 0;
       setIsFollowing(true);
@@ -522,7 +501,8 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
   /**
    * Activa o actualiza el modo de navegación inteligente con SmartNavigationEngine
-   * aplicando pitch canónico de 40°, filtrado GPS, fusión de rumbo, look-ahead y zoom adaptativo.
+   * aplicando pitch interactivo estable, filtrado GPS, fusión de rumbo y zoom adaptativo.
+   * En modo NAVIGATION, el dot del vehículo y el centro de cámara coinciden exactamente en el 50% X / 50% Y.
    */
   const navigateToCoordinate = useCallback(
     (coord: RouteCoordinate | null | undefined, navOpts?: NavigationModeOptions) => {
@@ -536,7 +516,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       const sample: NavigationMotionSample = {
         coordinate: coord,
-        timestamp: Date.now(),
+        timestamp: navOpts?.timestamp ?? Date.now(),
         heading: navOpts?.heading,
         speed: navOpts?.speed,
         accuracy: navOpts?.accuracy,
@@ -548,7 +528,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       const writeDecision = navEngineRef.current.evaluateCameraWrite(
         target,
-        Date.now(),
+        sample.timestamp,
         (navOpts?.force ?? false) || isInitialNavigationActivation,
       );
 
@@ -565,26 +545,27 @@ export function useMapCamera(options: UseMapCameraOptions) {
       const duration = navOpts?.duration ?? writeDecision.durationMs;
       const animated = navOpts?.animated ?? true;
 
+      const navPosition = target.navigationPosition ?? target.filteredPosition ?? coord;
       lastHeadingRef.current = heading;
       lastPitchRef.current = pitch;
+      setNavigationPosition(navPosition);
+      lastNavigationSubjectCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
+      lastNavigationOptionsRef.current = { ...navOpts, heading, pitch, zoom, duration, animated };
 
       setIsFollowing(true);
       updateCameraMode('NAVIGATION');
       isProgrammaticMovementRef.current = true;
-      lastTargetCoordRef.current = { latitude: target.center.latitude, longitude: target.center.longitude };
+      lastTargetCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
+
+      // EN MODO NAVEGACIÓN: El centro de cámara consume target.center (lookahead proyectado por SmartNavigationEngine).
+      // La posición del dot visual permanece 100% ligada al GPS físico del usuario.
+      const cameraCenter = target.center;
 
       const latDelta = NAVIGATION_LATITUDE_DELTA;
       const lngDelta = NAVIGATION_LONGITUDE_DELTA;
-      const shiftedLatitude = calculateShiftedLatitude(
-        target.center.latitude,
-        latDelta,
-        dynamicEdgePadding,
-        windowDimensions.height,
-      );
-
       const targetRegion: Region = {
-        latitude: shiftedLatitude,
-        longitude: target.center.longitude,
+        latitude: cameraCenter.latitude,
+        longitude: cameraCenter.longitude,
         latitudeDelta: latDelta,
         longitudeDelta: lngDelta,
       };
@@ -593,7 +574,10 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       if (__DEV__) {
         console.log(
-          `[MAP:NAVIGATION_WRITE] activation=${isInitialNavigationActivation} reason=${writeDecision.reason} center=(${target.center.latitude.toFixed(5)},${target.center.longitude.toFixed(5)}) heading=${heading.toFixed(1)}° pitch=${pitch}° zoom=${zoom.toFixed(2)} duration=${duration}ms`,
+          `[NAV:CAMERA_WRITE] mode=NAVIGATION activation=${isInitialNavigationActivation} reason=${writeDecision.reason} center=(${cameraCenter.latitude.toFixed(5)},${cameraCenter.longitude.toFixed(5)}) heading=${heading.toFixed(1)} pitch=${pitch} zoom=${zoom.toFixed(2)} duration=${duration}ms`,
+        );
+        console.log(
+          `[NAV:TARGET] subject=(${coord.latitude.toFixed(5)},${coord.longitude.toFixed(5)}) filtered=(${target.filteredPosition?.latitude.toFixed(5) ?? 'n/a'},${target.filteredPosition?.longitude.toFixed(5) ?? 'n/a'}) snapped=(${target.snappedPosition?.latitude.toFixed(5) ?? 'n/a'},${target.snappedPosition?.longitude.toFixed(5) ?? 'n/a'}) navigationPosition=(${navPosition.latitude.toFixed(5)},${navPosition.longitude.toFixed(5)}) cameraCenter=(${cameraCenter.latitude.toFixed(5)},${cameraCenter.longitude.toFixed(5)}) heading=${heading.toFixed(1)}°`,
         );
       }
 
@@ -601,7 +585,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
         try {
           mapRef.current.animateCamera(
             {
-              center: { latitude: shiftedLatitude, longitude: target.center.longitude },
+              center: cameraCenter,
               pitch,
               heading,
               zoom,
@@ -617,8 +601,61 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
       mapRef.current?.animateToRegion?.(targetRegion, animated ? duration : 0);
     },
-    [dynamicEdgePadding, mapRef, windowDimensions.height],
+    [cameraMode, mapRef, updateCameraMode],
   );
+
+  const restoreNavigationCamera = useCallback(
+    (overrideCoord?: RouteCoordinate | null, restoreOpts?: Partial<NavigationModeOptions>) => {
+      const subject = overrideCoord || lastNavigationSubjectCoordRef.current || lastTargetCoordRef.current;
+      if (!subject) return;
+
+      const previous = lastNavigationOptionsRef.current || {};
+      navigateToCoordinate(subject, {
+        ...previous,
+        ...restoreOpts,
+        force: true,
+        reason: restoreOpts?.reason ?? 'restore_navigation_camera',
+      });
+    },
+    [navigateToCoordinate],
+  );
+
+  /**
+   * Responde dinámicamente a cambios significativos de sheetTop o headerBottom,
+   * re-encuadrando la cámara únicamente si el mapa está en modo follow 2D o auto fit route.
+   */
+  useEffect(() => {
+    if (!mapRef.current || !isMountedRef.current) return;
+    if (cameraMode === 'NAVIGATION') return; // En navegación el centro es fijo 50/50
+
+    const sheetTopDelta = lastSheetTopRef.current !== null && sheetTop !== null
+      ? Math.abs(sheetTop - lastSheetTopRef.current)
+      : (sheetTop !== null ? windowDimensions.height : 0);
+    const headerBottomDelta = Math.abs(headerBottom - lastHeaderBottomRef.current);
+
+    if (sheetTopDelta > 20 || headerBottomDelta > 10) {
+      if (__DEV__) {
+        console.log(`[MAP:VIEWPORT_CHANGE] reason=viewport_settled sheetTop=${sheetTop} headerBottom=${headerBottom}`);
+      }
+
+      if (isFollowing && lastTargetCoordRef.current) {
+        followCoordinate(lastTargetCoordRef.current, {
+          force: true,
+          reason: 'viewport_settle_recenter',
+          animated: true,
+        });
+      } else if (cameraMode === 'AUTO_FIT_ROUTE' && lastFittedPointsRef.current) {
+        fitToRoute(lastFittedPointsRef.current, {
+          force: true,
+          reason: 'viewport_settle_route_fit',
+          animated: true,
+        });
+      }
+    }
+
+    lastSheetTopRef.current = sheetTop;
+    lastHeaderBottomRef.current = headerBottom;
+  }, [sheetTop, headerBottom, windowDimensions.height, isFollowing, followCoordinate, cameraMode, fitToRoute, mapRef]);
 
   /**
    * Alterna entre modo navegación 3D y vista 2D plana.
@@ -644,9 +681,13 @@ export function useMapCamera(options: UseMapCameraOptions) {
         console.log('[MAP:RECENTER] restoring followMode in 2D');
       }
       navEngineRef.current.reset();
+      setNavigationPosition(null);
+      lastNavigationSubjectCoordRef.current = null;
+      lastNavigationOptionsRef.current = null;
       lastPitchRef.current = 0;
       lastHeadingRef.current = 0;
       setIsFollowing(true);
+      updateCameraMode('FOLLOW_USER');
 
       if (recenterOpts?.pointsToFit && recenterOpts.pointsToFit.length >= 2) {
         fitToRoute(recenterOpts.pointsToFit, {
@@ -712,6 +753,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
     cameraMode,
     isFollowing,
     isNavigating: cameraMode === 'NAVIGATION',
+    navigationPosition,
     isUserExploring,
     dynamicEdgePadding,
     usableRect,
@@ -721,6 +763,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
     navigateToCoordinate,
     exitNavigationMode,
     toggleNavigationMode,
+    restoreNavigationCamera,
     fitToDefaultRegion,
     handlePanDrag,
     handleRegionChangeComplete,

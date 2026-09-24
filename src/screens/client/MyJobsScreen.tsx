@@ -11,7 +11,7 @@ import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
 import { usePlans } from '../../hooks/usePlans';
 import { useAuth } from '../../context/AuthContext';
-import { WEB_CALLBACK_URL, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { CARD_DEEP_LINK_CALLBACK, WEB_CALLBACK_URL, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 
 type TabMode = 'Activos' | 'Finalizados';
 
@@ -41,8 +41,8 @@ export const MyJobsScreen: React.FC = () => {
   } = useJobs();
   const { pay: payFlow, payWithSavedCard } = useFlow();
 
-  const activeJobs = jobs.filter((j) => j.orders?.every((o) => o.status !== 'COMPLETED'));
-  const finishedJobs = jobs.filter((j) => j.orders?.some((o) => o.status === 'COMPLETED'));
+  const activeJobs = jobs.filter((j) => j.orders?.every((o) => o?.status !== 'COMPLETED'));
+  const finishedJobs = jobs.filter((j) => j.orders?.some((o) => o?.status === 'COMPLETED'));
 
   const handlePaySavedCard = async () => {
     if (!selectedCandidate || !selectedJobId) {
@@ -59,7 +59,7 @@ export const MyJobsScreen: React.FC = () => {
       if (!orderResult?.id) throw new Error('No se pudo crear la orden de trabajo.');
 
       const result = await payWithSavedCard('job', orderResult.id);
-      if (result?.id) {
+      if (result?.success || result?.id) {
         Alert.alert('¡Éxito!', 'Trabajador contratado y pago procesado con tu tarjeta.');
         setShowCandidatesModal(false);
         await refetch();
@@ -106,7 +106,7 @@ export const MyJobsScreen: React.FC = () => {
     setActiveAction('register_card');
     setIsProcessing(true);
     try {
-      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      const result = await registerCard(CARD_DEEP_LINK_CALLBACK);
       if (result?.alreadyRegistered) {
         Alert.alert('Tarjeta', 'Ya tienes una tarjeta vinculada.');
       } else if (result?.url) {
@@ -205,7 +205,7 @@ export const MyJobsScreen: React.FC = () => {
             ItemSeparatorComponent={() => <View style={{ height: TOKENS.spacing.md }} />}
             ListEmptyComponent={<EmptyState icon="CheckCircle" title="Sin trabajos finalizados" description="Los trabajos completados aparecerán aquí." />}
             renderItem={({ item: job }) => {
-              const completedOrder = job.orders?.find((o) => o.status === 'COMPLETED');
+              const completedOrder = job.orders?.find((o) => o?.status === 'COMPLETED');
               return (
                 <View style={styles.jobCard}>
                   <View style={styles.jobHeader}>
@@ -232,6 +232,7 @@ export const MyJobsScreen: React.FC = () => {
                       onPress={() =>
                         navigation.navigate('Rating', {
                           role: 'client',
+                          orderJobId: completedOrder?.id,
                           jobId: job.id,
                           workerId: completedOrder?.worker?.id,
                           targetUser: { name: completedOrder?.worker?.displayName || 'Trabajador' },

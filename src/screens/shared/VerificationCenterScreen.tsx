@@ -1,5 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Input, Modal, StatusBanner, SelectPickerTrigger } from '../../components';
@@ -9,6 +19,7 @@ import { useProfile } from '../../hooks/useProfile';
 import { CHILEAN_BANKS, validateRut } from '../../utils/chile';
 import { KYC_STATUS } from '../../graphql/operations/wallet';
 import { useQuery } from '@apollo/client/react';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 type SectionKey = 'personal' | 'email' | 'identity' | 'bank' | 'kyc';
 
@@ -96,6 +107,8 @@ export const VerificationCenterScreen: React.FC = () => {
   );
 
   const [activePicker, setActivePicker] = useState<'bank' | 'account' | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToFocusedField = () => scrollRef.current?.scrollToEnd({ animated: true });
 
   const pickerOptions = activePicker === 'bank'
     ? Object.keys(CHILEAN_BANKS).map(b => ({ value: b, label: b }))
@@ -139,13 +152,20 @@ export const VerificationCenterScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollBody,
-          { paddingBottom: insets.bottom + TOKENS.spacing.xl },
-        ]}
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
       >
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.scrollBody,
+            { paddingBottom: insets.bottom + 120 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Top Progress Banner matching ui-kit.html */}
         <StatusBanner
           title={
@@ -507,6 +527,7 @@ export const VerificationCenterScreen: React.FC = () => {
                       placeholder="Ej: 123456789"
                       value={accountNumber}
                       onChangeText={setAccountNumber}
+                      onFocus={scrollToFocusedField}
                       keyboardType="numeric"
                       icon="Hash"
                     />
@@ -517,6 +538,7 @@ export const VerificationCenterScreen: React.FC = () => {
                       placeholder="12345678-9"
                       value={bankRut}
                       onChangeText={setBankRut}
+                      onFocus={scrollToFocusedField}
                       icon="FileText"
                       mask="rut"
                     />
@@ -659,6 +681,7 @@ export const VerificationCenterScreen: React.FC = () => {
           </>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* PICKER MODAL */}
       <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
@@ -689,6 +712,7 @@ export const VerificationCenterScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
+  keyboardView: { flex: 1 },
   scrollBody: { padding: TOKENS.spacing.md, gap: TOKENS.spacing.md },
 
   progressBanner: {

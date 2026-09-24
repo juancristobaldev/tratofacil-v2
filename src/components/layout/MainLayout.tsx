@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { StyleSheet, View, Text, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { RequireLocation } from '../ui';
@@ -9,8 +9,6 @@ import { HomePage } from '../tabs/HomePage';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useRealtime } from '../../realtime/RealtimeContext';
 
-import { FocusModeClientScreen } from '../../screens/client/FocusModeClientScreen';
-import { FocusModeProviderScreen } from '../../screens/provider/FocusModeProviderScreen';
 import { MarketplaceTab } from '../tabs/MarketplaceTab';
 import { JobsTab } from '../tabs/JobsTab';
 import { EarningsTab } from '../tabs/EarningsTab';
@@ -29,12 +27,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const bottomNavHeight = useBottomNavHeight();
   const realtime = useRealtime();
-  const clientRealtimeOrder = realtime.localActiveOrder || realtime.activeOrder;
-  const nonTerminalClientOrder = !!clientRealtimeOrder?.status && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(clientRealtimeOrder.status);
-  const providerRealtimeOrder = realtime.providerActiveOrder;
-  const nonTerminalProviderOrder = !!providerRealtimeOrder?.status && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(providerRealtimeOrder.status);
-  const shouldShowClientFocus = role !== 'provider' && (active === 'focus_client' || nonTerminalClientOrder);
-  const shouldShowProviderFocus = role === 'provider' && (active === 'focus_provider' || nonTerminalProviderOrder);
 
   const renderCountRef = useRef(0);
   if (__DEV__) {
@@ -49,6 +41,19 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     };
   }, []);
 
+  useEffect(() => {
+    const onBackPress = () => {
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [activeTab]);
+
   const handleTabChange = useCallback((tab: AppTab) => {
     setActiveTab(tab);
     // Let the isMapFlowActive effect handle dismissAll automatically
@@ -60,7 +65,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
   }, [activeTab, pendingMapFlowKey]);
 
-  const renderTabContent = () => {
+  const tabContent = useMemo(() => {
     switch (activeTab) {
       case 'home':
         return <HomePage />;
@@ -75,30 +80,22 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       default:
         return children;
     }
-  };
+  }, [activeTab, role, children]);
+
+  const activeSurface = tabContent;
+
+  const contentContainerStyle = useMemo(
+    () => [styles.content, { marginBottom: bottomNavHeight }],
+    [bottomNavHeight],
+  );
 
   return (
     <RequireLocation>
       <View style={styles.root}>
-
-
         {/* Content area */}
-        <View style={[styles.content, { marginBottom: bottomNavHeight }]}>
-          {renderTabContent()}
+        <View style={contentContainerStyle}>
+          {activeSurface}
         </View>
-
-        {/* Focus Mode background layers (se detienen sobre el bottom nav) */}
-        {shouldShowClientFocus && (
-          <View style={[styles.focusOverlay, { bottom: bottomNavHeight }]}> 
-            <FocusModeClientScreen />
-          </View>
-        )}
-
-        {shouldShowProviderFocus && (
-          <View style={[styles.focusOverlay, { bottom: bottomNavHeight }]}>
-            <FocusModeProviderScreen />
-          </View>
-        )}
 
         {/* Bottom nav */}
         <BottomNav
@@ -124,13 +121,5 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface50,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 0,
-    elevation: 0,
   },
 });

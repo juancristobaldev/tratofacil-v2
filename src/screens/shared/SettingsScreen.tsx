@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Switch, RefreshControl, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Switch, RefreshControl, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,7 +16,7 @@ export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { setIsRefreshing } = useRefresh();
-  const { user, logout, refetch: refetchAuth } = useAuth();
+  const { user, logout, deleteAccount, refetch: refetchAuth } = useAuth();
   const { role } = useRole();
   const isProvider = role === 'provider';
   const { isRealtimeActive, toggleAvailability } = useRealtime();
@@ -24,6 +24,7 @@ export const SettingsScreen: React.FC = () => {
   const [notifications, setNotifications] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   // Cargar preferencias guardadas
   useEffect(() => {
@@ -70,6 +71,47 @@ export const SettingsScreen: React.FC = () => {
         },
       },
     ]);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      '¿Eliminar tu cuenta definitivamente?',
+      'Esta acción es permanente e irreversible. Se desactivará tu perfil, perderás el acceso a tus servicios e historial y no podrás recuperar tu cuenta.\n\n¿Estás seguro de continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar definitivamente',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingAccount(true);
+            try {
+              const success = await deleteAccount();
+              if (success) {
+                Alert.alert(
+                  'Cuenta eliminada',
+                  'Tu cuenta ha sido eliminada con éxito.',
+                  [
+                    {
+                      text: 'Aceptar',
+                      onPress: () => {
+                        navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
+                      },
+                    },
+                  ],
+                );
+              } else {
+                Alert.alert('Error', 'No se pudo eliminar la cuenta. Por favor, inténtalo de nuevo.');
+              }
+            } catch (err: any) {
+              const errorMessage = err?.message || 'Ocurrió un error al eliminar tu cuenta.';
+              Alert.alert('No se pudo eliminar la cuenta', errorMessage);
+            } finally {
+              setDeletingAccount(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleToggleAvailability = async (value: boolean) => {
@@ -153,12 +195,31 @@ export const SettingsScreen: React.FC = () => {
 
         {/* Logout Button matching ui-kit.html */}
         <TouchableOpacity
+          testID="logout-button"
           style={styles.logoutDangerBtn}
           onPress={handleLogout}
           activeOpacity={0.8}
         >
           <Icon name="LogOut" size={18} color="#dc2626" />
           <Text style={styles.logoutDangerText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+
+        {/* Delete Account Button */}
+        <TouchableOpacity
+          testID="delete-account-button"
+          style={styles.deleteAccountBtn}
+          onPress={handleDeleteAccount}
+          activeOpacity={0.8}
+          disabled={deletingAccount}
+        >
+          {deletingAccount ? (
+            <ActivityIndicator size="small" color="#dc2626" />
+          ) : (
+            <>
+              <Icon name="Trash2" size={18} color="#dc2626" />
+              <Text style={styles.deleteAccountText}>Eliminar cuenta</Text>
+            </>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -273,6 +334,24 @@ const styles = StyleSheet.create({
   logoutDangerText: {
     fontSize: 14,
     fontWeight: TOKENS.typography.weights.bold,
+    color: '#dc2626',
+  },
+
+  // Delete Account Button
+  deleteAccountBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: TOKENS.colors.white,
+    borderRadius: 16,
+    height: 52,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+    gap: 8,
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    fontWeight: TOKENS.typography.weights.semibold,
     color: '#dc2626',
   },
 });

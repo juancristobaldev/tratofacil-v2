@@ -11,7 +11,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
 import { useFlow } from '../../hooks/useFlow';
 import { usePlans } from '../../hooks/usePlans';
-import { DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { CARD_DEEP_LINK_CALLBACK, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { getProductCommission } from '../../utils/comission';
 
 export const PurchaseScreen: React.FC = () => {
@@ -137,7 +137,7 @@ export const PurchaseScreen: React.FC = () => {
     setActiveAction('register_card');
     setIsProcessing(true);
     try {
-      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+        const result = await registerCard(CARD_DEEP_LINK_CALLBACK);
       if (result?.alreadyRegistered) {
         showNotification({ title: 'Tarjeta', message: 'Ya tienes una tarjeta vinculada.', type: 'info' });
       } else if (result?.url) {
@@ -435,4 +435,3 @@ const styles = StyleSheet.create({
     color: TOKENS.colors.textSubtle,
   },
 });
-

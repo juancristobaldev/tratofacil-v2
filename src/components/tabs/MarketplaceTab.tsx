@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Modal, FlatList, Pressable, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Modal, FlatList, Pressable, ActivityIndicator, RefreshControl, Keyboard } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
@@ -165,6 +165,8 @@ export const MarketplaceTab: React.FC = () => {
                   placeholderTextColor={TOKENS.colors.textSubtle}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                  onSubmitEditing={() => Keyboard.dismiss()}
                 />
                 {searchQuery ? (
                   <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>

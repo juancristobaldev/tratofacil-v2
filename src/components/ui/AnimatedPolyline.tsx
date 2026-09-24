@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { Polyline } from 'react-native-maps';
 import { TOKENS } from '../../theme';
 import { getAdaptivePolylineWidth } from '../../utils/mapGeometry';
+import { MIN_RENDERABLE_POLYLINE_METERS } from '../../utils/directions';
 
 export interface LatLng {
   latitude: number;
@@ -16,7 +17,9 @@ export interface AnimatedPolylineProps {
   strokeColor?: string;
   /** Ancho del trazo principal en px (si no se especifica y hay latitudeDelta, se calcula adaptativamente) */
   strokeWidth?: number;
-  /** Si debe tener patrón de línea punteada estilo ui-kit (default: true) */
+  /**
+   * @deprecated Directriz de diseño: Las rutas nunca deben ser segmentadas ni punteadas. Se mantiene por retrocompatibilidad de tipos, pero el trazo es siempre continuo.
+   */
   dashed?: boolean;
   /** Color del resplandor/halo exterior (default: rgba(230, 0, 126, 0.22)) */
   glowColor?: string;
@@ -26,14 +29,60 @@ export interface AnimatedPolylineProps {
   latitudeDelta?: number;
   /** Si debe calcular automáticamente el ancho adaptativo según latitudeDelta (default: true) */
   adaptiveWidth?: boolean;
-  /** Duración de la animación en ms (default: 1000) */
+  /** Duración de la animación de dibujado en ms (default: 1000) */
   duration?: number;
+  /** Duración del desvanecimiento al limpiarse la ruta en ms (default: 250) */
+  fadeDuration?: number;
   /** Si la animación progresiva debe ejecutarse al recibir una nueva ruta (default: true) */
   animate?: boolean;
   /** Callback opcional al finalizar la animación de revelación */
   onAnimationComplete?: () => void;
   /** Base zIndex para las capas de la Polyline (default: 900) */
   zIndex?: number;
+}
+
+/**
+ * Modula el canal alfa de un color hexadecimal o rgb/rgba para transiciones suaves de opacidad.
+ */
+export function applyAlphaToColor(color: string, alphaMultiplier: number): string {
+  if (alphaMultiplier >= 1) return color;
+  if (alphaMultiplier <= 0) return 'rgba(0, 0, 0, 0)';
+
+  const trimmed = color.trim();
+
+  // Hexadecimal (#rrggbb o #rgb)
+  if (trimmed.startsWith('#')) {
+    const hex = trimmed.slice(1);
+    if (hex.length === 6) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alphaMultiplier.toFixed(3)})`;
+    }
+    if (hex.length === 3) {
+      const r = parseInt(hex[0] + hex[0], 16);
+      const g = parseInt(hex[1] + hex[1], 16);
+      const b = parseInt(hex[2] + hex[2], 16);
+      return `rgba(${r}, ${g}, ${b}, ${alphaMultiplier.toFixed(3)})`;
+    }
+  }
+
+  // rgba(r, g, b, a)
+  const rgbaMatch = trimmed.match(/^rgba\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)$/i);
+  if (rgbaMatch) {
+    const [, r, g, b, a] = rgbaMatch;
+    const finalAlpha = Math.max(0, Math.min(1, parseFloat(a) * alphaMultiplier));
+    return `rgba(${r}, ${g}, ${b}, ${finalAlpha.toFixed(3)})`;
+  }
+
+  // rgb(r, g, b)
+  const rgbMatch = trimmed.match(/^rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (rgbMatch) {
+    const [, r, g, b] = rgbMatch;
+    return `rgba(${r}, ${g}, ${b}, ${alphaMultiplier.toFixed(3)})`;
+  }
+
+  return color;
 }
 
 /**
@@ -153,22 +202,25 @@ function easeOutCubic(x: number): number {
  * Polyline de alto rendimiento y fidelidad visual inspirado en ui-kit.html (#screen-tracking).
  *
  * Características:
+ * - Trazo 100% continuo y sólido (NUNCA segmentada ni punteada, cero lineDashPattern).
+ * - Cobertura adaptativa del ancho completo de la calle según el nivel de zoom (latitudeDelta).
  * - Animación progresiva (draw-in) con interpolación geográfica basada en distancia real (Haversine).
  * - Cero re-renders en componentes padre (el bucle RAF está 100% aislado dentro de este componente).
  * - Control atómico de concurrencia y cancelación de frames para evitar race conditions.
  * - Sincronización limpia con ciclo de vida (desmontaje, cambios de ruta y AppState background/foreground).
- * - Renderizado en doble capa: Halo exterior difuso (glow) + trazo magenta de alto contraste.
+ * - Renderizado en doble capa: Halo exterior difuso (glow) + trazo continuo de alto contraste.
  */
 export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
   coordinates,
   strokeColor = TOKENS.colors.brand500,
   strokeWidth,
-  dashed = true,
+  dashed = false,
   glowColor = 'rgba(230, 0, 126, 0.22)',
   glowWidth,
   latitudeDelta,
   adaptiveWidth = true,
   duration = 1000,
+  fadeDuration = 250,
   animate = true,
   onAnimationComplete,
   zIndex = 900,
@@ -180,19 +232,26 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
     return null;
   }, [adaptiveWidth, latitudeDelta]);
 
-  const effectiveStrokeWidth = strokeWidth ?? adaptiveDimensions?.strokeWidth ?? 4;
-  const effectiveGlowWidth = glowWidth ?? adaptiveDimensions?.glowWidth ?? (effectiveStrokeWidth + 4);
+  const effectiveStrokeWidth = strokeWidth ?? adaptiveDimensions?.strokeWidth ?? 8;
+  const effectiveGlowWidth = glowWidth ?? adaptiveDimensions?.glowWidth ?? (effectiveStrokeWidth + 6);
 
+  const [opacity, setOpacity] = useState<number>(1);
   const [displayedCoords, setDisplayedCoords] = useState<LatLng[]>(() => {
     if (!coordinates || coordinates.length < 2) return [];
-    // Si animate está activo, iniciamos en los primeros puntos para no parpadear
-    return animate ? [coordinates[0], coordinates[0]] : coordinates;
+    // Si animate está activo, iniciamos en [] hasta que el primer frame calcule el avance visible.
+    // NUNCA inicializar con [c0, c0], ya que 2 puntos idénticos con lineCap="round" dibujan un punto/círculo sólido en el mapa.
+    return animate ? [] : coordinates;
   });
+
+  const displayedCoordsRef = useRef<LatLng[]>(displayedCoords);
+  displayedCoordsRef.current = displayedCoords;
 
   const animationSeqRef = useRef<number>(0);
   const rafIdRef = useRef<number | null>(null);
+  const fadeRafIdRef = useRef<number | null>(null);
   const lastCoordsRef = useRef<LatLng[] | null>(null);
   const isMountedRef = useRef<boolean>(true);
+  const hasDrawnInitialRef = useRef<boolean>(!animate && Boolean(coordinates && coordinates.length >= 2));
 
   // Pre-calcular distancias acumuladas solo cuando cambian las coordenadas de entrada
   const { cumulativeDistances, totalDistance } = useMemo(() => {
@@ -209,11 +268,19 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
     }
   };
 
+  const cancelFadeAnimation = () => {
+    if (fadeRafIdRef.current !== null) {
+      cancelAnimationFrame(fadeRafIdRef.current);
+      fadeRafIdRef.current = null;
+    }
+  };
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       cancelActiveAnimation();
+      cancelFadeAnimation();
     };
   }, []);
 
@@ -224,8 +291,11 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
       (nextState: AppStateStatus) => {
         if (nextState.match(/inactive|background/)) {
           cancelActiveAnimation();
+          cancelFadeAnimation();
           if (coordinates && coordinates.length >= 2) {
             setDisplayedCoords(coordinates);
+            setOpacity(1);
+            hasDrawnInitialRef.current = true;
           }
         }
       },
@@ -238,42 +308,69 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
 
   // Efecto principal de animación y transición de coordenadas
   useEffect(() => {
+    // 1. Coordenadas ausentes o vacías: manejar fade-out suave o limpieza inmediata
     if (!coordinates || coordinates.length < 2) {
       cancelActiveAnimation();
+
+      const prevDisplayed = displayedCoordsRef.current;
+      // Iniciar fade-out suave si había una ruta visible previamente
+      if (
+        prevDisplayed.length >= 2 &&
+        animate &&
+        fadeDuration > 0 &&
+        isMountedRef.current
+      ) {
+        cancelFadeAnimation();
+        const startFade = Date.now();
+        const fadeFrame = () => {
+          if (!isMountedRef.current) return;
+          const elapsed = Date.now() - startFade;
+          const progress = Math.min(1, elapsed / fadeDuration);
+          const currentAlpha = 1 - progress;
+
+          setOpacity(currentAlpha);
+
+          if (progress < 1) {
+            fadeRafIdRef.current = requestAnimationFrame(fadeFrame);
+          } else {
+            fadeRafIdRef.current = null;
+            setDisplayedCoords([]);
+            setOpacity(1);
+            lastCoordsRef.current = null;
+            hasDrawnInitialRef.current = false;
+          }
+        };
+        fadeRafIdRef.current = requestAnimationFrame(fadeFrame);
+        return;
+      }
+
+      // Limpieza instantánea si no se requiere fade-out
+      cancelFadeAnimation();
       setDisplayedCoords([]);
+      setOpacity(1);
       lastCoordsRef.current = null;
+      hasDrawnInitialRef.current = false;
       return;
     }
 
-    const prevCoords = lastCoordsRef.current;
+    // 2. Coordenadas válidas: cancelar fade-out si estaba activo y restablecer opacidad
+    cancelFadeAnimation();
+    setOpacity(1);
+
     lastCoordsRef.current = coordinates;
 
-    // Verificar si es un update menor de GPS (mismo destino y origen similar < 40m)
-    if (prevCoords && prevCoords.length >= 2) {
-      const prevDest = prevCoords[prevCoords.length - 1];
-      const newDest = coordinates[coordinates.length - 1];
-      const prevOrig = prevCoords[0];
-      const newOrig = coordinates[0];
-
-      const destDrift = computeHaversineDistance(prevDest, newDest);
-      const origDrift = computeHaversineDistance(prevOrig, newOrig);
-
-      // Si el destino es el mismo y el cambio es un desplazamiento incremental en tiempo real
-      if (destDrift < 15 && origDrift < 40 && !animate) {
-        cancelActiveAnimation();
-        setDisplayedCoords(coordinates);
-        return;
-      }
-    }
-
-    if (!animate || duration <= 0) {
+    // 3. Reemplazo Atómico en Movimiento (Hallazgo 3):
+    // Si la ruta inicial ya se dibujó con anterioridad (o animate=false), cualquier recálculo,
+    // giro o actualización de GPS se aplica instantáneamente sin vaciar la pantalla ni rehacer el draw-in de 1s.
+    if (hasDrawnInitialRef.current || !animate || duration <= 0) {
       cancelActiveAnimation();
       setDisplayedCoords(coordinates);
+      hasDrawnInitialRef.current = true;
       onAnimationComplete?.();
       return;
     }
 
-    // Iniciar nueva animación progresiva con Sequence Token para evitar race conditions
+    // 4. Primer dibujado progresivo (Draw-in inicial 1000ms al cargar una nueva ruta)
     cancelActiveAnimation();
     const currentSeq = ++animationSeqRef.current;
     const startTime = Date.now();
@@ -301,6 +398,7 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
       } else {
         rafIdRef.current = null;
         setDisplayedCoords(coordinates); // Asegurar coordenadas exactas finales
+        hasDrawnInitialRef.current = true;
         onAnimationComplete?.();
       }
     };
@@ -309,36 +407,54 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
 
     return () => {
       cancelActiveAnimation();
+      cancelFadeAnimation();
     };
   }, [
     coordinates,
     cumulativeDistances,
     totalDistance,
     duration,
+    fadeDuration,
     animate,
     onAnimationComplete,
   ]);
 
-  if (!displayedCoords || displayedCoords.length < 2) {
+  // Salvaguarda: no renderizar si no hay coordenadas visibles,
+  // si la opacidad llegó a 0, o si el primer y último punto son idénticos (anti-blob).
+  if (!displayedCoords || displayedCoords.length < 2 || opacity <= 0) {
     return null;
   }
 
+  // Cuando no estamos en fade-out (opacidad plena), verificar el umbral mínimo de renderizado (35m)
+  if (opacity >= 1 && totalDistance < MIN_RENDERABLE_POLYLINE_METERS) {
+    return null;
+  }
+
+  if (computeHaversineDistance(displayedCoords[0], displayedCoords[displayedCoords.length - 1]) < 1) {
+    return null;
+  }
+
+  const effectiveGlowColor = applyAlphaToColor(glowColor, opacity);
+  const effectiveStrokeColor = applyAlphaToColor(strokeColor, opacity);
+
   return (
     <>
-      {/* 1. Capa de resplandor / aura exterior (Glow Halo) */}
+      {/* 1. Capa de resplandor / aura exterior (Glow Halo continuo y suave) */}
       <Polyline
         coordinates={displayedCoords}
-        strokeColor={glowColor}
+        strokeColor={effectiveGlowColor}
         strokeWidth={effectiveGlowWidth}
-        lineDashPattern={[0]}
+        lineCap="round"
+        lineJoin="round"
         zIndex={zIndex}
       />
-      {/* 2. Capa de trazo principal (Magenta de alto contraste con patrón dashed del mockup) */}
+      {/* 2. Capa de trazo principal (Magenta de alto contraste con uniones redondeadas continuas) */}
       <Polyline
         coordinates={displayedCoords}
-        strokeColor={strokeColor}
+        strokeColor={effectiveStrokeColor}
         strokeWidth={effectiveStrokeWidth}
-        lineDashPattern={dashed ? [8, 5] : [0]}
+        lineCap="round"
+        lineJoin="round"
         zIndex={zIndex + 1}
       />
     </>

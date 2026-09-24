@@ -27,7 +27,7 @@ export function useSearchLocation(): UseSearchLocationReturn {
     const resolve = async () => {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
-        if (saved) {
+        if (saved && saved !== 'Mi ubicación actual') {
           if (!cancelled) setLocationValue(saved);
           return;
         }
@@ -52,7 +52,11 @@ export function useSearchLocation(): UseSearchLocationReturn {
 
   const setLocation = useCallback((value: string) => {
     setLocationValue(value);
-    AsyncStorage.setItem(STORAGE_KEY, value).catch(() => {});
+    if (value === 'Mi ubicación actual' || !value) {
+      AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+    } else {
+      AsyncStorage.setItem(STORAGE_KEY, value).catch(() => {});
+    }
   }, []);
 
   return { location, setLocation, loaded };

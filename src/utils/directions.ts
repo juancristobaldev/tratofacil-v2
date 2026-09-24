@@ -48,8 +48,86 @@ const FETCH_TIMEOUT_MS = 8000; // 8 segundos
 
 const clientRouteCache = new Map<string, CacheEntry>();
 
+// Constantes de política de ruteo inteligente (anti-in-house, anti-dot y anti-vueltas tontas)
+export const MIN_ROUTING_PROXIMITY_METERS = 30; // Si están a <= 30m, están en el mismo domicilio/inmueble
+export const MIN_RENDERABLE_POLYLINE_METERS = 35; // Distancia mínima para que un trazo vial sea visible (evita puntos o manchas)
+export const SHORT_RANGE_GEODESIC_THRESHOLD_METERS = 100; // Umbral donde se evalúa el ratio de desvío
+export const MAX_SHORT_RANGE_DETOUR_RATIO = 3.5; // Razón máxima (distanciaVial / distanciaGeodésica) en rango corto
+export const MAX_ABSOLUTE_SHORT_RANGE_METERS = 400; // Desvío máximo absoluto cuando están a < 70m en línea recta
+export const OSRM_SNAP_RADIUS_METERS = 40; // Radio máximo de snapping para OSRM
+
 export function clearClientRouteCache(): void {
   clientRouteCache.clear();
+}
+
+/**
+ * Calcula la distancia ortodrómica en metros entre dos puntos geográficos (Haversine).
+ */
+export function computeGeodesicDistance(p1: RouteCoordinate, p2: RouteCoordinate): number {
+  const R = 6371e3;
+  const dLat = ((p2.latitude - p1.latitude) * Math.PI) / 180;
+  const dLon = ((p2.longitude - p1.longitude) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((p1.latitude * Math.PI) / 180) *
+      Math.cos((p2.latitude * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Evalúa si una ruta calculada es cartográfica y físicamente sensata.
+ * Descarta rutas en la misma casa, líneas diminutas/puntos y vueltas absurdas a la manzana.
+ */
+export function isSensibleRoute(
+  result: RouteResult | null | undefined,
+  origin: RouteCoordinate,
+  dest: RouteCoordinate,
+): boolean {
+  if (!result || !Array.isArray(result.coordinates) || result.coordinates.length < 2) {
+    return false;
+  }
+
+  const geodesicDist = computeGeodesicDistance(origin, dest);
+
+  // 1. Ambos están en la misma casa / domicilio / parcela (<= 30m)
+  if (geodesicDist <= MIN_ROUTING_PROXIMITY_METERS) {
+    if (__DEV__) {
+      console.log(`[ROUTE:FILTER_IN_HOUSE] distGeodesica=${geodesicDist.toFixed(1)}m <= ${MIN_ROUTING_PROXIMITY_METERS}m. Suprimiendo polyline.`);
+    }
+    return false;
+  }
+
+  const roadDist = result.distanceMeters;
+
+  // 2. Ruta vial insignificante (< 35m) -> evitaría dibujar puntos residuales o manchas
+  if (roadDist < MIN_RENDERABLE_POLYLINE_METERS) {
+    if (__DEV__) {
+      console.log(`[ROUTE:FILTER_TOO_SHORT] distVial=${roadDist}m < ${MIN_RENDERABLE_POLYLINE_METERS}m. Suprimiendo polyline diminuta.`);
+    }
+    return false;
+  }
+
+  // 3. Filtro Anti-Vueltas Tontas:
+  // Si están a corta distancia (< 100m) pero la ruta vial es un desvío desmedido (> 3.5x o > 400m para < 70m)
+  if (geodesicDist < SHORT_RANGE_GEODESIC_THRESHOLD_METERS) {
+    const detourRatio = roadDist / Math.max(1, geodesicDist);
+    if (detourRatio > MAX_SHORT_RANGE_DETOUR_RATIO) {
+      if (__DEV__) {
+        console.warn(`[ROUTE:FILTER_DETOUR_LOOP] Vuelta tonta detectada: distGeodesica=${geodesicDist.toFixed(1)}m, distVial=${roadDist}m, detourRatio=${detourRatio.toFixed(1)} > ${MAX_SHORT_RANGE_DETOUR_RATIO}. Suprimiendo polyline absurda.`);
+      }
+      return false;
+    }
+
+    if (geodesicDist < 70 && roadDist > MAX_ABSOLUTE_SHORT_RANGE_METERS) {
+      if (__DEV__) {
+        console.warn(`[ROUTE:FILTER_EXCESSIVE_DISTANCE] Vuelta tonta detectada: distGeodesica=${geodesicDist.toFixed(1)}m (<70m), distVial=${roadDist}m > ${MAX_ABSOLUTE_SHORT_RANGE_METERS}m. Suprimiendo polyline absurda.`);
+      }
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getCacheKey(origin: RouteCoordinate, dest: RouteCoordinate): string {
@@ -177,7 +255,7 @@ async function fetchFromClientOsrm(
 ): Promise<RouteResult | null> {
   const startTs = Date.now();
   const baseUrl = OSRM_BASE_URL || 'https://router.project-osrm.org/route/v1/driving';
-  const url = `${baseUrl}/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson`;
+  const url = `${baseUrl}/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson&radiuses=${OSRM_SNAP_RADIUS_METERS};${OSRM_SNAP_RADIUS_METERS}`;
 
   try {
     const timeoutSignal =
@@ -249,6 +327,14 @@ export async function getDirections(
   const origCoord: RouteCoordinate = { latitude: origin!.latitude, longitude: origin!.longitude };
   const destCoord: RouteCoordinate = { latitude: dest!.latitude, longitude: dest!.longitude };
 
+  // 0. Supresión In-House: Si ambos puntos están dentro del mismo domicilio / parcela (<= 30m)
+  if (computeGeodesicDistance(origCoord, destCoord) <= MIN_ROUTING_PROXIMITY_METERS) {
+    if (__DEV__) {
+      console.log(`[ROUTE:IN_HOUSE_PROXIMITY] Ambos en el mismo inmueble (<= ${MIN_ROUTING_PROXIMITY_METERS}m). Sin necesidad de ruteo.`);
+    }
+    return null;
+  }
+
   const cacheKey = getCacheKey(origCoord, destCoord);
   const cached = clientRouteCache.get(cacheKey);
   if (cached && Date.now() <= cached.expiresAt) {
@@ -267,6 +353,10 @@ export async function getDirections(
   try {
     const backendResult = await fetchFromBackendProxy(origCoord, destCoord, signal);
     if (backendResult && backendResult.coordinates.length >= 2) {
+      if (!isSensibleRoute(backendResult, origCoord, destCoord)) {
+        if (__DEV__) console.warn('[ROUTE:BACKEND_PROXY_INSENSIBLE] Ruta del backend descartada por no ser sensata cartográficamente.');
+        return null;
+      }
       if (clientRouteCache.size >= MAX_CLIENT_CACHE_SIZE) {
         const oldestKey = clientRouteCache.keys().next().value;
         if (oldestKey) clientRouteCache.delete(oldestKey);
@@ -288,6 +378,10 @@ export async function getDirections(
   try {
     const osrmResult = await fetchFromClientOsrm(origCoord, destCoord, signal);
     if (osrmResult && osrmResult.coordinates.length >= 2) {
+      if (!isSensibleRoute(osrmResult, origCoord, destCoord)) {
+        if (__DEV__) console.warn('[ROUTE:CLIENT_OSRM_INSENSIBLE] Ruta de OSRM cliente descartada por no ser sensata cartográficamente.');
+        return null;
+      }
       if (clientRouteCache.size >= MAX_CLIENT_CACHE_SIZE) {
         const oldestKey = clientRouteCache.keys().next().value;
         if (oldestKey) clientRouteCache.delete(oldestKey);

@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useFlow } from './useFlow';
 
 const mockMutationByOperation = new Map<string, jest.Mock>();
+const mockQueryByOperation = new Map<string, jest.Mock>();
 
 jest.mock('@apollo/client/react', () => ({
   useMutation: (document: { definitions?: Array<{ name?: { value?: string } }> }) => {
@@ -10,6 +11,12 @@ jest.mock('@apollo/client/react', () => ({
     const mutation = mockMutationByOperation.get(operationName) ?? jest.fn();
     mockMutationByOperation.set(operationName, mutation);
     return [mutation, { loading: false }];
+  },
+  useLazyQuery: (document: { definitions?: Array<{ name?: { value?: string } }> }) => {
+    const operationName = document.definitions?.[0]?.name?.value ?? 'UnknownOperation';
+    const query = mockQueryByOperation.get(operationName) ?? jest.fn().mockResolvedValue({ data: null });
+    mockQueryByOperation.set(operationName, query);
+    return [query, { loading: false }];
   },
 }));
 
@@ -120,5 +127,96 @@ describe('useFlow', () => {
     });
     expect(Linking.openURL).not.toHaveBeenCalled();
     await waitFor(() => expect(result.current.lastError).toBe('Flow no disponible'));
+  });
+
+  it('CANONICAL: initializes payment via CreateCheckout mutation and stores pending checkout', async () => {
+    const createCheckout = jest.fn().mockResolvedValue({
+      data: {
+        createCheckout: {
+          paymentId: 'pay_canon_1',
+          attemptId: 'att_canon_1',
+          status: 'CHECKOUT_READY',
+          checkoutUrl: 'https://flow.cl/pay/canon_1',
+          expiresAt: '2026-09-14T20:00:00Z',
+          requiresAction: true,
+        },
+      },
+    });
+    mockMutationByOperation.set('CreateCheckout', createCheckout);
+
+    const { result } = await renderHook(() => useFlow());
+    let payment: Awaited<ReturnType<typeof result.current.pay>> | undefined;
+    await act(async () => {
+      payment = await result.current.pay({
+        type: 'product',
+        orderId: 101,
+        returnUrl: 'tratofacilv2://payment/callback?type=product',
+      });
+    });
+
+    expect(createCheckout).toHaveBeenCalledWith({
+      variables: {
+        input: expect.objectContaining({
+          order: { domainType: 'PRODUCT', orderId: 101 },
+          paymentMethod: 'FLOW_HOSTED',
+        }),
+      },
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith('https://flow.cl/pay/canon_1');
+    expect(payment).toEqual({
+      url: 'https://flow.cl/pay/canon_1',
+      token: 'att_canon_1',
+      paymentExpiresAt: '2026-09-14T20:00:00Z',
+    });
+  });
+
+  it('CANONICAL: verifies payment passively via PaymentStatus query when paid', async () => {
+    const paymentStatus = jest.fn().mockResolvedValue({
+      data: {
+        paymentStatus: {
+          paymentId: 'pay_canon_2',
+          isPaid: true,
+          isTerminal: true,
+          paymentStatus: 'PAID',
+        },
+      },
+    });
+    mockQueryByOperation.set('PaymentStatus', paymentStatus);
+
+    const { result } = await renderHook(() => useFlow());
+    let outcome: string | undefined;
+    await act(async () => {
+      outcome = await result.current.confirm('product', 'canon_token_77');
+    });
+
+    expect(paymentStatus).toHaveBeenCalledWith({
+      variables: { token: 'canon_token_77' },
+    });
+    expect(outcome).toBe('SUCCESS');
+  });
+
+  it('CANONICAL: returns a logical saved-card success for jobs without using a legacy id', async () => {
+    const createCheckout = jest.fn().mockResolvedValue({
+      data: {
+        createCheckout: {
+          paymentId: 'pay_job_card_1',
+          attemptId: 'att_job_card_1',
+          status: 'SUCCEEDED',
+          checkoutUrl: null,
+          expiresAt: null,
+          requiresAction: false,
+        },
+      },
+    });
+    mockMutationByOperation.set('CreateCheckout', createCheckout);
+
+    const { result } = await renderHook(() => useFlow());
+    let payment: Awaited<ReturnType<typeof result.current.payWithSavedCard>> | undefined;
+    await act(async () => {
+      payment = await result.current.payWithSavedCard('job', 42);
+    });
+
+    expect(payment).toEqual({ success: true, paymentId: 'pay_job_card_1' });
+    expect(Linking.openURL).not.toHaveBeenCalled();
   });
 });

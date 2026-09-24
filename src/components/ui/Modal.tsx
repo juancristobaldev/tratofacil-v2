@@ -6,6 +6,8 @@ import {
   Pressable,
   ViewStyle,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { TOKENS, MOTION } from '../../theme';
@@ -57,31 +59,36 @@ export const Modal: React.FC<ModalProps> = ({
       onRequestClose={onClose}
     >
       <GestureHandlerRootView style={styles.gestureRoot}>
-        <View style={styles.overlay}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-          <Animated.View
-            style={[
-              styles.dialog,
-              contentStyle,
-              {
-                opacity,
-                transform: [{ scale }],
-              },
-            ]}
-          >
-            {showCloseButton && (
-              <IconButton
-                icon="X"
-                size="sm"
-                variant="surface"
-                accessibilityLabel="Cerrar modal"
-                onPress={onClose}
-                style={styles.closeBtn}
-              />
-            )}
-            {children}
-          </Animated.View>
-        </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardAvoid}
+        >
+          <View style={styles.overlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+            <Animated.View
+              style={[
+                styles.dialog,
+                contentStyle,
+                {
+                  opacity,
+                  transform: [{ scale }],
+                },
+              ]}
+            >
+              {showCloseButton && (
+                <IconButton
+                  icon="X"
+                  size="sm"
+                  variant="surface"
+                  accessibilityLabel="Cerrar modal"
+                  onPress={onClose}
+                  style={styles.closeBtn}
+                />
+              )}
+              {children}
+            </Animated.View>
+          </View>
+        </KeyboardAvoidingView>
       </GestureHandlerRootView>
     </RNModal>
   );
@@ -89,6 +96,9 @@ export const Modal: React.FC<ModalProps> = ({
 
 const styles = StyleSheet.create({
   gestureRoot: {
+    flex: 1,
+  },
+  keyboardAvoid: {
     flex: 1,
   },
   overlay: {

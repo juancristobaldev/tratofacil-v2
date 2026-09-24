@@ -70,6 +70,19 @@ export type BankAccountUser = {
   userId: Scalars['Int']['output'];
 };
 
+/** Estado canónico del pago a nivel global de la orden */
+export enum CanonicalPaymentStatus {
+  Cancelled = 'CANCELLED',
+  Expired = 'EXPIRED',
+  Failed = 'FAILED',
+  Paid = 'PAID',
+  PartiallyRefunded = 'PARTIALLY_REFUNDED',
+  Pending = 'PENDING',
+  Processing = 'PROCESSING',
+  Refunded = 'REFUNDED',
+  RefundPending = 'REFUND_PENDING'
+}
+
 export type Category = {
   __typename?: 'Category';
   description?: Maybe<Scalars['String']['output']>;
@@ -81,9 +94,9 @@ export type Category = {
   parent?: Maybe<Category>;
   parentId?: Maybe<Scalars['Int']['output']>;
   position: Scalars['Int']['output'];
-  services?: Maybe<Array<Maybe<Service>>>;
+  services?: Maybe<Array<Service>>;
   slug: Scalars['String']['output'];
-  subCategories?: Maybe<Array<Maybe<Category>>>;
+  subCategories?: Maybe<Array<Category>>;
 };
 
 export type CategoryProduct = {
@@ -95,11 +108,11 @@ export type CategoryProduct = {
   parent?: Maybe<CategoryProduct>;
   parentId?: Maybe<Scalars['Int']['output']>;
   /** Lista de productos que pertenecen a esta categoría */
-  products?: Maybe<Array<Maybe<Product>>>;
+  products?: Maybe<Array<Product>>;
   shippingDisabled: Scalars['Boolean']['output'];
   slug: Scalars['String']['output'];
   /** Subcategorías dependientes de este rubro principal */
-  subCategories?: Maybe<Array<Maybe<CategoryProduct>>>;
+  subCategories?: Maybe<Array<CategoryProduct>>;
   updatedAt: Scalars['DateTime']['output'];
 };
 
@@ -116,8 +129,26 @@ export type ChatMessageEntity = {
   senderId: Scalars['Int']['output'];
 };
 
+export type CheckoutSession = {
+  __typename?: 'CheckoutSession';
+  attemptId: Scalars['ID']['output'];
+  checkoutUrl?: Maybe<Scalars['String']['output']>;
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
+  paymentId: Scalars['ID']['output'];
+  requiresAction: Scalars['Boolean']['output'];
+  status: Scalars['String']['output'];
+};
+
+/** Plataforma cliente que inicia el checkout (WEB, IOS, ANDROID) */
+export enum ClientPlatform {
+  Android = 'ANDROID',
+  Ios = 'IOS',
+  Web = 'WEB'
+}
+
 export type ClientReview = {
   __typename?: 'ClientReview';
+  client?: Maybe<User>;
   clientId: Scalars['Int']['output'];
   comment?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
@@ -196,6 +227,13 @@ export type CreateCertificateInput = {
   year?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type CreateCheckoutInput = {
+  idempotencyKey: Scalars['String']['input'];
+  order: PaymentOrderReferenceInput;
+  paymentMethod: PaymentMethodType;
+  platform: ClientPlatform;
+};
+
 export type CreateClientReviewInput = {
   clientId: Scalars['Int']['input'];
   comment?: InputMaybe<Scalars['String']['input']>;
@@ -242,7 +280,7 @@ export type CreateImageTransitionInput = {
 
 export type CreateJobInput = {
   description?: InputMaybe<Scalars['String']['input']>;
-  location: Scalars['String']['input'];
+  location?: InputMaybe<Scalars['String']['input']>;
   price?: InputMaybe<Scalars['Float']['input']>;
   title: Scalars['String']['input'];
 };
@@ -271,7 +309,7 @@ export type CreateOrderProductInput = {
 
 export type CreatePlanOrderGeneralInput = {
   couponCode?: InputMaybe<Scalars['String']['input']>;
-  customerId: Scalars['String']['input'];
+  customerId?: InputMaybe<Scalars['String']['input']>;
   interval: PlanInterval;
   plan: Scalars['String']['input'];
   type: Scalars['String']['input'];
@@ -391,6 +429,12 @@ export type DeleteHobbyInput = {
   id: Scalars['Int']['input'];
 };
 
+export type FlowPaymentResponse = {
+  __typename?: 'FlowPaymentResponse';
+  token: Scalars['String']['output'];
+  url: Scalars['String']['output'];
+};
+
 export type GenericResponse = {
   __typename?: 'GenericResponse';
   status: Scalars['String']['output'];
@@ -503,9 +547,9 @@ export type Job = {
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
   location?: Maybe<Scalars['String']['output']>;
-  orders?: Maybe<Array<Maybe<OrderJob>>>;
+  orders?: Maybe<Array<OrderJob>>;
   price?: Maybe<Scalars['Float']['output']>;
-  reviews?: Maybe<Array<Maybe<ReviewsJob>>>;
+  reviews?: Maybe<Array<ReviewsJob>>;
   title: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   user: User;
@@ -548,6 +592,7 @@ export type Mutation = {
   adminApproveWithdrawal: Withdrawal;
   adminCommission: ComissionServices;
   adminCreateCategory: Category;
+  /** @deprecated Deprecado: Las liquidaciones deben procesarse a través del saldo en Wallet (requestWithdrawal y adminApproveWithdrawal) para garantizar la trazabilidad contable. */
   adminCreatePayoutBatch: Array<Withdrawal>;
   adminCreateService: Service;
   adminDeleteCategory: Scalars['Boolean']['output'];
@@ -586,13 +631,14 @@ export type Mutation = {
   confirmFlowProduct: OrderProduct;
   confirmFlowService: Order;
   confirmOrderProductReceipt: OrderProduct;
+  confirmRealtimeArrival: OrderRealTime;
   confirmRealtimeFlowPayment: OrderRealTime;
-  confirmWebpayProductTransaction: OrderProduct;
   createCategoryProduct: CategoryProduct;
   createCertificate: ProviderCertificate;
+  createCheckout: CheckoutSession;
   createClientReview: ClientReview;
   createCoupon: CouponResponse;
-  createFlowAdTransaction: WebpayResponse;
+  createFlowAdTransaction: FlowPaymentResponse;
   createHobby: Hobby;
   createImageMarketing: ImageMarketing;
   createImageTransition: ImageMarketingDurationType;
@@ -612,6 +658,8 @@ export type Mutation = {
   createServiceContactRequest: Order;
   createSupportTicket: SupportTicket;
   createUserIdentity: UserIdentity;
+  /** Elimina la cuenta del usuario autenticado (soft delete seguro) */
+  deleteAccount: Scalars['Boolean']['output'];
   deleteCategory: Category;
   deleteCertificate: Scalars['Boolean']['output'];
   deleteCoupon: GenericResponse;
@@ -628,12 +676,11 @@ export type Mutation = {
   getCoupon: CouponResponse;
   guestCreateOrderServiceWithPayment: GuestCheckoutResponse;
   guestCreateRealtimeContactRequest: GuestRealtimeContactResponse;
-  initFlowJob: WebpayResponse;
-  initFlowProduct: WebpayResponse;
-  initFlowService: WebpayResponse;
+  initFlowJob: FlowPaymentResponse;
+  initFlowProduct: FlowPaymentResponse;
+  initFlowService: FlowPaymentResponse;
   initPlan: PlanResponse;
   initRealtimeFlowPayment: RealtimePaymentInitResponse;
-  initWebpayProductTransaction: WebpayResponse;
   /** Inicia sesión y retorna el token con la info del usuario */
   login: AuthType;
   /** Inicia sesión con Google y retorna el token con la info del usuario */
@@ -669,6 +716,7 @@ export type Mutation = {
   setGuestPassword: Scalars['Boolean']['output'];
   setMyRealtimeAvailability: Scalars['Boolean']['output'];
   startRealtimeOrder: OrderRealTime;
+  unregisterPushToken: Scalars['Boolean']['output'];
   updateBank: BankAccount;
   updateCategoryProduct: CategoryProduct;
   updateCertificate: ProviderCertificate;
@@ -935,12 +983,14 @@ export type MutationConfirmOrderProductReceiptArgs = {
 };
 
 
-export type MutationConfirmRealtimeFlowPaymentArgs = {
-  token: Scalars['String']['input'];
+export type MutationConfirmRealtimeArrivalArgs = {
+  lat?: InputMaybe<Scalars['Float']['input']>;
+  lng?: InputMaybe<Scalars['Float']['input']>;
+  orderRealtimeId: Scalars['Int']['input'];
 };
 
 
-export type MutationConfirmWebpayProductTransactionArgs = {
+export type MutationConfirmRealtimeFlowPaymentArgs = {
   token: Scalars['String']['input'];
 };
 
@@ -952,6 +1002,11 @@ export type MutationCreateCategoryProductArgs = {
 
 export type MutationCreateCertificateArgs = {
   input: CreateCertificateInput;
+};
+
+
+export type MutationCreateCheckoutArgs = {
+  input: CreateCheckoutInput;
 };
 
 
@@ -1176,12 +1231,6 @@ export type MutationInitRealtimeFlowPaymentArgs = {
 };
 
 
-export type MutationInitWebpayProductTransactionArgs = {
-  orderId: Scalars['Int']['input'];
-  returnUrl: Scalars['String']['input'];
-};
-
-
 export type MutationLoginArgs = {
   loginInput: LoginInput;
 };
@@ -1340,6 +1389,11 @@ export type MutationSetMyRealtimeAvailabilityArgs = {
 
 export type MutationStartRealtimeOrderArgs = {
   orderRealtimeId: Scalars['Int']['input'];
+};
+
+
+export type MutationUnregisterPushTokenArgs = {
+  token: Scalars['String']['input'];
 };
 
 
@@ -1603,6 +1657,7 @@ export type OrderProduct = {
 
 export type OrderRealTime = {
   __typename?: 'OrderRealTime';
+  arrivedAt?: Maybe<Scalars['DateTime']['output']>;
   client: User;
   clientAddress?: Maybe<Scalars['String']['output']>;
   clientDescription?: Maybe<Scalars['String']['output']>;
@@ -1694,6 +1749,29 @@ export type PaymentAd = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+/** Estado del intento concreto de cobro */
+export enum PaymentAttemptStatus {
+  Cancelled = 'CANCELLED',
+  CheckoutReady = 'CHECKOUT_READY',
+  Created = 'CREATED',
+  Expired = 'EXPIRED',
+  Failed = 'FAILED',
+  Processing = 'PROCESSING',
+  Submitted = 'SUBMITTED',
+  Succeeded = 'SUCCEEDED',
+  Unknown = 'UNKNOWN'
+}
+
+/** Dominio o tipo de recurso de la orden a pagar */
+export enum PaymentDomainType {
+  Ad = 'AD',
+  Job = 'JOB',
+  Plan = 'PLAN',
+  Product = 'PRODUCT',
+  Realtime = 'REALTIME',
+  Service = 'SERVICE'
+}
+
 export enum PaymentEntryType {
   Ad = 'AD',
   Job = 'JOB',
@@ -1736,6 +1814,18 @@ export type PaymentJob = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+/** Método de pago a utilizar (FLOW_HOSTED, FLOW_SAVED_CARD, FLOW_SUBSCRIPTION) */
+export enum PaymentMethodType {
+  FlowHosted = 'FLOW_HOSTED',
+  FlowSavedCard = 'FLOW_SAVED_CARD',
+  FlowSubscription = 'FLOW_SUBSCRIPTION'
+}
+
+export type PaymentOrderReferenceInput = {
+  domainType: PaymentDomainType;
+  orderId: Scalars['Int']['input'];
+};
+
 export type PaymentPlan = {
   __typename?: 'PaymentPlan';
   amount: Scalars['Float']['output'];
@@ -1763,8 +1853,7 @@ export type PaymentProduct = {
 
 export enum PaymentProvider {
   Flow = 'FLOW',
-  Mercadopago = 'MERCADOPAGO',
-  Webpay = 'WEBPAY'
+  Mercadopago = 'MERCADOPAGO'
 }
 
 export type PaymentRealTime = {
@@ -1778,6 +1867,22 @@ export enum PaymentStatus {
   Failed = 'FAILED',
   Initiated = 'INITIATED'
 }
+
+export type PaymentStatusResult = {
+  __typename?: 'PaymentStatusResult';
+  amount: Scalars['Int']['output'];
+  attemptId?: Maybe<Scalars['ID']['output']>;
+  attemptStatus?: Maybe<PaymentAttemptStatus>;
+  currency: Scalars['String']['output'];
+  domainType: PaymentDomainType;
+  errorMessage?: Maybe<Scalars['String']['output']>;
+  isPaid: Scalars['Boolean']['output'];
+  isTerminal: Scalars['Boolean']['output'];
+  orderId: Scalars['Int']['output'];
+  paidAt?: Maybe<Scalars['DateTime']['output']>;
+  paymentId: Scalars['ID']['output'];
+  paymentStatus: CanonicalPaymentStatus;
+};
 
 export type PayoutItemInput = {
   id: Scalars['Int']['input'];
@@ -1838,7 +1943,7 @@ export type Product = {
   deliveryCondition?: Maybe<ConditionDelivery>;
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
-  images?: Maybe<Array<Maybe<ProductImage>>>;
+  images?: Maybe<Array<ProductImage>>;
   location?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
   price: Scalars['Float']['output'];
@@ -1865,11 +1970,11 @@ export type Provider = {
   activeRealtimeOrder?: Maybe<OrderRealTime>;
   bank?: Maybe<BankAccount>;
   bio?: Maybe<Scalars['String']['output']>;
-  certificates?: Maybe<Array<Maybe<ProviderCertificate>>>;
+  certificates?: Maybe<Array<ProviderCertificate>>;
   completedOrdersCount?: Maybe<Scalars['Int']['output']>;
   createdAt: Scalars['DateTime']['output'];
   hasSchedule?: Maybe<Scalars['Boolean']['output']>;
-  hobbys?: Maybe<Array<Maybe<Hobby>>>;
+  hobbys?: Maybe<Array<Hobby>>;
   id: Scalars['Int']['output'];
   isRealtimeActive?: Maybe<Scalars['Boolean']['output']>;
   lat?: Maybe<Scalars['Float']['output']>;
@@ -1879,13 +1984,13 @@ export type Provider = {
   /** @deprecated Usar logoImage.cdnUrl */
   logoUrl?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
-  portfolio?: Maybe<Array<Maybe<ProviderPortfolio>>>;
+  portfolio?: Maybe<Array<ProviderPortfolio>>;
   priority: Scalars['Int']['output'];
   realtimeReviews?: Maybe<Array<Maybe<RealtimeProviderReview>>>;
-  reviews?: Maybe<Array<Maybe<ProviderReview>>>;
+  reviews?: Maybe<Array<ProviderReview>>;
   rut?: Maybe<Scalars['String']['output']>;
-  schedules?: Maybe<Array<Maybe<ProviderSchedule>>>;
-  services?: Maybe<Array<Maybe<ServiceProvider>>>;
+  schedules?: Maybe<Array<ProviderSchedule>>;
+  services?: Maybe<Array<ServiceProvider>>;
   slug: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   user?: Maybe<User>;
@@ -1954,7 +2059,7 @@ export type ProviderSchedule = {
   dayOfWeek: Scalars['Int']['output'];
   id: Scalars['Int']['output'];
   providerId: Scalars['Int']['output'];
-  slots?: Maybe<Array<Maybe<ProviderScheduleSlot>>>;
+  slots?: Maybe<Array<ProviderScheduleSlot>>;
   updatedAt: Scalars['DateTime']['output'];
 };
 
@@ -2042,6 +2147,7 @@ export type Query = {
   myServices: Array<Service>;
   myWallet: Wallet;
   ordersProductsBySeller: Array<OrderProduct>;
+  paymentStatus: PaymentStatusResult;
   product: Product;
   productBySlug: Product;
   products: Array<Product>;
@@ -2163,6 +2269,13 @@ export type QueryMessagesArgs = {
 };
 
 
+export type QueryPaymentStatusArgs = {
+  attemptId?: InputMaybe<Scalars['String']['input']>;
+  paymentId?: InputMaybe<Scalars['String']['input']>;
+  token?: InputMaybe<Scalars['String']['input']>;
+};
+
+
 export type QueryProductArgs = {
   id: Scalars['Int']['input'];
 };
@@ -2232,6 +2345,7 @@ export type QueryUserArgs = {
 /** Estado de solicitudes en tiempo real desde /find */
 export enum RealtimeOrderStatus {
   Accepted = 'ACCEPTED',
+  Arrived = 'ARRIVED',
   Cancelled = 'CANCELLED',
   Completed = 'COMPLETED',
   Expired = 'EXPIRED',
@@ -2257,6 +2371,7 @@ export type RealtimeProviderReview = {
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['Int']['output'];
   orderRealtimeId: Scalars['Int']['output'];
+  provider?: Maybe<Provider>;
   providerId: Scalars['Int']['output'];
   rating: Scalars['Int']['output'];
 };
@@ -2353,7 +2468,7 @@ export type Service = {
   imageUrl?: Maybe<Scalars['String']['output']>;
   isActive: Scalars['Boolean']['output'];
   name: Scalars['String']['output'];
-  serviceProviders?: Maybe<Array<Maybe<ServiceProvider>>>;
+  serviceProviders?: Maybe<Array<ServiceProvider>>;
   slug: Scalars['String']['output'];
 };
 
@@ -2374,7 +2489,7 @@ export type ServiceDetail = {
   price?: Maybe<Scalars['Float']['output']>;
   provider?: Maybe<Provider>;
   service?: Maybe<Service>;
-  serviceProviders?: Maybe<Array<Maybe<ServiceProvider>>>;
+  serviceProviders?: Maybe<Array<ServiceProvider>>;
   slug: Scalars['String']['output'];
 };
 
@@ -2386,7 +2501,7 @@ export type ServiceProvider = {
   hasHomeVisit: Scalars['Boolean']['output'];
   id: Scalars['Int']['output'];
   netAmount?: Maybe<Scalars['Float']['output']>;
-  orders?: Maybe<Array<Maybe<Order>>>;
+  orders?: Maybe<Array<Order>>;
   price?: Maybe<Scalars['Float']['output']>;
   provider?: Maybe<Provider>;
   providerId: Scalars['Int']['output'];
@@ -2552,13 +2667,13 @@ export type User = {
   __typename?: 'User';
   activationKey: Scalars['String']['output'];
   activeRealtimeOrder?: Maybe<OrderRealTime>;
-  ads?: Maybe<Array<Maybe<OrderAds>>>;
-  applications?: Maybe<Array<Maybe<JobApplication>>>;
+  ads?: Maybe<Array<OrderAds>>;
+  applications?: Maybe<Array<JobApplication>>;
   bankAccount?: Maybe<BankAccountUser>;
   birthday?: Maybe<Scalars['DateTime']['output']>;
   cardActive?: Maybe<Scalars['Boolean']['output']>;
-  chatMessages?: Maybe<Array<Maybe<ChatMessageEntity>>>;
-  clientReviewsReceived?: Maybe<Array<Maybe<ClientReview>>>;
+  chatMessages?: Maybe<Array<ChatMessageEntity>>;
+  clientReviewsReceived?: Maybe<Array<ClientReview>>;
   createdAt: Scalars['DateTime']['output'];
   creditCardType?: Maybe<Scalars['String']['output']>;
   deletedAt?: Maybe<Scalars['DateTime']['output']>;
@@ -2567,32 +2682,32 @@ export type User = {
   emailVerified?: Maybe<Scalars['Boolean']['output']>;
   flowCustomerId?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
-  identitys?: Maybe<Array<Maybe<UserIdentity>>>;
+  identitys?: Maybe<Array<UserIdentity>>;
   isGuest?: Maybe<Scalars['Boolean']['output']>;
   isProfileComplete: Scalars['Boolean']['output'];
   isProfileFullyComplete: Scalars['Boolean']['output'];
-  jobOrders?: Maybe<Array<Maybe<OrderJob>>>;
-  jobReviewsGiven?: Maybe<Array<Maybe<ReviewsJob>>>;
-  jobReviewsReceived?: Maybe<Array<Maybe<ReviewsJob>>>;
-  jobs?: Maybe<Array<Maybe<Job>>>;
+  jobOrders?: Maybe<Array<OrderJob>>;
+  jobReviewsGiven?: Maybe<Array<ReviewsJob>>;
+  jobReviewsReceived?: Maybe<Array<ReviewsJob>>;
+  jobs?: Maybe<Array<Job>>;
   kycStatus?: Maybe<Scalars['Boolean']['output']>;
   last4CardDigits?: Maybe<Scalars['String']['output']>;
   location?: Maybe<Scalars['String']['output']>;
-  marketplacePlanOrders?: Maybe<Array<Maybe<PlanUserOrder>>>;
+  marketplacePlanOrders?: Maybe<Array<PlanUserOrder>>;
   nicename: Scalars['String']['output'];
-  orders?: Maybe<Array<Maybe<Order>>>;
+  orders?: Maybe<Array<Order>>;
   phone: Scalars['String']['output'];
-  planOrders?: Maybe<Array<Maybe<PlanOrder>>>;
-  productOrders?: Maybe<Array<Maybe<OrderProduct>>>;
-  productReviewsGiven?: Maybe<Array<Maybe<ReviewsProduct>>>;
-  productReviewsReceived?: Maybe<Array<Maybe<ReviewsProduct>>>;
-  productSales?: Maybe<Array<Maybe<OrderProduct>>>;
-  products?: Maybe<Array<Maybe<Product>>>;
+  planOrders?: Maybe<Array<PlanOrder>>;
+  productOrders?: Maybe<Array<OrderProduct>>;
+  productReviewsGiven?: Maybe<Array<ReviewsProduct>>;
+  productReviewsReceived?: Maybe<Array<ReviewsProduct>>;
+  productSales?: Maybe<Array<OrderProduct>>;
+  products?: Maybe<Array<Product>>;
   provider?: Maybe<Provider>;
-  realtimeOrdersAsClient?: Maybe<Array<Maybe<OrderRealTime>>>;
-  realtimeProviderReviews?: Maybe<Array<Maybe<RealtimeProviderReview>>>;
+  realtimeOrdersAsClient?: Maybe<Array<OrderRealTime>>;
+  realtimeProviderReviews?: Maybe<Array<RealtimeProviderReview>>;
   registered: Scalars['DateTime']['output'];
-  reviewsGiven?: Maybe<Array<Maybe<ProviderReview>>>;
+  reviewsGiven?: Maybe<Array<ProviderReview>>;
   reviewsReceived?: Maybe<Array<Maybe<ClientReview>>>;
   role: Role;
   status: Scalars['Int']['output'];
@@ -2600,8 +2715,8 @@ export type User = {
   url: Scalars['String']['output'];
   username: Scalars['String']['output'];
   wallet?: Maybe<Wallet>;
-  withdrawals?: Maybe<Array<Maybe<Withdrawal>>>;
-  workerJobOrders?: Maybe<Array<Maybe<OrderJob>>>;
+  withdrawals?: Maybe<Array<Withdrawal>>;
+  workerJobOrders?: Maybe<Array<OrderJob>>;
 };
 
 export type UserIdentity = {
@@ -2652,12 +2767,6 @@ export type WalletTransaction = {
   type: Scalars['String']['output'];
   walletId: Scalars['Int']['output'];
   withdrawalId?: Maybe<Scalars['Int']['output']>;
-};
-
-export type WebpayResponse = {
-  __typename?: 'WebpayResponse';
-  token: Scalars['String']['output'];
-  url: Scalars['String']['output'];
 };
 
 export type Withdrawal = {

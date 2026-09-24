@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   Linking,
   AppState,
+  ActivityIndicator,
 } from 'react-native';
-import { BottomSheetScrollView } from '../../bottom-sheet/primitives';
+import { BottomSheetScrollView, BottomSheetView } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards, Modal } from '../ui';
+import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards, formatTimer, calculateElapsedSeconds } from '../ui';
 import type { PaymentMethod } from '../ui';
-import { START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK, REGISTER_CARD_CALLBACK_URL } from '../../config/endpoints';
+import { CARD_DEEP_LINK_CALLBACK, START_ORDER_DISTANCE_KM, DEEP_LINK_CALLBACK } from '../../config/endpoints';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
@@ -44,18 +45,29 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
   const [counterOfferPrice, setCounterOfferPrice] = useState<number | null>(null);
   const [registering, setRegistering] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
 
   const status = activeOrder?.status || 'PENDING';
   const etaRemaining = etaLabel || '...';
   const distanceRemaining = distanceLabel || '...';
 
-  const [serviceElapsed, setServiceElapsed] = useState('00:00');
+  const clientMountInProgressRef = useRef<number>(Date.now());
+  const [serviceElapsed, setServiceElapsed] = useState(() =>
+    formatTimer(calculateElapsedSeconds(activeOrder?.startedAt, clientMountInProgressRef.current))
+  );
   const [negotiatedPrice, setNegotiatedPrice] = useState<number>(activeOrder?.quotedPrice || 0);
   const [counterOfferSent, setCounterOfferSent] = useState(false);
   const [showPaymentStep, setShowPaymentStep] = useState(false);
   const [isPayingCard, setIsPayingCard] = useState(false);
-  const prevCounterOfferRef = useRef<number | null | undefined>(undefined);
+
+  const hasPendingCounterOffer = Boolean(
+    (activeOrder?.counterOfferPrice != null && activeOrder.counterOfferPrice > 0) ||
+    counterOfferSent
+  );
+  const activeCounterPrice = activeOrder?.counterOfferPrice ?? negotiatedPrice;
+  const activeCounterHours = activeOrder?.counterOfferHours ?? activeOrder?.quotedHours ?? 1;
+  const activeCounterTransport = activeOrder?.counterOfferTransport ?? activeOrder?.quotedTransport ?? 0;
+
+  const prevCounterOfferRef = useRef<number | null | undefined>(activeOrder?.counterOfferPrice);
   const prevNegotiatedPriceRef = useRef<number>(activeOrder?.quotedPrice || 0);
 
   useEffect(() => {
@@ -70,42 +82,59 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
   }, [refetchUser]);
 
   useEffect(() => {
-    const hadCounterOffer = prevCounterOfferRef.current != null;
+    const hadCounterOffer = prevCounterOfferRef.current != null && prevCounterOfferRef.current > 0;
     const counterOfferCleared = activeOrder?.counterOfferPrice == null;
 
-    if (hadCounterOffer && counterOfferCleared && counterOfferSent) {
+    if (hadCounterOffer && counterOfferCleared) {
       setCounterOfferSent(false);
-      const priceChanged = activeOrder?.quotedPrice !== prevCounterOfferRef.current;
-      if (priceChanged) {
+      const prevSentPrice = prevCounterOfferRef.current;
+      const isAccepted = activeOrder?.quotedPrice === prevSentPrice || (activeOrder?.quotedPrice != null && activeOrder.quotedPrice !== prevNegotiatedPriceRef.current);
+
+      if (isAccepted) {
         setNegotiatedPrice(activeOrder?.quotedPrice || 0);
+        setShowPaymentStep(true);
+        showNotification({
+          id: `counterOffer:${activeOrder?.id}:${activeOrder?.quotedPrice}:accepted`,
+          title: '¡Contraoferta aceptada!',
+          message: 'El profesional aceptó tu propuesta. Puedes proceder al pago.',
+          type: 'success',
+        });
       } else {
-        showNotification({ title: 'Contraoferta rechazada', message: 'El profesional rechazó tu contraoferta. Puedes enviar una nueva oferta.', type: 'error' });
+        setNegotiatedPrice(activeOrder?.quotedPrice || 0);
+        showNotification({
+          id: `counterOffer:${activeOrder?.id}:${activeOrder?.quotedPrice}:rejected`,
+          title: 'Contraoferta rechazada',
+          message: 'El profesional rechazó tu contraoferta. Puedes enviar una nueva oferta o aceptar la cotización.',
+          type: 'error',
+        });
       }
     } else if (activeOrder?.quotedPrice && activeOrder.quotedPrice !== prevNegotiatedPriceRef.current) {
       setNegotiatedPrice(activeOrder.quotedPrice);
-      if (!counterOfferSent) setCounterOfferSent(false);
+      if (!hasPendingCounterOffer) setCounterOfferSent(false);
     }
 
     prevCounterOfferRef.current = activeOrder?.counterOfferPrice;
     prevNegotiatedPriceRef.current = activeOrder?.quotedPrice || 0;
-  }, [activeOrder?.quotedPrice, activeOrder?.counterOfferPrice, counterOfferSent, showNotification]);
+  }, [activeOrder?.quotedPrice, activeOrder?.counterOfferPrice, hasPendingCounterOffer, showNotification]);
 
   const distanceToProvider = distanceToProviderKm;
 
-  const isQuotedPhase = status === 'QUOTED' || status === 'NEGOTIATING' || status === 'PAYMENT_PENDING' || status === 'PENDING';
-  const isAcceptedPhase = status === 'ACCEPTED' || status === 'PROVIDER_ON_THE_WAY' || status === 'ARRIVED';
+  const isQuotedPhase = status === 'QUOTED' || status === 'PAYMENT_PENDING' || status === 'PENDING';
+  const isArrivedPhase = status === 'ARRIVED';
+  const isAcceptedPhase = status === 'ACCEPTED' || isArrivedPhase;
   const isInProgressPhase = status === 'IN_PROGRESS';
   const isPaymentStepActive = showPaymentStep || status === 'PAYMENT_PENDING';
 
-  const canStartOrder = isAcceptedPhase && distanceToProvider !== null && distanceToProvider <= START_ORDER_DISTANCE_KM;
+  const canStartOrder = isArrivedPhase || Boolean(activeOrder?.arrivedAt);
 
   useEffect(() => {
-    if (!isInProgressPhase || !activeOrder?.startedAt) return;
+    if (!isInProgressPhase) {
+      clientMountInProgressRef.current = Date.now();
+      return;
+    }
+    setServiceElapsed(formatTimer(calculateElapsedSeconds(activeOrder?.startedAt, clientMountInProgressRef.current)));
     const interval = setInterval(() => {
-      const sec = Math.floor((Date.now() - new Date(activeOrder.startedAt!).getTime()) / 1000);
-      const mm = Math.floor(sec / 60).toString().padStart(2, '0');
-      const ss = (sec % 60).toString().padStart(2, '0');
-      setServiceElapsed(`${mm}:${ss}`);
+      setServiceElapsed(formatTimer(calculateElapsedSeconds(activeOrder?.startedAt, clientMountInProgressRef.current)));
     }, 1000);
     return () => clearInterval(interval);
   }, [isInProgressPhase, activeOrder?.startedAt]);
@@ -145,7 +174,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     } catch (err: any) {
       showNotification({
         title: 'Error de pago',
-        message: err?.message || 'No se pudo cobrar a tu tarjeta. Puedes intentar con Webpay.',
+        message: err?.message || 'No se pudo cobrar a tu tarjeta. Puedes intentar con Flow.',
         type: 'error',
       });
     } finally {
@@ -157,7 +186,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     if (registering) return;
     setRegistering(true);
     try {
-      const result = await registerCard(REGISTER_CARD_CALLBACK_URL);
+      const result = await registerCard(CARD_DEEP_LINK_CALLBACK);
       if (result?.alreadyRegistered) {
         showNotification({ title: 'Tarjeta', message: 'Ya tienes una tarjeta vinculada.', type: 'info' });
       } else if (result?.url) {
@@ -189,6 +218,8 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     }
   };
 
+  const [isStartingOrder, setIsStartingOrder] = useState(false);
+
   const handleRejectQuote = () => {
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'REJECT_QUOTE', origin: 'FOCUS_CLIENT' });
@@ -200,7 +231,8 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     realtime.rejectQuote(activeOrder.id).catch(() => {});
   };
 
-  const handleStartOrder = () => {
+  const handleStartOrder = async () => {
+    if (isStartingOrder) return;
     const actionId = nextBottomSheetActionId();
     bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'CONFIRM_START', origin: 'FOCUS_CLIENT' });
     if (!activeOrder?.id || !realtime?.startOrder) {
@@ -208,7 +240,23 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       return;
     }
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'CONFIRM_START', result: 'start_order' });
-    realtime.startOrder(activeOrder.id).catch(() => {});
+    setIsStartingOrder(true);
+    try {
+      await realtime.startOrder(activeOrder.id);
+      showNotification({
+        title: 'Servicio iniciado',
+        message: 'Has iniciado el servicio con el profesional.',
+        type: 'success',
+      });
+    } catch (err: any) {
+      showNotification({
+        title: 'No se pudo iniciar el servicio',
+        message: err?.message || 'El proveedor debe confirmar su llegada en el domicilio antes de iniciar.',
+        type: 'error',
+      });
+    } finally {
+      setIsStartingOrder(false);
+    }
   };
 
 
@@ -232,7 +280,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
   if (isCollapsed) {
     return (
-      <View style={styles.compactContainer}>
+      <BottomSheetView style={styles.compactContainer}>
         <TouchableOpacity
           style={styles.compactHeaderRow}
           onPress={() => setIndex?.(1)}
@@ -244,15 +292,20 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           <View style={styles.compactInfoCol}>
             <View style={styles.compactTitleRow}>
               <Text style={styles.compactName} numberOfLines={1}>{provider.name}</Text>
-              {isQuotedPhase && !counterOfferSent && (
+              {isQuotedPhase && !hasPendingCounterOffer && (
                 <Text style={styles.compactPriceBadge}>
                   {`$${(negotiatedPrice !== (activeOrder?.quotedPrice || 0) && negotiatedPrice > 0 ? negotiatedPrice : (activeOrder?.quotedPrice || 0)).toLocaleString('es-CL')}`}
+                </Text>
+              )}
+              {isQuotedPhase && hasPendingCounterOffer && (
+                <Text style={styles.compactPriceBadge}>
+                  {`$${activeCounterPrice.toLocaleString('es-CL')}`}
                 </Text>
               )}
             </View>
             <Text style={styles.compactStatusText} numberOfLines={1}>
               {isQuotedPhase
-                ? counterOfferSent
+                ? hasPendingCounterOffer
                   ? 'Contraoferta enviada • Esperando'
                   : status === 'PAYMENT_PENDING'
                     ? 'Pago pendiente • Continuar'
@@ -272,7 +325,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
         </TouchableOpacity>
 
         <View style={styles.compactActionRow}>
-          {isQuotedPhase && !counterOfferSent && (
+          {isQuotedPhase && !hasPendingCounterOffer && (
             negotiatedPrice !== (activeOrder?.quotedPrice || 0) && status !== 'PAYMENT_PENDING' ? (
               <Button
                 title="Enviar contraoferta"
@@ -312,9 +365,9 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             )
           )}
 
-          {isQuotedPhase && counterOfferSent && (
+          {isQuotedPhase && hasPendingCounterOffer && (
             <Button
-              title="Contraoferta enviada"
+              title="Esperando al profesional"
               variant="secondary"
               size="md"
               disabled
@@ -328,6 +381,8 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               <Button
                 title="Confirmar inicio de servicio"
                 onPress={handleStartOrder}
+                loading={isStartingOrder}
+                disabled={isStartingOrder}
                 size="md"
                 style={styles.compactActionBtn}
               />
@@ -362,7 +417,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             />
           )}
         </View>
-      </View>
+      </BottomSheetView>
     );
   }
 
@@ -449,6 +504,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                 onPayWithFlow={handlePay}
                 isProcessing={isPayingCard || registering}
                 activeAction={isPayingCard ? 'saved_card' : registering ? 'register_card' : null}
+                titleColor="#CBD5E1"
               />
 
               <Button
@@ -460,6 +516,36 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                 textStyle={{ color: '#CBD5E1' }}
               />
             </View>
+          ) : hasPendingCounterOffer ? (
+            <View style={styles.waitingCard}>
+              <View style={styles.waitingLoadingHeader}>
+                <ActivityIndicator size="large" color={TOKENS.colors.brand500} style={styles.waitingSpinner} />
+                <View style={styles.waitingTextCol}>
+                  <Text style={styles.waitingCardTitle}>Esperando respuesta del profesional</Text>
+                  <Text style={styles.waitingCardDesc}>
+                    Le hemos enviado tu propuesta. Te notificaremos apenas el profesional la acepte o rechace.
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.counterOfferProposalSummary}>
+                <View style={styles.proposalBadgeRow}>
+                  <Badge label="TU CONTRAOFERTA ENVIADA" tone="warning" />
+                  <Text style={styles.proposalPrice}>${activeCounterPrice.toLocaleString('es-CL')}</Text>
+                </View>
+                <Text style={styles.proposalDetail}>
+                  Propuesta: {activeCounterHours}h de trabajo • {activeCounterTransport}km traslado
+                </Text>
+              </View>
+
+              <Button
+                title="Cancelar orden"
+                variant="subtle"
+                size="md"
+                onPress={handleCancel}
+                style={styles.cancelWaitingBtn}
+              />
+            </View>
           ) : (
             <View style={styles.pricingCard}>
               <View style={styles.priceHeaderRow}>
@@ -467,93 +553,72 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                 <Text style={styles.priceValue}>${(activeOrder?.quotedPrice || 0).toLocaleString('es-CL')}</Text>
               </View>
 
-              {counterOfferSent ? (
-                <View style={styles.waitingContainerCompact}>
-                  <Icon name="Clock" size={32} color={TOKENS.colors.brand500} />
-                  <Text style={styles.waitingTitle}>Contraoferta enviada</Text>
-                  <Text style={styles.waitingDesc}>Esperando respuesta del profesional...</Text>
+              <View style={styles.negotiateRowCompact}>
+                <Text style={styles.negotiateLabelCompact}>Tu contraoferta</Text>
+                <View style={styles.adjusterRowCompact}>
+                  <TouchableOpacity
+                    onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
+                    style={styles.adjusterBtnSmall}
+                    accessibilityLabel="Disminuir monto de contraoferta"
+                    accessibilityHint="Resta 1000 pesos a tu propuesta"
+                    accessibilityRole="button"
+                  >
+                    <Icon name="Minus" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <Text style={styles.adjusterPriceCompact}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
+                  <TouchableOpacity
+                    onPress={() => setNegotiatedPrice((p) => p + 1000)}
+                    style={styles.adjusterBtnSmall}
+                    accessibilityLabel="Aumentar monto de contraoferta"
+                    accessibilityHint="Suma 1000 pesos a tu propuesta"
+                    accessibilityRole="button"
+                  >
+                    <Icon name="Plus" size={16} color="#FFFFFF" />
+                  </TouchableOpacity>
                 </View>
-              ) : (
-                <>
-                  <View style={styles.negotiateRowCompact}>
-                    <Text style={styles.negotiateLabelCompact}>Tu contraoferta</Text>
-                    <View style={styles.adjusterRowCompact}>
-                      <TouchableOpacity
-                        onPress={() => setNegotiatedPrice((p) => Math.max(5000, p - 1000))}
-                        style={styles.adjusterBtnSmall}
-                        accessibilityLabel="Disminuir monto de contraoferta"
-                        accessibilityHint="Resta 1000 pesos a tu propuesta"
-                        accessibilityRole="button"
-                      >
-                        <Icon name="Minus" size={16} color="#FFFFFF" />
-                      </TouchableOpacity>
-                      <Text style={styles.adjusterPriceCompact}>${negotiatedPrice.toLocaleString('es-CL')}</Text>
-                      <TouchableOpacity
-                        onPress={() => setNegotiatedPrice((p) => p + 1000)}
-                        style={styles.adjusterBtnSmall}
-                        accessibilityLabel="Aumentar monto de contraoferta"
-                        accessibilityHint="Suma 1000 pesos a tu propuesta"
-                        accessibilityRole="button"
-                      >
-                        <Icon name="Plus" size={16} color="#FFFFFF" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+              </View>
 
-                  <View style={styles.actionsContainerCompact}>
-                    {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
-                      <>
-                        <Button
-                          title="Enviar contraoferta"
-                          onPress={async () => {
-                            const actionId = nextBottomSheetActionId();
-                            bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
-                            if (!activeOrder?.id || !realtime?.clientCounterOffer) {
-                              bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
-                              return;
-                            }
-                            bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
-                            try {
-                              await realtime.clientCounterOffer(
-                                activeOrder.id,
-                                negotiatedPrice,
-                                activeOrder.quotedHours || 1,
-                                activeOrder.quotedTransport || 0,
-                              );
-                              setCounterOfferSent(true);
-                            } catch {
-                              showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
-                            }
-                          }}
-                          style={styles.payBtn}
-                        />
-                        <Button
-                          title="Rechazar oferta"
-                          variant="subtle"
-                          size="md"
-                          onPress={() => setShowRejectModal(true)}
-                          style={{ marginTop: 8 }}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          title="Aceptar oferta"
-                          onPress={() => setShowPaymentStep(true)}
-                          style={styles.payBtn}
-                        />
-                        <Button
-                          title="Rechazar oferta"
-                          variant="subtle"
-                          size="md"
-                          onPress={() => setShowRejectModal(true)}
-                          style={{ marginTop: 8 }}
-                        />
-                      </>
-                    )}
-                  </View>
-                </>
-              )}
+              <View style={styles.actionsContainerCompact}>
+                {negotiatedPrice !== (activeOrder?.quotedPrice || 0) ? (
+                  <Button
+                    title="Enviar contraoferta"
+                    onPress={async () => {
+                      const actionId = nextBottomSheetActionId();
+                      bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', origin: 'FOCUS_CLIENT', payload: { quotedPrice: negotiatedPrice, quotedHours: activeOrder?.quotedHours || 1, quotedTransport: activeOrder?.quotedTransport || 0 } });
+                      if (!activeOrder?.id || !realtime?.clientCounterOffer) {
+                        bottomSheetDebug('ACTION_BLOCKED', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', reason: !activeOrder?.id ? 'missing_active_order' : 'missing_realtime_executor' });
+                        return;
+                      }
+                      bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'SEND_COUNTEROFFER', result: 'send_counteroffer' });
+                      try {
+                        await realtime.clientCounterOffer(
+                          activeOrder.id,
+                          negotiatedPrice,
+                          activeOrder.quotedHours || 1,
+                          activeOrder.quotedTransport || 0,
+                        );
+                        setCounterOfferSent(true);
+                      } catch {
+                        showNotification({ title: 'Error', message: 'No se pudo enviar la contraoferta.', type: 'error' });
+                      }
+                    }}
+                    style={styles.payBtn}
+                  />
+                ) : (
+                  <Button
+                    title="Aceptar oferta"
+                    onPress={() => setShowPaymentStep(true)}
+                    style={styles.payBtn}
+                  />
+                )}
+                <Button
+                  title="Cancelar orden"
+                  variant="subtle"
+                  size="md"
+                  onPress={handleCancel}
+                  style={{ marginTop: 8 }}
+                />
+              </View>
             </View>
           )}
         </View>
@@ -567,7 +632,13 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               <Badge label="LLEGÓ AL DOMICILIO" tone="success" />
               <Text style={styles.arrivalTitle}>Listo para iniciar servicio</Text>
               <Text style={styles.arrivalSubtitle}>El profesional se encuentra en tu dirección.</Text>
-              <Button title="Confirmar inicio de servicio" onPress={handleStartOrder} style={styles.confirmStartBtn} />
+              <Button
+                title="Confirmar inicio de servicio"
+                onPress={handleStartOrder}
+                loading={isStartingOrder}
+                disabled={isStartingOrder}
+                style={styles.confirmStartBtn}
+              />
               <Button
                 title="Abrir Chat"
                 variant="secondary"
@@ -654,44 +725,6 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           />
         </View>
       )}
-
-      {/* Modal de confirmación al rechazar oferta */}
-      <Modal
-        visible={showRejectModal}
-        onClose={() => setShowRejectModal(false)}
-        showCloseButton={true}
-      >
-        <View style={styles.rejectModalContent}>
-          <View style={styles.rejectModalIconCircle}>
-            <Icon name="HelpCircle" size={28} color={TOKENS.colors.brand500} />
-          </View>
-          <Text style={styles.rejectModalTitle}>Rechazar oferta</Text>
-          <Text style={styles.rejectModalDesc}>
-            ¿Deseas cancelar la orden o hacer una contraoferta?
-          </Text>
-          <View style={styles.rejectModalButtonsStack}>
-            <Button
-              title="Crear contraoferta"
-              variant="primary"
-              size="md"
-              onPress={() => {
-                setShowRejectModal(false);
-              }}
-              style={styles.modalActionBtn}
-            />
-            <Button
-              title="Cancelar orden"
-              variant="danger-outline"
-              size="md"
-              onPress={() => {
-                setShowRejectModal(false);
-                handleCancel();
-              }}
-              style={styles.modalActionBtn}
-            />
-          </View>
-        </View>
-      </Modal>
     </BottomSheetScrollView>
   );
 };
@@ -704,7 +737,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: 12,
+    paddingBottom: 28,
   },
   providerCardHeader: {
     flexDirection: 'row',
@@ -1039,7 +1072,7 @@ const styles = StyleSheet.create({
   negotiateLabelCompact: {
     fontSize: TOKENS.typography.sizes.sm,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.dark900,
+    color: '#CBD5E1',
     marginBottom: TOKENS.spacing.sm,
     textAlign: 'center',
   },
@@ -1129,6 +1162,63 @@ const styles = StyleSheet.create({
     borderColor: TOKENS.colors.surface200,
     borderRadius: 12,
     padding: 10,
+  },
+  waitingCard: {
+    backgroundColor: '#000000',
+    borderWidth: 1,
+    borderColor: '#262936',
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+  },
+  waitingLoadingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  waitingSpinner: {
+    padding: 2,
+  },
+  waitingTextCol: {
+    flex: 1,
+  },
+  waitingCardTitle: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: '#FFFFFF',
+  },
+  waitingCardDesc: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: '#94A3B8',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  counterOfferProposalSummary: {
+    backgroundColor: '#16181F',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2A2D38',
+  },
+  proposalBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  proposalPrice: {
+    fontSize: TOKENS.typography.sizes.lg,
+    fontWeight: TOKENS.typography.weights.black,
+    color: TOKENS.colors.brand500,
+  },
+  proposalDetail: {
+    fontSize: TOKENS.typography.sizes.xs,
+    color: '#94A3B8',
+  },
+  cancelWaitingBtn: {
+    marginTop: 2,
+    width: '100%',
   },
   pricingCard: {
     backgroundColor: '#000000',
@@ -1313,42 +1403,5 @@ const styles = StyleSheet.create({
   compactActionBtn: {
     width: '100%',
     minHeight: 42,
-  },
-  rejectModalContent: {
-    alignItems: 'center',
-    paddingVertical: TOKENS.spacing.sm,
-    gap: 8,
-  },
-  rejectModalIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: TOKENS.colors.brand50,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: TOKENS.colors.brand100,
-  },
-  rejectModalTitle: {
-    fontSize: TOKENS.typography.sizes.lg,
-    fontWeight: TOKENS.typography.weights.extrabold,
-    color: TOKENS.colors.dark900,
-    textAlign: 'center',
-  },
-  rejectModalDesc: {
-    fontSize: TOKENS.typography.sizes.sm,
-    color: TOKENS.colors.textSubtle,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: TOKENS.spacing.md,
-    paddingHorizontal: 8,
-  },
-  rejectModalButtonsStack: {
-    width: '100%',
-    gap: 10,
-  },
-  modalActionBtn: {
-    width: '100%',
   },
 });

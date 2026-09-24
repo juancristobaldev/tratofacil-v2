@@ -24,13 +24,15 @@ interface ProviderPinProps {
   coordinate: { latitude: number; longitude: number };
   isSelected: boolean;
   onPress: () => void;
+  isMapManipulating?: boolean;
 }
 
-export const ProviderPin: React.FC<ProviderPinProps> = ({
+const ProviderPinComponent: React.FC<ProviderPinProps> = ({
   provider,
   coordinate,
   isSelected,
   onPress,
+  isMapManipulating = false,
 }) => {
   const markerRef = useRef<any>(null);
   const isFocused = useIsFocused();
@@ -38,22 +40,24 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
   const [imageError, setImageError] = useState(false);
 
   // Warmup lifecycle trigger whenever screen focus, selection, or provider properties change
-  const triggerWarmup = useCallback((durationMs: number = 450) => {
+  const triggerWarmup = useCallback((durationMs: number = 350) => {
+    if (isMapManipulating) return;
     setTracksViewChanges(true);
     markerRef.current?.redraw?.();
     const timer = setTimeout(() => {
       setTracksViewChanges(false);
     }, durationMs);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isMapManipulating]);
 
   // Reactivate view tracking when returning to the map or when key props mutate
   useEffect(() => {
-    if (isFocused) {
-      return triggerWarmup(500);
+    if (isFocused && !isMapManipulating) {
+      return triggerWarmup(350);
     }
   }, [
     isFocused,
+    isMapManipulating,
     isSelected,
     provider.id,
     provider.avatar,
@@ -80,11 +84,13 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
     .map((word) => word.charAt(0).toUpperCase())
     .join('') || '?';
 
+  const effectiveTracksViewChanges = !isMapManipulating && tracksViewChanges;
+
   return (
     <Marker
       ref={markerRef}
       coordinate={coordinate}
-      tracksViewChanges={tracksViewChanges}
+      tracksViewChanges={effectiveTracksViewChanges}
       anchor={{ x: 0.5, y: 1.0 }}
       centerOffset={{ x: 0, y: 0 }}
       zIndex={isSelected ? 999 : 100}
@@ -121,7 +127,7 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
               {/* Verified Badge */}
               {isVerified && (
                 <View style={styles.verifiedBadge}>
-                  <Icon name="Check" size={7} color={TOKENS.colors.white} />
+                  <Icon name="Check" size={8} color={TOKENS.colors.white} />
                 </View>
               )}
             </View>
@@ -165,7 +171,7 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
           <View style={styles.compactCard}>
             {/* 1. Precio arriba */}
             <Text style={styles.compactPrice}>
-              {priceValue > 0 ? `$${priceValue.toLocaleString('es-CL')}` : 'Consultar'}
+              {priceValue > 0 ? `$${priceValue.toLocaleString('es-CL')}` : 'Cotizar'}
             </Text>
 
             {/* 2. Rating abajo */}
@@ -183,7 +189,7 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
 
         {/* Pointer Triangle Needle */}
         <View style={styles.arrowContainer}>
-          <View style={[styles.arrowBorder, isSelected && styles.arrowBorderSelected]} />
+          <View style={[styles.arrowBorder, isSelected ? styles.arrowBorderSelected : styles.arrowBorderCompact]} />
           <View style={styles.arrowFill} />
         </View>
       </View>
@@ -194,45 +200,45 @@ export const ProviderPin: React.FC<ProviderPinProps> = ({
 const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 18,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    paddingRight: 12,
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 9,
+    paddingRight: 13,
     borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-    elevation: 5,
+    borderColor: 'rgba(15, 23, 42, 0.12)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 8,
   },
   compactCard: {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: TOKENS.colors.white,
-    borderRadius: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 4,
-    minWidth: 58,
+    borderRadius: 13,
+    paddingVertical: 4.5,
+    paddingHorizontal: 8.5,
+    borderWidth: 1,
+    borderColor: 'rgba(15, 23, 42, 0.14)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+    minWidth: 60,
   },
   compactPrice: {
-    fontSize: 11,
+    fontSize: 11.5,
     fontWeight: '800',
-    color: TOKENS.colors.brand700,
-    letterSpacing: -0.2,
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
   compactRatingRow: {
     flexDirection: 'row',
@@ -252,18 +258,19 @@ const styles = StyleSheet.create({
     marginLeft: 1,
   },
   cardSelected: {
+    borderWidth: 2,
     borderColor: TOKENS.colors.brand500,
     shadowColor: TOKENS.colors.brand500,
     shadowOpacity: 0.35,
     shadowRadius: 10,
-    elevation: 9,
+    elevation: 10,
   },
   avatarContainer: {
     position: 'relative',
     width: 36,
     height: 36,
     borderRadius: 18,
-    marginRight: 8,
+    marginRight: 9,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -295,37 +302,37 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.success500,
     borderWidth: 1.5,
     borderColor: TOKENS.colors.white,
-    zIndex: 2,
+    zIndex: 3,
   },
   verifiedBadge: {
     position: 'absolute',
     bottom: -2,
     right: -2,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     backgroundColor: '#0284C7',
     borderWidth: 1.5,
     borderColor: TOKENS.colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
+    zIndex: 3,
   },
   info: {
     justifyContent: 'center',
-    maxWidth: 150,
+    maxWidth: 155,
   },
   name: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '800',
-    color: TOKENS.colors.textMain,
+    color: '#0F172A',
     letterSpacing: -0.2,
   },
   serviceUnderName: {
     fontSize: 9.5,
     fontWeight: '600',
     color: TOKENS.colors.brand600,
-    marginTop: 1,
+    marginTop: 0.5,
   },
   metaRow: {
     flexDirection: 'row',
@@ -354,13 +361,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 3.5,
   },
   price: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '800',
     color: TOKENS.colors.brand700,
   },
   arrowContainer: {
     alignItems: 'center',
-    marginTop: -1,
+    marginTop: -0.5,
   },
   arrowBorder: {
     width: 0,
@@ -370,7 +377,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#E2E8F0',
+  },
+  arrowBorderCompact: {
+    borderTopColor: 'rgba(15, 23, 42, 0.14)',
   },
   arrowBorderSelected: {
     borderTopColor: TOKENS.colors.brand500,
@@ -388,3 +397,34 @@ const styles = StyleSheet.create({
     borderTopColor: TOKENS.colors.white,
   },
 });
+
+function areProviderPinPropsEqual(
+  prev: ProviderPinProps,
+  next: ProviderPinProps,
+): boolean {
+  if (prev.isMapManipulating !== next.isMapManipulating) return false;
+  if (prev.isSelected !== next.isSelected) return false;
+  if ((prev.onPress == null) !== (next.onPress == null)) return false;
+
+  const latDiff = Math.abs(prev.coordinate.latitude - next.coordinate.latitude);
+  const lngDiff = Math.abs(prev.coordinate.longitude - next.coordinate.longitude);
+  if (latDiff >= 0.00001 || lngDiff >= 0.00001) return false;
+
+  const p1 = prev.provider;
+  const p2 = next.provider;
+  if (p1.id !== p2.id) return false;
+  if (p1.name !== p2.name) return false;
+  if (p1.avatar !== p2.avatar) return false;
+  if (p1.rating !== p2.rating) return false;
+  if (p1.reviewsCount !== p2.reviewsCount) return false;
+  if (p1.pricePerHour !== p2.pricePerHour) return false;
+  if (p1.price !== p2.price) return false;
+  if (p1.verified !== p2.verified) return false;
+  if (p1.isRealtimeActive !== p2.isRealtimeActive) return false;
+  if (p1.serviceName !== p2.serviceName) return false;
+
+  return true;
+}
+
+export const ProviderPin = React.memo(ProviderPinComponent, areProviderPinPropsEqual);
+

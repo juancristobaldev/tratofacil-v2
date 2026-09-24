@@ -13,12 +13,16 @@ import type { RouteCoordinate } from '../../utils/directions';
 export interface MapFloatingNavigationControlsProps {
   /** Indica si el modo de navegación 3D está activo (proveniente de useMapCamera.isNavigating) */
   isNavigating: boolean;
-  /** Coordenada objetivo para enfocar en la activación de la navegación */
+  /** Coordenada del actor móvil local que navega (prioritaria) */
+  subjectCoordinate?: RouteCoordinate | null;
+  /** Coordenada objetivo para enfocar en la activación de la navegación (compatibilidad con subjectCoordinate) */
   targetCoordinate?: RouteCoordinate | null;
+  /** Coordenada del punto de destino / llegada (informativa) */
+  destinationCoordinate?: RouteCoordinate | null;
   /** Orientación / rumbo en grados [0, 360) (opcional) */
   heading?: number | null;
-  /** Callback para alternar navegación (p. ej. useMapCamera.toggleNavigationMode) */
-  onToggleNavigation: (
+  /** Callback opcional para alternar navegación (exclusivo para FocusModeProviderScreen) */
+  onToggleNavigation?: (
     coord?: RouteCoordinate | null,
     options?: { heading?: number; pitch?: number; animated?: boolean; force?: boolean; duration?: number },
   ) => void;
@@ -32,7 +36,7 @@ export interface MapFloatingNavigationControlsProps {
   topOffset?: number;
   /** Control de visibilidad del botón de Smart Framing */
   showSmartFraming?: boolean;
-  /** Control de visibilidad del botón de navegación 3D */
+  /** Control de visibilidad del botón de navegación 3D (SOLO FocusModeProvider) */
   showNavigation?: boolean;
   /** Accessibility label personalizada */
   accessibilityLabel?: string;
@@ -42,7 +46,9 @@ export interface MapFloatingNavigationControlsProps {
 
 export const MapFloatingNavigationControls: React.FC<MapFloatingNavigationControlsProps> = ({
   isNavigating,
+  subjectCoordinate,
   targetCoordinate,
+  destinationCoordinate,
   heading,
   onToggleNavigation,
   onSmartFraming,
@@ -50,22 +56,23 @@ export const MapFloatingNavigationControls: React.FC<MapFloatingNavigationContro
   style,
   topOffset,
   showSmartFraming = false,
-  showNavigation = true,
+  showNavigation = false,
   accessibilityLabel = 'Modo navegación 3D',
   testID = 'map-floating-navigation-controls',
 }) => {
-  const isTargetAvailable = targetCoordinate != null;
-  const isButtonDisabled = disabled || (!isNavigating && !isTargetAvailable);
+  const effectiveSubject = subjectCoordinate ?? targetCoordinate ?? null;
+  const isSubjectAvailable = effectiveSubject != null;
+  const isButtonDisabled = disabled || (!isNavigating && !isSubjectAvailable);
 
   const handlePress = () => {
-    if (isButtonDisabled) return;
+    if (isButtonDisabled || !onToggleNavigation) return;
 
     if (isNavigating) {
-      onToggleNavigation(targetCoordinate, { animated: true });
+      onToggleNavigation(effectiveSubject, { animated: true });
     } else {
       const sanitizedHeading =
-        heading != null && Number.isFinite(heading) && heading >= 0 ? heading : 0;
-      onToggleNavigation(targetCoordinate, {
+        heading != null && Number.isFinite(heading) && heading >= 0 ? heading : undefined;
+      onToggleNavigation(effectiveSubject, {
         heading: sanitizedHeading,
         animated: true,
         force: true,

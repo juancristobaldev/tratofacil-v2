@@ -1,9 +1,9 @@
 import { Linking } from 'react-native';
-import { PAYMENT_CALLBACK_PATH } from '../payments/parsePaymentReturnUrl';
+import { PAYMENT_CALLBACK_PATH, PAYMENT_RESULT_PATH } from '../payments/parsePaymentReturnUrl';
 import { handlePaymentReturnUrl } from '../payments/PaymentReturnHandler';
 
 export const DEEP_LINK_SCHEME = 'tratofacilv2';
-export { PAYMENT_CALLBACK_PATH };
+export { PAYMENT_CALLBACK_PATH, PAYMENT_RESULT_PATH };
 
 type OrderOpenHandler = (orderId: number) => void;
 
@@ -18,7 +18,7 @@ export function initializeDeepLinks() {
     const { url } = event;
     if (!url) return;
 
-    if (url.includes(PAYMENT_CALLBACK_PATH)) {
+    if (url.includes(PAYMENT_CALLBACK_PATH) || url.includes(PAYMENT_RESULT_PATH)) {
       handlePaymentReturnUrl(url, coldStart);
       return;
     }

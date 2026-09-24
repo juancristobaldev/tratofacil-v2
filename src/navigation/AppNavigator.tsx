@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { usePushNavigation } from '../push/usePushNavigation';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { NavigationContainer, DrawerActions } from '@react-navigation/native';
+import { NavigationContainer, DrawerActions, DefaultTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createDrawerNavigator, DrawerContentComponentProps } from '@react-navigation/drawer';
-import { TOKENS } from '../theme';
+import { TOKENS, MAP_BACKGROUND_COLOR } from '../theme';
 import { Icon, Avatar, Badge, Button } from '../components/ui';
 import { useAuth } from '../context/AuthContext';
 import { useRealtime } from '../realtime/RealtimeContext';
@@ -436,6 +436,7 @@ const MainDrawerNavigator: React.FC = () => {
       drawerContent={(props) => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
+        drawerType: 'front',
         drawerStyle: { width: Math.min(width * 0.78, 400), borderTopRightRadius: 24, borderBottomRightRadius: 24 },
       }}
     >
@@ -459,9 +460,18 @@ function PushNavigationTracker() {
 export const AppNavigator: React.FC = () => {
   const [currentRouteName, setCurrentRouteName] = useState('Splash');
 
+  const navigationTheme = {
+    ...DefaultTheme,
+    colors: {
+      ...DefaultTheme.colors,
+      background: MAP_BACKGROUND_COLOR,
+    },
+  };
+
   return (
     <NavigationContainer
         ref={navigationRef}
+        theme={navigationTheme}
         onReady={() => drainPendingPaymentReturn()}
         onStateChange={() => {
           const route = navigationRef.getCurrentRoute() as any;
@@ -471,7 +481,7 @@ export const AppNavigator: React.FC = () => {
         }}
       >
         <PushNavigationTracker />
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: MAP_BACKGROUND_COLOR }}>
             <HeaderGeneral currentRoute={currentRouteName} navigationRef={navigationRef} />
             <Stack.Navigator
               initialRouteName="Splash"
@@ -525,10 +535,10 @@ export const AppNavigator: React.FC = () => {
 
 const styles = StyleSheet.create({
   drawerContainer: { flex: 1, backgroundColor: TOKENS.colors.white },
-  drawerHeaderGuest: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
+  drawerHeaderGuest: { padding: TOKENS.spacing.lg, paddingTop: 0, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
   guestAvatarCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: TOKENS.colors.surface200, alignItems: 'center', justifyContent: 'center', marginBottom: TOKENS.spacing.sm },
-  drawerHeaderClient: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
-  drawerHeaderProvider: { padding: TOKENS.spacing.lg, paddingTop: 56, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
+  drawerHeaderClient: { padding: TOKENS.spacing.lg, paddingTop: 0, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
+  drawerHeaderProvider: { padding: TOKENS.spacing.lg, paddingTop: 0, backgroundColor: TOKENS.colors.surface50, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface200 },
   avatarRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: TOKENS.spacing.sm },
   ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: TOKENS.colors.white, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 3, gap: 4, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   ratingBadgeText: { fontSize: 10, fontWeight: 'bold', color: TOKENS.colors.textMain },

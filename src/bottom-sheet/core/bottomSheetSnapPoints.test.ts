@@ -12,7 +12,7 @@ describe('bottom sheet snap point resolution', () => {
       maxDynamicContentSize: 430,
     });
 
-    expect(resolved).toEqual([collapsedHeight]);
+    expect(resolved).toEqual([collapsedHeight, 430]);
     expect(
       resolveSheetInitialIndex({
         requestedIndex: 1,
@@ -39,14 +39,14 @@ describe('bottom sheet snap point resolution', () => {
     ).toBe(0);
   });
 
-  it('filters out arbitrary MAX when dynamic sizing is enabled to prevent blank space', () => {
+  it('maps MAX to maxDynamicContentSize when dynamic sizing is enabled', () => {
     const resolved = resolveSheetSnapPoints({
       snapPoints: [88, 'MAX'],
       enableDynamicSizing: true,
       maxDynamicContentSize: 430,
     });
 
-    expect(resolved).toEqual([88]);
+    expect(resolved).toEqual([88, 430]);
   });
 
   it('clamps impossible provided indexes instead of passing invalid values to Gorhom', () => {

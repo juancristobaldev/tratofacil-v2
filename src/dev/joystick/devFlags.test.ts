@@ -14,7 +14,7 @@ describe('devFlags', () => {
     expect(isDevJoystickEnabled()).toBe(true);
     const config = getDevJoystickConfig();
     expect(config.enabled).toBe(true);
-    expect(config.streetSnapMode).toBe(true);
+    expect(config.streetSnapMode).toBe(false);
     expect(config.followCamera).toBe(true);
   });
 

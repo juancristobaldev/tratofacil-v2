@@ -19,7 +19,7 @@ interface InputProps extends TextInputProps {
   mask?: 'rut' | 'date' | 'phone';
 }
 
-export const Input: React.FC<InputProps> = ({
+export const Input = React.forwardRef<TextInput, InputProps>(({
   label,
   icon,
   leftIcon,
@@ -33,20 +33,22 @@ export const Input: React.FC<InputProps> = ({
   helperText,
   secureTextEntry,
   mask,
+  style,
   ...props
-}) => {
+}, ref) => {
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const isSecure = isPassword ? !showPassword : secureTextEntry;
   const activeIcon = icon || leftIcon;
 
-  const getDisplayValue = (val?: string) => {
-    if (val === undefined || val === null) return val;
-    if (mask === 'rut') return formatRut(val);
-    if (mask === 'date') return formatDate(val);
-    if (mask === 'phone') return formatPhoneDisplay(val);
-    return val;
+  const getDisplayValue = (val?: string | number | readonly string[]) => {
+    if (val === undefined || val === null) return val as any;
+    const strVal = String(val);
+    if (mask === 'rut') return formatRut(strVal);
+    if (mask === 'date') return formatDate(strVal);
+    if (mask === 'phone') return formatPhoneDisplay(strVal);
+    return strVal;
   };
 
   const handleChangeText = (text: string) => {
@@ -63,6 +65,7 @@ export const Input: React.FC<InputProps> = ({
       <View
         style={[
           styles.inputContainer,
+          props.multiline && styles.inputContainerMultiline,
           isFocused ? styles.inputFocusedBorder : null,
           error ? styles.inputErrorBorder : null,
         ]}
@@ -72,14 +75,20 @@ export const Input: React.FC<InputProps> = ({
             name={activeIcon}
             size={18}
             color={iconColor || (isFocused ? TOKENS.colors.brand500 : TOKENS.colors.textSubtle)}
-            style={styles.icon}
+            style={[styles.icon, props.multiline && styles.iconMultiline]}
           />
         )}
         <TextInput
+          ref={ref}
           placeholderTextColor={TOKENS.colors.textMuted}
-          style={styles.textInput}
+          style={[
+            styles.textInput,
+            props.multiline && styles.textInputMultiline,
+            style,
+          ]}
           secureTextEntry={isSecure}
           keyboardType={mask === 'phone' ? 'phone-pad' : mask === 'date' ? 'numeric' : props.keyboardType}
+          textAlignVertical={props.multiline ? 'top' : undefined}
           {...props}
           value={getDisplayValue(props.value)}
           onChangeText={handleChangeText}
@@ -124,7 +133,9 @@ export const Input: React.FC<InputProps> = ({
       {!error && helperText && <Text style={styles.helperText}>{helperText}</Text>}
     </View>
   );
-};
+});
+
+Input.displayName = 'Input';
 
 interface CodeInputProps {
   label?: string;
@@ -214,6 +225,11 @@ const styles = StyleSheet.create({
     minHeight: 52,
     ...TOKENS.shadows.soft,
   },
+  inputContainerMultiline: {
+    minHeight: 100,
+    alignItems: 'flex-start',
+    paddingVertical: TOKENS.spacing.sm,
+  },
   inputFocusedBorder: {
     borderColor: TOKENS.colors.brand500,
     borderWidth: 1.5,
@@ -224,6 +240,9 @@ const styles = StyleSheet.create({
   icon: {
     marginRight: TOKENS.spacing.sm,
   },
+  iconMultiline: {
+    marginTop: 2,
+  },
   textInput: {
     flex: 1,
     minHeight: 52,
@@ -232,6 +251,10 @@ const styles = StyleSheet.create({
     fontSize: TOKENS.typography.sizes.md,
     fontWeight: TOKENS.typography.weights.medium,
     padding: 0, // Reset default padding in android
+  },
+  textInputMultiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
   errorText: {
     color: TOKENS.colors.statusError,

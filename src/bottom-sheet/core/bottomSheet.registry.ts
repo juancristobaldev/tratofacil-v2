@@ -18,17 +18,17 @@ export const registry: SheetRegistry = {
     contentMode: 'view',
     replaceFrom: ['provider_preview', 'focus_client'],
     replaceSameKey: true,
+    collapsible: true,
   },
   provider_preview: {
     content: ProviderPreviewPanelContent,
     requiresMapFlow: true,
     allowedRoles: ['client', 'guest'],
-    collapsedHeight: 88,
-    snapPoints: [88],
-    initialIndex: 1,
+    collapsible: false,
+    initialIndex: 0,
     enableDynamicSizing: true,
     contentMode: 'view',
-    replaceFrom: ['categories', 'focus_client'],
+    replaceFrom: ['categories'],
     replaceSameKey: true,
   },
   focus_client: {
@@ -38,9 +38,10 @@ export const registry: SheetRegistry = {
     collapsedHeight: 156,
     snapPoints: [156],
     initialIndex: 1,
+    collapsible: true,
     enableDynamicSizing: true,
     contentMode: 'scroll',
-    replaceFrom: ['categories', 'provider_preview'],
+    replaceFrom: ['categories'],
     replaceSameKey: true,
   },
   focus_provider: {
@@ -50,6 +51,7 @@ export const registry: SheetRegistry = {
     collapsedHeight: 156,
     snapPoints: [156],
     initialIndex: 1,
+    collapsible: true,
     enableDynamicSizing: true,
     contentMode: 'scroll',
     replaceFrom: ['provider_dashboard'],
@@ -62,6 +64,7 @@ export const registry: SheetRegistry = {
     collapsedHeight: 104,
     snapPoints: [104],
     initialIndex: 1,
+    collapsible: true,
     enableDynamicSizing: true,
     contentMode: 'view',
     replaceFrom: ['focus_provider'],
@@ -71,4 +74,11 @@ export const registry: SheetRegistry = {
 
 export function isSheetAllowedForRole(key: SheetKey, role: AppRole): boolean {
   return registry[key].allowedRoles.includes(role);
+}
+
+export function isSheetCollapsible(key: SheetKey): boolean {
+  const descriptor = registry[key];
+  if (!descriptor) return false;
+  if (descriptor.collapsible !== undefined) return descriptor.collapsible;
+  return Boolean(descriptor.snapPoints && descriptor.snapPoints.length > 0);
 }

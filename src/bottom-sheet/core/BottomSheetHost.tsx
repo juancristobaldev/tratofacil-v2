@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
+import { useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Sheet } from '../primitives/Sheet';
 import { registry } from './bottomSheet.registry';
 import { useBottomSheet } from './useBottomSheet';
 import { bottomSheetDebug } from './bottomSheet.debug';
-import { resolveSheetInitialIndex } from './bottomSheetSnapPoints';
+import { resolveSheetInitialIndex, resolveSheetSnapPoints } from './bottomSheetSnapPoints';
+import { getBottomSheetGeometry } from './bottomSheetGeometry';
 import type {
   BottomSheetRequest,
   BottomSheetTransitionOperation,
@@ -36,12 +39,51 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
   onContentHeightChange,
 }) => {
   const { dismiss, setIndex } = useBottomSheet();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const previousRequestId = useRef<number | null>(null);
   const wasMapFlowActive = useRef(false);
 
   const descriptor = request ? registry[request.key] : null;
   const initialIndex = descriptor?.initialIndex ?? 1;
+  const [lastHandledRequestId, setLastHandledRequestId] = React.useState<number | null>(request?.requestId ?? null);
   const [currentIndex, setCurrentIndex] = React.useState<number>(initialIndex);
+
+  if (request && request.requestId !== lastHandledRequestId) {
+    setLastHandledRequestId(request.requestId);
+    setCurrentIndex(descriptor?.initialIndex ?? 1);
+  }
+
+  const effectiveIndex = (request && request.requestId !== lastHandledRequestId)
+    ? (descriptor?.initialIndex ?? 1)
+    : currentIndex;
+
+  const geometry = useMemo(
+    () =>
+      getBottomSheetGeometry({
+        windowHeight,
+        safeTopInset: insets.top,
+        safeBottomInset: insets.bottom,
+      }),
+    [insets.bottom, insets.top, windowHeight],
+  );
+
+  const isCategoriesSearch =
+    request?.key === 'categories' &&
+    Boolean(
+      (request.payload as any)?.searchQuery &&
+      String((request.payload as any).searchQuery).trim().length > 0
+    );
+
+  const prevIsCategoriesSearch = useRef(false);
+  useEffect(() => {
+    if (isCategoriesSearch !== prevIsCategoriesSearch.current) {
+      if (request?.key === 'categories' && isCategoriesSearch) {
+        modalRef.current?.snapToIndex(1);
+      }
+    }
+    prevIsCategoriesSearch.current = isCategoriesSearch;
+  }, [isCategoriesSearch, modalRef, request?.key]);
 
   useEffect(() => {
     bottomSheetDebug('HOST', {
@@ -60,6 +102,34 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     previousRequestId.current = request.requestId;
     setCurrentIndex(registry[request.key]?.initialIndex ?? 1);
 
+    if (operation === 'REPLACE' && descriptor) {
+      const activeSnapPoints = resolveSheetSnapPoints({
+        snapPoints: descriptor.snapPoints,
+        enableDynamicSizing: descriptor.enableDynamicSizing,
+        maxDynamicContentSize: descriptor.maxDynamicContentSize ?? geometry.maxDynamicContentSize,
+      });
+      const targetIndex = resolveSheetInitialIndex({
+        requestedIndex: descriptor.initialIndex,
+        resolvedSnapPoints: activeSnapPoints,
+        enableDynamicSizing: descriptor.enableDynamicSizing,
+      });
+      bottomSheetDebug('HOST', {
+        requestId: request.requestId,
+        key: request.key,
+        mapFlowActive: isMapFlowActive,
+        reason: 'replace',
+      });
+      requestAnimationFrame(() => {
+        modalRef.current?.present();
+        requestAnimationFrame(() => {
+          modalRef.current?.snapToIndex(targetIndex);
+          setCurrentIndex(targetIndex);
+          onChange(request, targetIndex);
+        });
+      });
+      return;
+    }
+
     if (operation !== 'PRESENT') return;
 
     onPresent(request);
@@ -70,24 +140,34 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
         mapFlowActive: isMapFlowActive,
       });
       modalRef.current?.present();
+      const targetDescriptor = registry[request.key];
+      const activeSnapPoints = resolveSheetSnapPoints({
+        snapPoints: targetDescriptor?.snapPoints,
+        enableDynamicSizing: targetDescriptor?.enableDynamicSizing,
+        maxDynamicContentSize: targetDescriptor?.maxDynamicContentSize ?? geometry.maxDynamicContentSize,
+      });
       const targetIndex = resolveSheetInitialIndex({
-        requestedIndex: registry[request.key]?.initialIndex,
-        resolvedSnapPoints: registry[request.key]?.snapPoints,
-        enableDynamicSizing: registry[request.key]?.enableDynamicSizing,
+        requestedIndex: targetDescriptor?.initialIndex,
+        resolvedSnapPoints: activeSnapPoints,
+        enableDynamicSizing: targetDescriptor?.enableDynamicSizing,
       });
       if (targetIndex > 0) {
-        modalRef.current?.snapToIndex(targetIndex);
+        requestAnimationFrame(() => {
+          modalRef.current?.snapToIndex(targetIndex);
+        });
       }
     });
-  }, [isMapFlowActive, modalRef, onPresent, operation, request]);
+  }, [descriptor, geometry.maxDynamicContentSize, isMapFlowActive, modalRef, onChange, onPresent, operation, request]);
 
   if (!request || !descriptor) {
     previousRequestId.current = null;
     return null;
   }
 
-  const isCollapsed =
-    Boolean(descriptor.snapPoints && descriptor.snapPoints.length > 0) ? currentIndex === 0 : false;
+  const isCollapsible =
+    descriptor.collapsible !== false &&
+    Boolean(descriptor.snapPoints && descriptor.snapPoints.length > 0 && descriptor.snapPoints.some((p) => p !== 'MAX'));
+  const isCollapsed = isCollapsible ? effectiveIndex === 0 : false;
   const presentationState = isCollapsed ? 'collapsed' : 'content';
 
   const handleIndexChange = (index: number) => {
@@ -183,24 +263,26 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
     }
   };
 
-  const isSearchActive =
-    request.key === 'categories' && Boolean((request.payload as any)?.searchQuery?.trim());
+  const resolvedContentMode = isCategoriesSearch ? 'list' : (descriptor.contentMode ?? 'view');
+  const resolvedEnableDynamicSizing = isCategoriesSearch ? false : descriptor.enableDynamicSizing;
+  const resolvedSnapPoints = isCategoriesSearch
+    ? [descriptor.collapsedHeight ?? 88, geometry.categoriesSearchMaxHeight]
+    : descriptor.snapPoints;
+  const resolvedInitialIndex = isCategoriesSearch ? 1 : descriptor.initialIndex;
 
-  const resolvedContentMode = isSearchActive
-    ? 'list'
-    : descriptor.contentMode ?? 'view';
-
-  const resolvedEnableDynamicSizing = descriptor.enableDynamicSizing;
+  const resolvedMaxDynamicContentSize = isCategoriesSearch
+    ? geometry.categoriesSearchMaxHeight
+    : descriptor.maxDynamicContentSize;
 
   return (
     <Sheet
       ref={modalRef}
       sheetKey={request.key}
       contentMode={resolvedContentMode}
-      snapPoints={descriptor.snapPoints}
-      initialIndex={descriptor.initialIndex}
+      snapPoints={resolvedSnapPoints}
+      initialIndex={resolvedInitialIndex}
       enableDynamicSizing={resolvedEnableDynamicSizing}
-      maxDynamicContentSize={descriptor.maxDynamicContentSize}
+      maxDynamicContentSize={resolvedMaxDynamicContentSize}
       keyboardBehavior={descriptor.keyboardBehavior}
       keyboardBlurBehavior={descriptor.keyboardBlurBehavior}
       onChange={handleIndexChange}

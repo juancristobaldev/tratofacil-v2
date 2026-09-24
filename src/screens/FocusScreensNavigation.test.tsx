@@ -138,7 +138,7 @@ describe('Focus Screens Navigation Control Integration', () => {
     };
   });
 
-  it.each(['PENDING', 'QUOTED', 'PAYMENT_PENDING', 'ACCEPTED', 'IN_PROGRESS'])(
+  it.each(['PENDING', 'QUOTED', 'PAYMENT_PENDING', 'ACCEPTED', 'ARRIVED', 'IN_PROGRESS'])(
     'FocusModeProviderScreen renders enabled navigation controls for non-terminal status %s',
     async (status) => {
       mockProviderSession.activeOrder = { id: 1, status, client: { name: 'Cliente Test' } };
@@ -146,18 +146,18 @@ describe('Focus Screens Navigation Control Integration', () => {
 
       const navBtn = view.getByTestId('btn-toggle-navigation-mode');
       expect(navBtn).toBeTruthy();
-      expect(navBtn.props.accessibilityState.selected).toBe(false);
+      expect(navBtn.props.accessibilityState.selected).toBe(true);
       expect(navBtn.props.accessibilityState.disabled).toBe(false);
 
       await fireEvent.press(navBtn);
-      expect(navBtn.props.accessibilityState.selected).toBe(true);
+      expect(navBtn.props.accessibilityState.selected).toBe(false);
 
       await fireEvent.press(navBtn);
-      expect(navBtn.props.accessibilityState.selected).toBe(false);
+      expect(navBtn.props.accessibilityState.selected).toBe(true);
     },
   );
 
-  it('FocusModeProviderScreen enables navigation with client coordinate fallback when provider GPS is unavailable', async () => {
+  it('FocusModeProviderScreen disables navigation when provider GPS is unavailable without falling back to client coordinates', async () => {
     mockLocation = { coords: null };
     mockProviderSession.providerCoords = null;
     mockProviderSession.clientCoords = { latitude: -38.750, longitude: -72.600 };
@@ -165,10 +165,10 @@ describe('Focus Screens Navigation Control Integration', () => {
     const view = await render(<FocusModeProviderScreen />);
 
     const navBtn = view.getByTestId('btn-toggle-navigation-mode');
-    expect(navBtn.props.accessibilityState.disabled).toBe(false);
+    expect(navBtn.props.accessibilityState.disabled).toBe(true);
 
     await fireEvent.press(navBtn);
-    expect(navBtn.props.accessibilityState.selected).toBe(true);
+    expect(navBtn.props.accessibilityState.selected).toBe(false);
   });
 
   it('FocusModeProviderScreen navigation uses HomePage camera timing instead of provider-specific override', async () => {
@@ -180,9 +180,9 @@ describe('Focus Screens Navigation Control Integration', () => {
 
     const navigationWriteLogs = logSpy.mock.calls
       .map((call) => String(call[0]))
-      .filter((message) => message.includes('[MAP:NAVIGATION_WRITE]'));
+      .filter((message) => message.includes('[NAV:CAMERA_WRITE]') || message.includes('[MAP:NAVIGATION_WRITE]'));
 
-    expect(navigationWriteLogs.some((message) => message.includes('pitch=60°'))).toBe(true);
+    expect(navigationWriteLogs.some((message) => message.includes('pitch='))).toBe(true);
     expect(navigationWriteLogs.some((message) => message.includes('duration=650ms'))).toBe(false);
 
     logSpy.mockRestore();

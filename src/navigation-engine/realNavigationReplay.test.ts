@@ -116,9 +116,9 @@ describe('Real Navigation Replay & Field Recording Engine', () => {
     }
 
     expect(replayTargets.length).toBe(3);
-    // Invariant: Pitch remains canonically 40° across all replayed samples
+    // Invariant: Pitch remains canonically 65° across all replayed samples
     replayTargets.forEach((t) => {
-      expect(t.pitch).toBe(40);
+      expect(t.pitch).toBe(65);
       expect(t.heading).toBeCloseTo(45, 0);
     });
   });

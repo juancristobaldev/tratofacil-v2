@@ -7,6 +7,7 @@ import { getImageUrl } from '../../utils/imageUrl';
 import { summarizeForRole } from '../../utils/ratings';
 import { navigate } from '../../navigation/navigationRef';
 import type { OrderRealTime } from '../../graphql/generated';
+import { selectClientRealtimeOrder } from '../../bottom-sheet/core/sheetPolicy';
 import type {
   FocusSessionValue,
   FocusClientSession,
@@ -38,14 +39,19 @@ function formatEta(meters: number): string {
   return `${minutes} min`;
 }
 
-function toPoint(lat: number | null | undefined, lng: number | null | undefined): FocusGeoPoint | null {
-  return lat != null && lng != null ? { latitude: lat, longitude: lng } : null;
+function toValidGeoPoint(lat: number | null | undefined, lng: number | null | undefined): FocusGeoPoint | null {
+  if (lat == null || lng == null) return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  if (Math.abs(lat) < 1e-4 && Math.abs(lng) < 1e-4) return null;
+  return { latitude: lat, longitude: lng };
 }
+
+const toPoint = toValidGeoPoint;
 
 const STATUS_MAP: Record<string, ProviderOrderState> = {
   PENDING: 'VIEW_REQUEST',
   QUOTED: 'WAITING_CLIENT_RESPONSE',
-  NEGOTIATING: 'WAITING_CLIENT_RESPONSE',
   PAYMENT_PENDING: 'WAITING_CLIENT_RESPONSE',
   ACCEPTED: 'EN_CAMINO',
   PROVIDER_ON_THE_WAY: 'EN_CAMINO',
@@ -57,16 +63,91 @@ const STATUS_MAP: Record<string, ProviderOrderState> = {
   EXPIRED: 'CANCELLED',
 };
 
+const defaultFocusSessionValue: FocusSessionValue = {
+  client: {
+    orderId: null,
+    activeOrder: null,
+    provider: null,
+    distanceLabel: null,
+    etaLabel: null,
+    distanceToProviderKm: null,
+    providerCoords: null,
+    clientCoords: null,
+    clientUserCoords: null,
+    serviceDestinationCoords: null,
+    routeCoords: [],
+    realtime: {
+      location: null,
+      providers: [],
+      activeOrder: null,
+      localActiveOrder: null,
+      providerActiveOrder: null,
+      requestService: () => Promise.resolve(null),
+      cancelOrder: () => Promise.resolve(false),
+      acceptOrder: () => Promise.resolve(false),
+      rejectOrder: () => Promise.resolve(false),
+      quoteOrder: () => Promise.resolve(false),
+      startService: () => Promise.resolve(false),
+      completeOrder: () => Promise.resolve(false),
+      clearOrders: () => {},
+      sendChatMessage: () => {},
+      fetchChatMessages: () => Promise.resolve([]),
+      markMessagesAsRead: () => {},
+      unreadCount: 0,
+      chatMessages: [],
+    } as any,
+    showChat: false,
+    setShowChat: () => {},
+  },
+  provider: {
+    orderId: null,
+    activeOrder: null,
+    orderState: 'VIEW_REQUEST',
+    setOrderState: () => {},
+    distanceLabel: null,
+    etaLabel: null,
+    distanceMeters: null,
+    isWithinArrivalRadius: false,
+    providerCoords: null,
+    providerLocalCoords: null,
+    clientCoords: null,
+    serviceDestinationCoords: null,
+    routeCoords: [],
+    realtime: {
+      location: null,
+      providers: [],
+      activeOrder: null,
+      localActiveOrder: null,
+      providerActiveOrder: null,
+      requestService: () => Promise.resolve(null),
+      cancelOrder: () => Promise.resolve(false),
+      acceptOrder: () => Promise.resolve(false),
+      rejectOrder: () => Promise.resolve(false),
+      quoteOrder: () => Promise.resolve(false),
+      updateQuote: () => Promise.resolve(null),
+      respondToCounterOffer: () => Promise.resolve(null),
+      startService: () => Promise.resolve(false),
+      completeOrder: () => Promise.resolve(false),
+      clearOrders: () => {},
+      sendChatMessage: () => {},
+      fetchChatMessages: () => Promise.resolve([]),
+      markMessagesAsRead: () => {},
+      unreadCount: 0,
+      chatMessages: [],
+    } as any,
+    showChat: false,
+    setShowChat: () => {},
+    handleFinish: () => {},
+  },
+};
+
 const FocusSessionContext = React.createContext<FocusSessionValue | null>(null);
 
 export function useFocusSession(): FocusSessionValue;
 export function useFocusSession(role: 'client'): FocusClientSession;
 export function useFocusSession(role: 'provider'): FocusProviderSession;
 export function useFocusSession(role?: 'client' | 'provider'): FocusSessionValue | FocusClientSession | FocusProviderSession {
-  const ctx = React.useContext(FocusSessionContext);
-  if (!ctx) {
-    throw new Error('useFocusSession must be used within a <FocusSessionProvider>');
-  }
+  const ctx = React.useContext(FocusSessionContext) || defaultFocusSessionValue;
   if (role === 'client') return ctx.client;
   if (role === 'provider') return ctx.provider;
   return ctx;
@@ -75,21 +156,48 @@ export function useFocusSession(role?: 'client' | 'provider'): FocusSessionValue
 export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const realtime = useRealtime();
   const { location } = useLocation();
-  const { showNotification } = useNotification();
+  const { showNotification, clearNotification } = useNotification();
 
   const [showChat, setShowChat] = useState(false);
 
+  const orderStartedAtMapRef = useRef<Record<number, string>>({});
+
   // ---- Orden activa por rol -------------------------------------------------
-  const clientActiveOrder: OrderRealTime | null = realtime.localActiveOrder || realtime.activeOrder;
+  let rawClientActiveOrder: OrderRealTime | null = (selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder) as OrderRealTime) ?? null;
+  if (rawClientActiveOrder?.id && rawClientActiveOrder.status === 'IN_PROGRESS') {
+    if (rawClientActiveOrder.startedAt) {
+      orderStartedAtMapRef.current[rawClientActiveOrder.id] = rawClientActiveOrder.startedAt;
+    } else {
+      if (!orderStartedAtMapRef.current[rawClientActiveOrder.id]) {
+        orderStartedAtMapRef.current[rawClientActiveOrder.id] = new Date().toISOString();
+      }
+      rawClientActiveOrder = { ...rawClientActiveOrder, startedAt: orderStartedAtMapRef.current[rawClientActiveOrder.id] };
+    }
+  }
+  const clientActiveOrder = rawClientActiveOrder;
 
   const rawProviderOrder = realtime.providerActiveOrder;
   const lastProviderOrderRef = useRef<OrderRealTime | null>(rawProviderOrder);
-  if (rawProviderOrder && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(rawProviderOrder.status)) {
-    lastProviderOrderRef.current = rawProviderOrder;
+  if (rawProviderOrder) {
+    if (!['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(rawProviderOrder.status)) {
+      lastProviderOrderRef.current = rawProviderOrder;
+    } else {
+      lastProviderOrderRef.current = null;
+    }
   } else {
     lastProviderOrderRef.current = null;
   }
-  const providerOrder = rawProviderOrder || lastProviderOrderRef.current;
+  let providerOrder = rawProviderOrder || lastProviderOrderRef.current;
+  if (providerOrder?.id && providerOrder.status === 'IN_PROGRESS') {
+    if (providerOrder.startedAt) {
+      orderStartedAtMapRef.current[providerOrder.id] = providerOrder.startedAt;
+    } else {
+      if (!orderStartedAtMapRef.current[providerOrder.id]) {
+        orderStartedAtMapRef.current[providerOrder.id] = new Date().toISOString();
+      }
+      providerOrder = { ...providerOrder, startedAt: orderStartedAtMapRef.current[providerOrder.id] };
+    }
+  }
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -97,13 +205,21 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   }, [rawProviderOrder?.id, rawProviderOrder?.status]);
 
   // ---- Session de cliente ---------------------------------------------------
+  const lastKnownProviderInfoRef = useRef<SessionProviderInfo | null>(null);
+
   const provider: SessionProviderInfo | null = useMemo(() => {
     const p = clientActiveOrder?.provider || (clientActiveOrder?.serviceProvider as any)?.provider;
     const sp = clientActiveOrder?.serviceProvider;
-    if (!p && !sp) return null;
+    if (!p && !sp) {
+      if (clientActiveOrder && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(clientActiveOrder.status)) {
+        return lastKnownProviderInfoRef.current;
+      }
+      lastKnownProviderInfoRef.current = null;
+      return null;
+    }
     const allReviews = [...(p?.reviews || []), ...(p?.realtimeReviews || [])];
     const name = p?.name || 'Profesional';
-    return {
+    const computed: SessionProviderInfo = {
       id: String(p?.id || sp?.id || 'provider'),
       name,
       providerName: name,
@@ -118,35 +234,63 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       serviceName: sp?.service?.name || '',
       serviceProviderId: sp?.id,
     };
+    lastKnownProviderInfoRef.current = computed;
+    return computed;
   }, [clientActiveOrder]);
 
+  const clientUserCoords = useMemo<FocusGeoPoint | null>(() => {
+    return toPoint(location?.coords?.latitude, location?.coords?.longitude);
+  }, [location?.coords?.latitude, location?.coords?.longitude]);
+
+  const fixedServiceDestinationRef = useRef<{ orderId: number; coords: FocusGeoPoint } | null>(null);
+  const serviceDestinationCoords = useMemo<FocusGeoPoint | null>(() => {
+    const orderId = clientActiveOrder?.id;
+    if (!orderId) {
+      fixedServiceDestinationRef.current = null;
+      return null;
+    }
+    if (fixedServiceDestinationRef.current?.orderId === orderId) {
+      return fixedServiceDestinationRef.current.coords;
+    }
+    const pt = toValidGeoPoint(clientActiveOrder.clientLat, clientActiveOrder.clientLng);
+    if (pt) {
+      fixedServiceDestinationRef.current = { orderId, coords: pt };
+      return pt;
+    }
+    return null;
+  }, [clientActiveOrder?.id, clientActiveOrder?.clientLat, clientActiveOrder?.clientLng]);
+
   const clientCoords = useMemo<FocusGeoPoint | null>(() => {
-    const lat = clientActiveOrder?.clientLat ?? location?.coords?.latitude;
-    const lng = clientActiveOrder?.clientLng ?? location?.coords?.longitude;
-    return toPoint(lat, lng);
-  }, [clientActiveOrder?.clientLat, clientActiveOrder?.clientLng, location?.coords?.latitude, location?.coords?.longitude]);
+    return serviceDestinationCoords ?? clientUserCoords;
+  }, [serviceDestinationCoords, clientUserCoords]);
 
   const clientProviderCoords = useMemo<FocusGeoPoint | null>(() => {
     const lat = clientActiveOrder?.providerLat ?? clientActiveOrder?.provider?.lat;
     const lng = clientActiveOrder?.providerLng ?? clientActiveOrder?.provider?.lng;
-    return toPoint(lat, lng);
+    return toValidGeoPoint(lat, lng);
   }, [clientActiveOrder?.providerLat, clientActiveOrder?.providerLng, clientActiveOrder?.provider?.lat, clientActiveOrder?.provider?.lng]);
 
-  const clientRoute = useRoutePolyline(clientProviderCoords, clientCoords, true);
+  const isClientRouteActive = Boolean(
+    clientProviderCoords &&
+    serviceDestinationCoords &&
+    clientActiveOrder?.status === 'ACCEPTED'
+  );
+  // Regla Cardinal 4: La ruta siempre conecta al Proveedor con el Punto de Encuentro (serviceDestinationCoords), NUNCA con el GPS móvil del cliente.
+  const clientRoute = useRoutePolyline(clientProviderCoords, serviceDestinationCoords, isClientRouteActive);
 
   const distanceLabel = useMemo(() => {
     const routeDistance = clientRoute.routeDistance;
     if (routeDistance != null && routeDistance > 0) return formatDistance(routeDistance);
-    if (!clientCoords || !clientProviderCoords) return null;
+    if (!serviceDestinationCoords || !clientProviderCoords) return null;
     return formatDistance(
       getMetersBetween(
         clientProviderCoords.latitude,
         clientProviderCoords.longitude,
-        clientCoords.latitude,
-        clientCoords.longitude,
+        serviceDestinationCoords.latitude,
+        serviceDestinationCoords.longitude,
       ),
     );
-  }, [clientRoute.routeDistance, clientCoords, clientProviderCoords]);
+  }, [clientRoute.routeDistance, serviceDestinationCoords, clientProviderCoords]);
 
   const etaLabel = useMemo(() => {
     const routeDuration = clientRoute.routeDuration;
@@ -156,28 +300,28 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (minutes === 1) return '1 min';
       return `${minutes} min`;
     }
-    if (!clientCoords || !clientProviderCoords) return null;
+    if (!serviceDestinationCoords || !clientProviderCoords) return null;
     return formatEta(
       getMetersBetween(
         clientProviderCoords.latitude,
         clientProviderCoords.longitude,
-        clientCoords.latitude,
-        clientCoords.longitude,
+        serviceDestinationCoords.latitude,
+        serviceDestinationCoords.longitude,
       ),
     );
-  }, [clientRoute.routeDuration, clientCoords, clientProviderCoords]);
+  }, [clientRoute.routeDuration, serviceDestinationCoords, clientProviderCoords]);
 
   const distanceToProviderKm = useMemo(() => {
-    if (!clientCoords || !clientProviderCoords) return null;
+    if (!serviceDestinationCoords || !clientProviderCoords) return null;
     return (
       getMetersBetween(
         clientProviderCoords.latitude,
         clientProviderCoords.longitude,
-        clientCoords.latitude,
-        clientCoords.longitude,
+        serviceDestinationCoords.latitude,
+        serviceDestinationCoords.longitude,
       ) / 1000
     );
-  }, [clientCoords, clientProviderCoords]);
+  }, [serviceDestinationCoords, clientProviderCoords]);
 
   const clientSession = useMemo<FocusClientSession>(
     () => ({
@@ -189,29 +333,76 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       distanceToProviderKm,
       providerCoords: clientProviderCoords,
       clientCoords,
+      clientUserCoords,
+      serviceDestinationCoords,
       routeCoords: clientRoute.routeCoords,
       realtime,
       showChat,
       setShowChat,
     }),
-    [clientActiveOrder, provider, distanceLabel, etaLabel, distanceToProviderKm, clientProviderCoords, clientCoords, clientRoute.routeCoords, realtime, showChat],
+    [clientActiveOrder, provider, distanceLabel, etaLabel, distanceToProviderKm, clientProviderCoords, clientCoords, clientUserCoords, serviceDestinationCoords, clientRoute.routeCoords, realtime, showChat],
   );
+
+  const notifiedClientApproachingRef = useRef<Record<number, boolean>>({});
+
+  // Notificación para cliente: profesional en camino por llegar (entre paso 8 y 9)
+  useEffect(() => {
+    const orderId = clientActiveOrder?.id;
+    if (!orderId || clientActiveOrder?.status !== 'ACCEPTED') return;
+
+    if (!notifiedClientApproachingRef.current[orderId]) {
+      const isDistanceClose = distanceToProviderKm != null && distanceToProviderKm <= 0.4;
+      const match = etaLabel ? etaLabel.match(/(\d+)\s*min/) : null;
+      const isUnderOneMin = etaLabel ? (etaLabel.includes('< 1') || etaLabel.includes('<1')) : false;
+      const mins = match ? parseInt(match[1], 10) : (isUnderOneMin ? 1 : null);
+      const isEtaClose = mins !== null && mins <= 5 && mins > 0;
+
+      if (isDistanceClose || isEtaClose) {
+        notifiedClientApproachingRef.current[orderId] = true;
+        const msg = etaLabel && isEtaClose
+          ? `El profesional está por llegar en ${etaLabel}.`
+          : (distanceToProviderKm != null
+              ? `El profesional está a menos de ${Math.max(50, Math.round(distanceToProviderKm * 1000))}m de tu ubicación.`
+              : 'El profesional está por llegar a tu ubicación.');
+
+        showNotification({
+          id: `clientOrder:${orderId}:APPROACHING`,
+          title: 'Profesional por llegar',
+          message: msg,
+          type: 'info',
+        });
+      }
+    }
+  }, [clientActiveOrder?.id, clientActiveOrder?.status, distanceToProviderKm, etaLabel, showNotification]);
 
   // ---- Session de proveedor ------------------------------------------------
   const [orderState, setOrderState] = useState<ProviderOrderState>('VIEW_REQUEST');
   const [distanceRemaining, setDistanceRemaining] = useState('...');
   const [etaRemaining, setEtaRemaining] = useState('...');
 
+  const fixedProviderClientDestRef = useRef<{ orderId: number; coords: FocusGeoPoint } | null>(null);
   const providerClientCoords = useMemo<FocusGeoPoint | null>(() => {
-    const lat = providerOrder?.clientLat;
-    const lng = providerOrder?.clientLng;
-    return toPoint(lat, lng);
-  }, [providerOrder?.clientLat, providerOrder?.clientLng]);
+    const orderId = providerOrder?.id;
+    const isTerminal = providerOrder?.status ? ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(providerOrder.status) : false;
+    if (!providerOrder || !orderId || isTerminal) {
+      fixedProviderClientDestRef.current = null;
+      return null;
+    }
+    if (fixedProviderClientDestRef.current?.orderId === orderId) {
+      return fixedProviderClientDestRef.current.coords;
+    }
+    const pt = toValidGeoPoint(providerOrder.clientLat, providerOrder.clientLng);
+    if (pt) {
+      fixedProviderClientDestRef.current = { orderId, coords: pt };
+      return pt;
+    }
+    return null;
+  }, [providerOrder?.id, providerOrder?.status, providerOrder?.clientLat, providerOrder?.clientLng]);
 
   const liveProviderCoords = useMemo<FocusGeoPoint | null>(() => {
-    const lat = location?.coords?.latitude ?? providerOrder?.providerLat;
-    const lng = location?.coords?.longitude ?? providerOrder?.providerLng;
-    return toPoint(lat, lng);
+    const localPoint = toValidGeoPoint(location?.coords?.latitude, location?.coords?.longitude);
+    if (localPoint) return localPoint;
+    return toValidGeoPoint(providerOrder?.providerLat, providerOrder?.providerLng);
   }, [location?.coords?.latitude, location?.coords?.longitude, providerOrder?.providerLat, providerOrder?.providerLng]);
 
   const providerOrderId = providerOrder?.id ?? null;
@@ -225,16 +416,22 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [providerOrderId]);
 
+  const isProviderRouteActive = Boolean(
+    liveProviderCoords &&
+    providerClientCoords &&
+    (orderState === 'EN_CAMINO' || orderState === 'VIEW_REQUEST')
+  );
+
   const providerRoute = useRoutePolyline(
     liveProviderCoords,
     providerClientCoords,
-    orderState === 'EN_CAMINO' || orderState === 'ARRIVED' || orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'VIEW_REQUEST',
+    isProviderRouteActive,
   );
 
   useEffect(() => {
     if (!__DEV__) return;
-    console.log(`[MAP:ROUTE_ORDER] orderId=${providerOrder?.id ?? 'null'} status=${providerOrder?.status ?? 'null'} orderState=${orderState} routeActive=${orderState === 'EN_CAMINO' || orderState === 'ARRIVED' || orderState === 'WAITING_CLIENT_RESPONSE' || orderState === 'VIEW_REQUEST'} hasProviderCoords=${!!liveProviderCoords} hasClientCoords=${!!providerClientCoords}`);
-  }, [providerOrder?.id, providerOrder?.status, orderState, liveProviderCoords, providerClientCoords]);
+    console.log(`[MAP:ROUTE_ORDER] orderId=${providerOrder?.id ?? 'null'} status=${providerOrder?.status ?? 'null'} orderState=${orderState} routeActive=${isProviderRouteActive} hasProviderCoords=${!!liveProviderCoords} hasClientCoords=${!!providerClientCoords}`);
+  }, [providerOrder?.id, providerOrder?.status, orderState, isProviderRouteActive, liveProviderCoords, providerClientCoords]);
 
   const providerDistanceLabel = useMemo(() => {
     const routeDistance = providerRoute.routeDistance;
@@ -269,83 +466,136 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
   }, [providerRoute.routeDuration, liveProviderCoords, providerClientCoords]);
 
-  // Mapeo de status realtime -> estado de sesión de proveedor.
-  useEffect(() => {
-    const r = realtime?.providerActiveOrder;
-    if (!r) {
-      if (orderState !== 'CANCELLED' && orderState !== 'COMPLETED') {
-        setOrderState('CANCELLED');
-      }
-      return;
-    }
-    const mapped = STATUS_MAP[r.status];
-    if (mapped && mapped !== orderState) {
-      // Si el estado local ya avanzó a 'ARRIVED' debido a geofencing (<100m)
-      // y el backend sigue en 'ACCEPTED' (mapped a 'EN_CAMINO'), preservamos 'ARRIVED'
-      // para evitar bucles de sobrescritura en cada tick de GPS o evento de socket.
-      if (mapped === 'EN_CAMINO' && orderState === 'ARRIVED') {
-        return;
-      }
-      setOrderState(mapped);
-    }
-  }, [realtime?.providerActiveOrder]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const hasNotifiedArrivalRef = useRef<{ orderId: number; notified: boolean } | null>(null);
-
-  // Notificaciones por transición de estado del servicio.
-  useEffect(() => {
-    const currentOrderId = providerOrder?.id ?? 0;
-    if (orderState === 'EN_CAMINO') {
-      showNotification({ title: 'Nueva Orden de Trabajo', message: 'Dirígete a la ubicación del cliente para iniciar el servicio.', type: 'info' });
-    } else if (orderState === 'ARRIVED') {
-      if (hasNotifiedArrivalRef.current?.orderId !== currentOrderId || !hasNotifiedArrivalRef.current?.notified) {
-        hasNotifiedArrivalRef.current = { orderId: currentOrderId, notified: true };
-        showNotification({ title: 'Llegada a Destino', message: 'Has llegado a la ubicación del cliente.', type: 'success' });
-      }
-    } else if (orderState === 'IN_PROGRESS') {
-      showNotification({ title: 'Servicio Iniciado', message: 'Cronómetro activo.', type: 'info' });
-    } else if (orderState === 'COMPLETED') {
-      showNotification({ title: 'Trabajo Completado', message: 'Has finalizado el servicio.', type: 'success' });
-    }
-  }, [orderState, providerOrder?.id, showNotification]);
-
-  // Detección de llegada (<= 5m) durante el traslado.
-  useEffect(() => {
-    if (orderState !== 'EN_CAMINO' || !liveProviderCoords || !providerClientCoords) return;
-    const m = getMetersBetween(
+  const distanceMeters = useMemo(() => {
+    if (!liveProviderCoords || !providerClientCoords) return null;
+    return getMetersBetween(
       liveProviderCoords.latitude,
       liveProviderCoords.longitude,
       providerClientCoords.latitude,
       providerClientCoords.longitude,
     );
-    if (m <= 5) {
-      setOrderState('ARRIVED');
-    }
-  }, [orderState, liveProviderCoords?.latitude, liveProviderCoords?.longitude, providerClientCoords?.latitude, providerClientCoords?.longitude]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [liveProviderCoords, providerClientCoords]);
 
-  const handleFinish = useCallback(() => {
-    realtime.setLocalActiveOrder(null);
-    if (orderState === 'COMPLETED') {
-      const clientSummary = summarizeForRole(providerOrder?.client, 'client');
-      navigate('Rating', {
-        role: 'provider',
-        targetUser: {
-          name: providerOrder?.client?.displayName || 'Cliente',
-          avatar: null,
-          rating: clientSummary?.rating ?? 0,
-          reviewsCount: clientSummary?.count ?? 0,
-          subtext: providerOrder?.serviceProvider?.service?.name || '',
-        },
-        serviceDetails: providerOrder?.clientDescription || '',
-        amount: providerOrder?.quotedPrice || 0,
-        address: providerOrder?.clientAddress || '',
-        orderRealtimeId: providerOrder?.id,
-        clientId: providerOrder?.client?.id,
-      });
-    } else {
-      navigate('MainApp');
+  const isWithinArrivalRadius = Boolean(distanceMeters !== null && distanceMeters <= 100);
+
+  // Mapeo de status realtime -> estado de sesión de proveedor.
+  useEffect(() => {
+    const r = realtime?.providerActiveOrder;
+    if (!r) {
+      return;
     }
-  }, [orderState, providerOrder, realtime]);
+    const mapped = STATUS_MAP[r.status];
+    if (mapped && mapped !== orderState) {
+      setOrderState(mapped);
+    }
+  }, [realtime?.providerActiveOrder, orderState]);
+
+  const hasNotifiedArrivalRef = useRef<{ orderId: number; notified: boolean } | null>(null);
+  const notifiedStatesByOrderRef = useRef<Record<number, Set<string>>>({});
+
+  // Notificación de proximidad al llegar a la zona del cliente (<= 100m) mientras está en camino.
+  useEffect(() => {
+    const currentOrderId = providerOrder?.id;
+    if (!currentOrderId) return;
+    if (!notifiedStatesByOrderRef.current[currentOrderId]) {
+      notifiedStatesByOrderRef.current[currentOrderId] = new Set<string>();
+    }
+    const orderNotified = notifiedStatesByOrderRef.current[currentOrderId];
+    if (orderState === 'EN_CAMINO' && isWithinArrivalRadius && !orderNotified.has('NEAR_CLIENT')) {
+      orderNotified.add('NEAR_CLIENT');
+      showNotification({
+        id: `providerOrder:${currentOrderId}:NEAR_CLIENT`,
+        title: 'Llegada a Destino',
+        message: 'Has llegado a la ubicación del cliente. Confirma tu llegada para que el cliente pueda iniciar el servicio.',
+        type: 'info',
+      });
+    }
+  }, [orderState, isWithinArrivalRadius, providerOrder?.id, showNotification]);
+
+  // Notificaciones por transición de estado del servicio (garantizadas 1 vez por orden y estado).
+  useEffect(() => {
+    const currentOrderId = providerOrder?.id;
+    if (!currentOrderId) return;
+
+    if (!notifiedStatesByOrderRef.current[currentOrderId]) {
+      notifiedStatesByOrderRef.current[currentOrderId] = new Set<string>();
+    }
+    const orderNotified = notifiedStatesByOrderRef.current[currentOrderId];
+
+    if (orderState === 'EN_CAMINO' && !orderNotified.has('EN_CAMINO')) {
+      orderNotified.add('EN_CAMINO');
+      showNotification({
+        id: `providerOrder:${currentOrderId}:EN_CAMINO`,
+        title: 'Nueva Orden de Trabajo',
+        message: 'Dirígete a la ubicación del cliente para iniciar el servicio.',
+        type: 'info',
+      });
+    } else if (orderState === 'ARRIVED' && !orderNotified.has('ARRIVED')) {
+      orderNotified.add('ARRIVED');
+      hasNotifiedArrivalRef.current = { orderId: currentOrderId, notified: true };
+      showNotification({
+        id: `providerOrder:${currentOrderId}:ARRIVED`,
+        title: 'Llegada Confirmada',
+        message: 'Has confirmado tu llegada al domicilio. Esperando que el cliente inicie el servicio.',
+        type: 'success',
+      });
+    } else if (orderState === 'IN_PROGRESS' && !orderNotified.has('IN_PROGRESS')) {
+      orderNotified.add('IN_PROGRESS');
+      showNotification({
+        id: `providerOrder:${currentOrderId}:IN_PROGRESS`,
+        title: 'Servicio Iniciado',
+        message: 'Cronómetro activo.',
+        type: 'info',
+      });
+    } else if (orderState === 'COMPLETED' && !orderNotified.has('COMPLETED')) {
+      orderNotified.add('COMPLETED');
+      showNotification({
+        id: `providerOrder:${currentOrderId}:COMPLETED`,
+        title: 'Trabajo Completado',
+        message: 'Has finalizado el servicio.',
+        type: 'success',
+      });
+    }
+  }, [orderState, providerOrder?.id, showNotification]);
+
+  const handleFinish = useCallback(
+    (overrideState?: ProviderOrderState) => {
+      const targetState = overrideState || orderState;
+      const targetOrder = providerOrder;
+      lastProviderOrderRef.current = null;
+      lastKnownProviderInfoRef.current = null;
+      fixedProviderClientDestRef.current = null;
+      if (targetOrder?.id) {
+        delete orderStartedAtMapRef.current[targetOrder.id];
+      }
+      clearNotification();
+      realtime.setLocalActiveOrder(null);
+      realtime.setLocalProviderActiveOrder?.(null);
+      realtime.resetOrderSession?.(targetOrder?.id);
+
+      if (targetState === 'COMPLETED' && targetOrder) {
+        const clientSummary = summarizeForRole(targetOrder?.client, 'client');
+        navigate('Rating', {
+          role: 'provider',
+          targetUser: {
+            name: targetOrder?.client?.displayName || 'Cliente',
+            avatar: null,
+            rating: clientSummary?.rating ?? 0,
+            reviewsCount: clientSummary?.count ?? 0,
+            subtext: targetOrder?.serviceProvider?.service?.name || '',
+          },
+          serviceDetails: targetOrder?.clientDescription || '',
+          amount: targetOrder?.payment?.amount || targetOrder?.quotedPrice || 0,
+          address: targetOrder?.clientAddress || '',
+          orderRealtimeId: targetOrder?.id,
+          clientId: targetOrder?.client?.id,
+        });
+      } else {
+        navigate('MainApp');
+      }
+    },
+    [clearNotification, orderState, providerOrder, realtime],
+  );
 
   const providerSession = useMemo<FocusProviderSession>(
     () => ({
@@ -355,15 +605,19 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setOrderState,
       distanceLabel: providerDistanceLabel,
       etaLabel: providerEtaLabel,
+      distanceMeters,
+      isWithinArrivalRadius,
       providerCoords: liveProviderCoords,
+      providerLocalCoords: liveProviderCoords,
       clientCoords: providerClientCoords,
+      serviceDestinationCoords: providerClientCoords,
       routeCoords: providerRoute.routeCoords,
       realtime,
       showChat,
       setShowChat,
       handleFinish,
     }),
-    [providerOrderId, providerOrder, orderState, providerDistanceLabel, providerEtaLabel, liveProviderCoords, providerClientCoords, providerRoute.routeCoords, realtime, showChat, handleFinish],
+    [providerOrderId, providerOrder, orderState, providerDistanceLabel, providerEtaLabel, distanceMeters, isWithinArrivalRadius, liveProviderCoords, providerClientCoords, providerRoute.routeCoords, realtime, showChat, handleFinish],
   );
 
   const value = useMemo<FocusSessionValue>(() => ({ client: clientSession, provider: providerSession }), [clientSession, providerSession]);

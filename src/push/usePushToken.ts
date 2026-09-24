@@ -7,17 +7,46 @@ import type {
   RegisterPushTokenMutationVariables,
 } from '../graphql/generated-operations';
 
+import { useAuth } from '../context/AuthContext';
+
+let lastRegisteredToken: string | null = null;
+
+export function getLastRegisteredPushToken(): string | null {
+  return lastRegisteredToken;
+}
+
+export function clearPushTokenCache(): void {
+  lastRegisteredToken = null;
+}
+
 export function usePushToken() {
+  const { token: authToken, isAuthenticated } = useAuth();
   const [registerToken] = useMutation<
     RegisterPushTokenMutation,
     RegisterPushTokenMutationVariables
   >(REGISTER_PUSH_TOKEN_MUTATION);
 
-  const registeredRef = useRef(false);
+  const deviceTokenRef = useRef<string | null>(null);
+  const registeredTokenForSessionRef = useRef<string | null>(null);
 
   const sendTokenToBackend = (token: string) => {
-    registerToken({ variables: { token, platform: Platform.OS } }).catch(() => {});
+    if (!isAuthenticated || !authToken) return;
+    if (registeredTokenForSessionRef.current === token) return;
+    registeredTokenForSessionRef.current = token;
+    lastRegisteredToken = token;
+    registerToken({ variables: { token, platform: Platform.OS } }).catch(() => {
+      registeredTokenForSessionRef.current = null;
+    });
   };
+
+  useEffect(() => {
+    if (isAuthenticated && authToken && deviceTokenRef.current) {
+      sendTokenToBackend(deviceTokenRef.current);
+    }
+    if (!isAuthenticated) {
+      registeredTokenForSessionRef.current = null;
+    }
+  }, [isAuthenticated, authToken]);
 
   useEffect(() => {
     const pushModule = NativeModules.PushTokenModule;
@@ -29,8 +58,8 @@ export function usePushToken() {
         if (!granted) return;
 
         const token: string | null = await pushModule.getToken();
-        if (token && !registeredRef.current) {
-          registeredRef.current = true;
+        if (token) {
+          deviceTokenRef.current = token;
           sendTokenToBackend(token);
         }
       } catch (_) {}
@@ -42,7 +71,7 @@ export function usePushToken() {
     try {
       const emitter = new NativeEventEmitter(pushModule);
       sub = emitter.addListener('onPushTokenRefresh', (token: string) => {
-        registeredRef.current = true;
+        deviceTokenRef.current = token;
         sendTokenToBackend(token);
       });
     } catch (_) {}
@@ -50,7 +79,7 @@ export function usePushToken() {
     // Si el usuario negó el permiso al inicio y luego lo habilita a mano desde
     // Ajustes, reintentamos al volver a foreground (mismo patrón que LocationContext).
     const appStateSub = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active' && !registeredRef.current) {
+      if (nextAppState === 'active') {
         initToken();
       }
     });
@@ -59,7 +88,7 @@ export function usePushToken() {
       sub?.remove();
       appStateSub.remove();
     };
-  }, []);
+  }, [isAuthenticated, authToken]);
 }
 
 async function requestPermission(pushModule: any): Promise<boolean> {

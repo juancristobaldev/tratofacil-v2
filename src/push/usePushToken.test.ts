@@ -8,9 +8,21 @@ jest.mock('@apollo/client/react', () => ({
   useMutation: () => [mockRegisterToken, { loading: false }],
 }));
 
+let mockIsAuthenticated = true;
+let mockAuthToken: string | null = 'mock-jwt-token';
+
+jest.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    isAuthenticated: mockIsAuthenticated,
+    token: mockAuthToken,
+  }),
+}));
+
 describe('usePushToken', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsAuthenticated = true;
+    mockAuthToken = 'mock-jwt-token';
     mockRegisterToken.mockResolvedValue({ data: { registerPushToken: true } });
 
     NativeModules.PushTokenModule = {
@@ -58,6 +70,23 @@ describe('usePushToken', () => {
     Platform.OS = 'android';
     jest.spyOn(PermissionsAndroid, 'check').mockResolvedValue(false);
     jest.spyOn(PermissionsAndroid, 'request').mockResolvedValue(PermissionsAndroid.RESULTS.DENIED);
+
+    renderHook(() => usePushToken());
+
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 50);
+      });
+    });
+
+    expect(mockRegisterToken).not.toHaveBeenCalled();
+  });
+
+  it('does not register token when user is unauthenticated', async () => {
+    mockIsAuthenticated = false;
+    mockAuthToken = null;
+    Platform.OS = 'android';
+    jest.spyOn(PermissionsAndroid, 'check').mockResolvedValue(true);
 
     renderHook(() => usePushToken());
 

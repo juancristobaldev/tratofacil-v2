@@ -1,3 +1,5 @@
+export const MAP_BACKGROUND_COLOR = '#1b1b1f';
+
 export const DARK_VISIBLE_MAP_STYLE = [
   { elementType: 'geometry', stylers: [{ color: '#1b1b1f' }] },
   { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },

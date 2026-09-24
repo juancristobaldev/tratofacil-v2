@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
 import type { SheetKey } from './bottomSheet.types';
 import { bottomSheetDebug } from './bottomSheet.debug';
+import { isSheetCollapsible } from './bottomSheet.registry';
 
 export interface UseMapSheetCollapseOptions {
   activeSheet: SheetKey | null;
@@ -41,6 +42,8 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
+  const dragSheetKeyRef = useRef<SheetKey | null>(null);
+
   const cancelPendingRestore = useCallback(() => {
     if (settleTimeoutRef.current) {
       clearTimeout(settleTimeoutRef.current);
@@ -52,6 +55,7 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
     cancelPendingRestore();
     isManipulatingRef.current = false;
     wasOpenBeforeManipulationRef.current = false;
+    dragSheetKeyRef.current = null;
     setIsMapManipulating(false);
   }, [cancelPendingRestore]);
 
@@ -64,9 +68,11 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
       isManipulatingRef.current = true;
       setIsMapManipulating(true);
       const currentActive = activeSheetRef.current;
+      dragSheetKeyRef.current = currentActive;
+      const isCollapsible = currentActive ? isSheetCollapsible(currentActive) : false;
       const currentlyOpen = !isCollapsedRef.current && sheetIndexRef.current > 0;
 
-      if (currentActive && currentlyOpen) {
+      if (currentActive && isCollapsible && currentlyOpen) {
         wasOpenBeforeManipulationRef.current = true;
         bottomSheetDebug('MAP_AUTO_COLLAPSE', {
           key: currentActive,
@@ -90,8 +96,10 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
       isManipulatingRef.current = false;
       setIsMapManipulating(false);
       const currentActive = activeSheetRef.current;
+      const isCollapsible = currentActive ? isSheetCollapsible(currentActive) : false;
+      const isSameSheetAsDrag = currentActive === dragSheetKeyRef.current;
 
-      if (wasOpenBeforeManipulationRef.current && currentActive) {
+      if (wasOpenBeforeManipulationRef.current && currentActive && isCollapsible && isSameSheetAsDrag) {
         wasOpenBeforeManipulationRef.current = false;
         bottomSheetDebug('MAP_AUTO_RESTORE', {
           key: currentActive,
@@ -108,9 +116,7 @@ export function useMapSheetCollapse(options: UseMapSheetCollapseOptions) {
 
   // Si cambia el activeSheet o se cierra, limpiar estado para no dejar restores stale
   useEffect(() => {
-    if (!activeSheet) {
-      resetMapCollapseState();
-    }
+    resetMapCollapseState();
   }, [activeSheet, resetMapCollapseState]);
 
   // Limpieza al desmontar

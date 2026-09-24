@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Alert, Switch } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Button, Input, Icon, Modal } from '../../components/ui';
+import { Button, Input, Icon, Modal, RegionCitySelect } from '../../components/ui';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { useServices } from '../../hooks/useServices';
@@ -11,7 +11,8 @@ import { GET_CATEGORIES } from '../../graphql/operations/categories';
 import { GET_PROVIDER_PLAN } from '../../graphql/operations/services';
 import { useQuery } from '@apollo/client/react';
 import { getServiceRate } from '../../utils/comission';
-import { UBICACIONES_CHILE, containsPhoneNumber } from '../../utils/chile';
+import { containsPhoneNumber } from '../../utils/chile';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 const FORMAS_DE_COBRO = ['POR SERVICIO COMPLETO', 'POR HORA', 'METRO CUADRADO'];
 
@@ -19,8 +20,6 @@ type PickerType =
   | 'parent'
   | 'child'
   | 'service'
-  | 'region'
-  | 'city'
   | 'cobro'
   | null;
 
@@ -63,6 +62,8 @@ export const PublishServiceScreen: React.FC = () => {
   const [cobroType, setCobroType] = useState(FORMAS_DE_COBRO[0]);
 
   const [activePicker, setActivePicker] = useState<PickerType>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToFocusedField = () => scrollRef.current?.scrollToEnd({ animated: true });
 
   const { createService, createLoading: loading } = useServices();
 
@@ -106,13 +107,6 @@ export const PublishServiceScreen: React.FC = () => {
     return cat?.id;
   }, [categories, selectedServiceSlug]);
 
-  const ciudadesDisponibles = useMemo(() => {
-    const regionObj = UBICACIONES_CHILE.find(
-      (r) => r.region === selectedRegion,
-    );
-    return regionObj ? regionObj.ciudades : [];
-  }, [selectedRegion]);
-
   const rate = getServiceRate(plan);
   const priceVal = parseInt(price.replace(/\./g, ''), 10) || 0;
   const commissionAmount = Math.floor(priceVal * rate);
@@ -137,10 +131,6 @@ export const PublishServiceScreen: React.FC = () => {
           value: s.slug,
           label: s.name,
         }));
-      case 'region':
-        return UBICACIONES_CHILE.map((r) => ({ value: r.region, label: r.region }));
-      case 'city':
-        return ciudadesDisponibles.map((c) => ({ value: c, label: c }));
       case 'cobro':
         return FORMAS_DE_COBRO.map((f) => ({ value: f, label: f }));
       default:
@@ -152,8 +142,6 @@ export const PublishServiceScreen: React.FC = () => {
     parent: 'Rubro Principal',
     child: 'Subcategoría',
     service: 'Servicio Específico',
-    region: 'Región',
-    city: 'Ciudad / Comuna',
     cobro: 'Forma de Cobro',
   }[activePicker ?? 'parent'];
 
@@ -170,13 +158,6 @@ export const PublishServiceScreen: React.FC = () => {
         break;
       case 'service':
         setSelectedServiceSlug(opt.value);
-        break;
-      case 'region':
-        setSelectedRegion(opt.value);
-        setCity('');
-        break;
-      case 'city':
-        setCity(opt.value);
         break;
       case 'cobro':
         setCobroType(opt.value);
@@ -237,12 +218,13 @@ export const PublishServiceScreen: React.FC = () => {
   }
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(true, insets.top)}
       >
-        <ScrollView contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
           <Text style={styles.introText}>
             Agrega un nuevo servicio a tu catálogo para que los clientes de tu zona puedan encontrarte y contratarte.
           </Text>
@@ -291,19 +273,16 @@ export const PublishServiceScreen: React.FC = () => {
               <Text style={styles.sectionTitle}>Cobertura del Servicio</Text>
             </View>
 
-            <SelectField
-              label="Región *"
-              value={selectedRegion}
-              placeholder="Selecciona región"
-              onPress={() => setActivePicker('region')}
-            />
-
-            <SelectField
-              label="Ciudad / Comuna *"
-              value={city}
-              placeholder={!selectedRegion ? 'Primero elige región' : 'Selecciona tu ciudad'}
-              disabled={!selectedRegion}
-              onPress={() => setActivePicker('city')}
+            <RegionCitySelect
+              region={selectedRegion}
+              city={city}
+              onRegionChange={setSelectedRegion}
+              onCityChange={setCity}
+              regionLabel="Región *"
+              cityLabel="Ciudad / Comuna *"
+              regionPlaceholder="Selecciona una región"
+              cityPlaceholder="Selecciona tu ciudad o comuna"
+              testIDPrefix="publish-service"
             />
 
             <View style={styles.toggleRow}>
@@ -338,6 +317,7 @@ export const PublishServiceScreen: React.FC = () => {
               keyboardType="numeric"
               value={price}
               onChangeText={setPrice}
+              onFocus={scrollToFocusedField}
               leftIcon="DollarSign"
               containerStyle={styles.inputGroup}
             />
@@ -369,39 +349,30 @@ export const PublishServiceScreen: React.FC = () => {
                 maxLength={200}
                 value={desc}
                 onChangeText={setDesc}
+                onFocus={scrollToFocusedField}
               />
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      {/* FIXED FOOTER */}
-      <View style={[styles.fixedFooter, { paddingBottom: insets.bottom + TOKENS.spacing.md }]}>
-        <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
-        <View style={styles.footerButtons}>
-          <Button title="Cancelar" variant="secondary" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
+        {/* FIXED FOOTER INSIDE KEYBOARD AVOIDING VIEW */}
+        <View style={[styles.fixedFooter, { paddingBottom: Math.max(insets.bottom, TOKENS.spacing.sm) }]}>
+          <Text style={styles.footerHint}>Completa todos los campos obligatorios (*)</Text>
           <Button
             title={loading ? 'Publicando...' : 'Publicar Servicio'}
             onPress={handlePublish}
             loading={loading}
             disabled={loading || !selectedServiceSlug || !city || priceVal <= 0}
-            style={{ flex: 2 }}
+            size="lg"
+            fullWidth
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       {/* PICKER MODAL */}
       <Modal visible={activePicker !== null} onClose={() => setActivePicker(null)} contentStyle={styles.pickerModal}>
         <Text style={styles.pickerTitle}>{pickerTitle}</Text>
         <ScrollView style={styles.pickerList} keyboardShouldPersistTaps="handled">
-          {activePicker === 'parent' && (
-            <TouchableOpacity
-              style={styles.pickerOption}
-              onPress={() => setActivePicker(null)}
-            >
-              <Text style={styles.pickerOptionText}>Cancelar</Text>
-            </TouchableOpacity>
-          )}
           {pickerOptions.map((opt) => (
             <TouchableOpacity
               key={opt.value}
@@ -447,7 +418,7 @@ const SelectField: React.FC<SelectFieldProps> = ({ label, value, placeholder, di
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: TOKENS.colors.surface50 },
-  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 120 },
+  scrollBody: { padding: TOKENS.spacing.md, paddingBottom: 140 },
   introText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.md, lineHeight: 20 },
 
   section: { backgroundColor: TOKENS.colors.white, borderRadius: 16, padding: TOKENS.spacing.md, marginBottom: TOKENS.spacing.md, borderWidth: 1, borderColor: TOKENS.colors.surface100, ...TOKENS.shadows.soft },
@@ -491,9 +462,8 @@ const styles = StyleSheet.create({
   breakdownTotalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   breakdownTotalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold },
 
-  fixedFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
+  fixedFooter: { backgroundColor: TOKENS.colors.white, padding: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface200, ...TOKENS.shadows.medium },
   footerHint: { fontSize: 12, color: TOKENS.colors.textSubtle, textAlign: 'center', marginBottom: TOKENS.spacing.sm },
-  footerButtons: { flexDirection: 'row', gap: TOKENS.spacing.md },
 
   pickerModal: { maxWidth: 340, maxHeight: 480 },
   pickerTitle: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain, marginBottom: TOKENS.spacing.md },

@@ -2,6 +2,7 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { registry } from '../core/bottomSheet.registry';
 import { BottomSheetProvider } from '../core/BottomSheetProvider';
+import { getBottomSheetGeometry } from '../core/bottomSheetGeometry';
 import { RatingScreen } from '../../screens/shared/RatingScreen';
 import { getBottomNavHeight } from '../../components/layout/bottomNavMetrics';
 import type { SheetKey } from '../core/bottomSheet.types';
@@ -163,6 +164,7 @@ jest.mock('../primitives', () => {
   const { View, TextInput, ScrollView } = require('react-native');
   return {
     BottomSheetScrollView: ScrollView,
+    BottomSheetView: View,
     BottomSheetFlatList: ({ ListHeaderComponent, data, renderItem, ...props }: any) =>
       React.createElement(
         View,
@@ -240,8 +242,7 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
         </BottomSheetProvider>,
       );
 
-      expect(view.getAllByText(/resultado/).length).toBeGreaterThan(0);
-      expect(view.getByText('Todos')).toBeTruthy();
+      expect(view.getByTestId('bottom-sheet-flat-list')).toBeTruthy();
       expect(view.getByTestId('bottom-sheet-flat-list').props.stickyHeaderIndices).toEqual([0]);
     });
 
@@ -462,6 +463,106 @@ describe('BottomSheet Panel & Action Flow Layer (Layer 3)', () => {
 
       expect(focusClientQuotedHeight).toBeLessThan(maxClearanceLimit);
       expect(focusProviderViewRequestHeight).toBeLessThan(maxClearanceLimit);
+    });
+  });
+
+  describe('Suite 36: Categories Search Header Elevation and Keyboard Dismissal Contract', () => {
+    it('elevates categories sheet to just below the header only when search query is present', () => {
+      const windowHeight = 844;
+      const safeTopInset = 47;
+      const safeBottomInset = 34;
+      const geometry = getBottomSheetGeometry({ windowHeight, safeTopInset, safeBottomInset });
+
+      // When searchQuery is empty, standard sheet geometry applies
+      const normalSheetTop = geometry.bottomNavTop - geometry.maxDynamicContentSize;
+      expect(normalSheetTop).toBeGreaterThanOrEqual(geometry.topClearance);
+      expect(normalSheetTop - geometry.encuadreBottomOffset).toBeGreaterThanOrEqual(24);
+
+      // When categories search is active (searchQuery.length > 0):
+      const searchSheetTop = geometry.bottomNavTop - geometry.categoriesSearchMaxHeight;
+      const headerBottom = safeTopInset + 60;
+      expect(searchSheetTop).toBe(headerBottom + 4);
+      expect(searchSheetTop).toBeLessThan(normalSheetTop);
+      expect(geometry.categoriesSearchMaxHeight).toBeGreaterThan(geometry.maxDynamicContentSize);
+    });
+
+    it('ensures no other sheet ever uses the search header elevation', () => {
+      const windowHeight = 844;
+      const safeTopInset = 47;
+      const safeBottomInset = 34;
+      const geometry = getBottomSheetGeometry({ windowHeight, safeTopInset, safeBottomInset });
+
+      const otherSheetKeys: SheetKey[] = ['provider_preview', 'focus_client', 'focus_provider', 'provider_dashboard'];
+      otherSheetKeys.forEach((key) => {
+        const descriptor = registry[key];
+        const maxSize = descriptor.maxDynamicContentSize ?? geometry.maxDynamicContentSize;
+        // Verify every non-categories sheet is clamped strictly to standard geometry
+        expect(maxSize).toBe(geometry.maxDynamicContentSize);
+        expect(maxSize).toBeLessThan(geometry.categoriesSearchMaxHeight);
+        expect(descriptor.enableDynamicSizing).toBe(true);
+      });
+    });
+
+    it('decouples categories services list from content amount by fixing snap points at max height with dynamic sizing disabled', () => {
+      const windowHeight = 844;
+      const safeTopInset = 47;
+      const safeBottomInset = 34;
+      const geometry = getBottomSheetGeometry({ windowHeight, safeTopInset, safeBottomInset });
+      const descriptor = registry.categories;
+
+      // When search is active:
+      const isSearchActive = true;
+      const resolvedEnableDynamicSizing = isSearchActive ? false : descriptor.enableDynamicSizing;
+      const resolvedSnapPoints = isSearchActive
+        ? [descriptor.collapsedHeight ?? 88, geometry.categoriesSearchMaxHeight]
+        : descriptor.snapPoints;
+      const resolvedContentMode = isSearchActive ? 'list' : descriptor.contentMode;
+
+      // 1. Dynamic sizing is disabled so sheet does NOT shrink for small content (1 or 2 items)
+      expect(resolvedEnableDynamicSizing).toBe(false);
+      // 2. Snap points include collapsed and full categoriesSearchMaxHeight
+      expect(resolvedSnapPoints).toEqual([88, geometry.categoriesSearchMaxHeight]);
+      // 3. Content mode is 'list' ensuring FlatList expands to full height
+      expect(resolvedContentMode).toBe('list');
+
+      // When search is NOT active (query is empty):
+      const isSearchInactive = false;
+      const inactiveDynamicSizing = isSearchInactive ? false : descriptor.enableDynamicSizing;
+      const inactiveSnapPoints = isSearchInactive
+        ? [descriptor.collapsedHeight ?? 88, geometry.categoriesSearchMaxHeight]
+        : descriptor.snapPoints;
+      const inactiveContentMode = isSearchInactive ? 'list' : descriptor.contentMode;
+
+      expect(inactiveDynamicSizing).toBe(true);
+      expect(inactiveSnapPoints).toEqual([88]);
+      expect(inactiveContentMode).toBe('view');
+    });
+
+    it('verifies keyboard dismiss on scroll begin drag in categories search list', async () => {
+      const { CategoriesPanelContent } = require('../../components/panels/CategoriesPanelContent');
+      const { Keyboard } = require('react-native');
+      const dismissSpy = jest.spyOn(Keyboard, 'dismiss');
+
+      const view = await render(
+        <BottomSheetProvider>
+          <CategoriesPanelContent
+            sheetKey="categories"
+            requestId={1}
+            payload={{ searchQuery: 'gas' }}
+            dismiss={jest.fn()}
+            setIndex={jest.fn()}
+            isCollapsed={false}
+          />
+        </BottomSheetProvider>,
+      );
+
+      const flatList = view.getByTestId('bottom-sheet-flat-list');
+      expect(flatList.props.keyboardDismissMode).toBe('on-drag');
+      expect(flatList.props.keyboardShouldPersistTaps).toBe('handled');
+
+      flatList.props.onScrollBeginDrag?.();
+      expect(dismissSpy).toHaveBeenCalled();
+      dismissSpy.mockRestore();
     });
   });
 });

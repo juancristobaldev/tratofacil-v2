@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,6 +9,8 @@ import {
   Pressable,
   TouchableOpacity,
   BackHandler,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -18,6 +20,7 @@ import { useRole } from '../../context/RoleContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useJobs } from '../../hooks/useJobs';
 import { containsContactInfo, maskContactInfo } from '../../utils/sanitizer';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 export const RatingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -47,17 +50,26 @@ export const RatingScreen: React.FC = () => {
   const [selectedRating, setSelectedRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   useEffect(() => {
-    const backAction = () => true;
+    const backAction = () => {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
+      }
+      return true;
+    };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, []);
+  }, [navigation]);
 
   const isFormValid = reviewComment.trim().length > 0;
 
   const handleSubmit = async () => {
-    if (submitting || !isFormValid) return;
+    if (submitting || isSubmittingRef.current || !isFormValid) return;
+    isSubmittingRef.current = true;
     setSubmitting(true);
     let comment = reviewComment.trim();
     if (containsContactInfo(comment)) {
@@ -83,9 +95,9 @@ export const RatingScreen: React.FC = () => {
         await reviewJob({
           rating: selectedRating,
           comment,
-          jobId: orderJobId,
+          orderJobId,
           workerId,
-        } as any);
+        });
       }
     } catch (_err) {
       // Best-effort submission
@@ -96,87 +108,97 @@ export const RatingScreen: React.FC = () => {
       navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
       return;
     }
-    navigation.navigate('ServiceSuccess');
+    navigation.replace('ServiceSuccess');
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Top Success Hero */}
-        <View style={styles.heroBox}>
-          <View style={styles.heroIconCircle}>
-            <Icon name="CheckCircle" size={32} color={TOKENS.colors.brand500} />
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
+      >
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(insets.bottom, 24) + 80 }]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Top Success Hero */}
+          <View style={styles.heroBox}>
+            <View style={styles.heroIconCircle}>
+              <Icon name="CheckCircle" size={32} color={TOKENS.colors.brand500} />
+            </View>
+            <Text style={styles.heroTitle}>¡Servicio Finalizado!</Text>
+            <Text style={styles.heroSub}>Tu opinión es importante para la comunidad</Text>
           </View>
-          <Text style={styles.heroTitle}>¡Servicio Finalizado!</Text>
-          <Text style={styles.heroSub}>Tu opinión es importante para la comunidad</Text>
-        </View>
 
-        {/* Rating & Mandatory Review Form Card (Fondo Negro Exclusivo) */}
-        <View style={styles.reviewCard}>
-          {targetUser.avatar ? (
-            <View style={styles.targetUserRow}>
-              <Image source={{ uri: targetUser.avatar }} style={styles.targetAvatar} />
-              <View style={styles.targetUserInfo}>
-                <Text style={styles.targetUserName}>{targetUser.name}</Text>
-                {targetUser.subtext ? (
-                  <Text style={styles.targetUserSub}>{targetUser.subtext}</Text>
-                ) : null}
+          {/* Rating & Mandatory Review Form Card (Fondo Negro Exclusivo) */}
+          <View style={styles.reviewCard}>
+            {targetUser.avatar ? (
+              <View style={styles.targetUserRow}>
+                <Image source={{ uri: targetUser.avatar }} style={styles.targetAvatar} />
+                <View style={styles.targetUserInfo}>
+                  <Text style={styles.targetUserName}>{targetUser.name}</Text>
+                  {targetUser.subtext ? (
+                    <Text style={styles.targetUserSub}>{targetUser.subtext}</Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.reviewCardTitle}>
+                Califica a {targetUser.name || (role === 'client' ? 'Profesional' : 'Cliente')}
+              </Text>
+            )}
+
+            <View style={styles.starRatingGroup}>
+              <Rating
+                rating={selectedRating}
+                onRatingChange={setSelectedRating}
+                size={38}
+              />
+            </View>
+
+            <View style={styles.inputWrap}>
+              <TextInput
+                placeholder="Escribe tu reseña sobre el servicio aquí (obligatorio)..."
+                placeholderTextColor="#6E7187"
+                value={reviewComment}
+                onChangeText={setReviewComment}
+                multiline
+                numberOfLines={4}
+                style={styles.reviewTextarea}
+              />
+              <View style={styles.helperRow}>
+                {reviewComment.trim().length === 0 ? (
+                  <Text style={styles.requiredHelperText}>* La reseña escrita es obligatoria</Text>
+                ) : (
+                  <Text style={styles.charCountText}>{reviewComment.trim().length} caracteres</Text>
+                )}
               </View>
             </View>
-          ) : (
-            <Text style={styles.reviewCardTitle}>
-              Califica a {targetUser.name || (role === 'client' ? 'Profesional' : 'Cliente')}
-            </Text>
-          )}
-
-          <View style={styles.starRatingGroup}>
-            <Rating
-              rating={selectedRating}
-              onRatingChange={setSelectedRating}
-              size={38}
-            />
           </View>
 
-          <View style={styles.inputWrap}>
-            <TextInput
-              placeholder="Escribe tu reseña sobre el servicio aquí (obligatorio)..."
-              placeholderTextColor="#6E7187"
-              value={reviewComment}
-              onChangeText={setReviewComment}
-              multiline
-              numberOfLines={4}
-              style={styles.reviewTextarea}
+          {/* Submit Button (Punto 8: sólo se habilita con reseña escrita) */}
+          <View style={styles.actionStack}>
+            <Button
+              title={submitting ? 'Enviando...' : 'Enviar reseña'}
+              icon={submitting ? undefined : 'Send'}
+              onPress={handleSubmit}
+              disabled={submitting || !isFormValid}
+              size="lg"
+              style={[
+                styles.submitBtn,
+                isFormValid && styles.submitBtnActive,
+              ]}
             />
-            <View style={styles.helperRow}>
-              {reviewComment.trim().length === 0 ? (
-                <Text style={styles.requiredHelperText}>* La reseña escrita es obligatoria</Text>
-              ) : (
-                <Text style={styles.charCountText}>{reviewComment.trim().length} caracteres</Text>
-              )}
-            </View>
+            {!isFormValid && (
+              <Text style={styles.disabledActionHint}>
+                Escribe un breve comentario para habilitar el envío
+              </Text>
+            )}
           </View>
-        </View>
-
-        {/* Submit Button (Punto 8: sólo se habilita con reseña escrita) */}
-        <View style={styles.actionStack}>
-          <Button
-            title={submitting ? 'Enviando...' : 'Enviar reseña'}
-            icon={submitting ? undefined : 'Send'}
-            onPress={handleSubmit}
-            disabled={submitting || !isFormValid}
-            size="lg"
-            style={[
-              styles.submitBtn,
-              isFormValid && styles.submitBtnActive,
-            ]}
-          />
-          {!isFormValid && (
-            <Text style={styles.disabledActionHint}>
-              Escribe un breve comentario para habilitar el envío
-            </Text>
-          )}
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -185,6 +207,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollContent: {
     padding: TOKENS.spacing.lg,

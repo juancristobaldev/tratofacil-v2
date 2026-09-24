@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Input } from '../../components/ui';
+import { Button, Input, RegionCitySelect } from '../../components/ui';
 import { TOKENS } from '../../theme';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 export const ShippingScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -19,6 +20,12 @@ export const ShippingScreen: React.FC = () => {
   const [additional, setAdditional] = useState('');
   const [receiverName, setReceiverName] = useState('');
   const [phone, setPhone] = useState('');
+
+  const streetRef = useRef<TextInput>(null);
+  const numberRef = useRef<TextInput>(null);
+  const additionalRef = useRef<TextInput>(null);
+  const receiverNameRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
 
   const handleSubmit = () => {
     // Trim values to avoid false negatives with empty spaces
@@ -48,85 +55,97 @@ export const ShippingScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View style={styles.container}>
       <KeyboardAvoidingView 
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           
           <Text style={styles.instructions}>Ingresa la dirección donde deseas recibir el producto.</Text>
 
-          <Input 
-            label="Región *"
-            placeholder="Ej: Región Metropolitana" 
-            value={region} 
-            onChangeText={setRegion} 
-            containerStyle={styles.inputGroup}
-          />
-
-          <Input 
-            label="Comuna / Ciudad *"
-            placeholder="Ej: Santiago" 
-            value={city} 
-            onChangeText={setCity} 
-            containerStyle={styles.inputGroup}
+          <RegionCitySelect
+            region={region}
+            city={city}
+            onRegionChange={setRegion}
+            onCityChange={setCity}
+            regionLabel="Región *"
+            cityLabel="Comuna / Ciudad *"
+            regionPlaceholder="Selecciona una región"
+            cityPlaceholder="Selecciona tu comuna o ciudad"
+            testIDPrefix="shipping"
           />
 
           <View style={styles.row}>
             <Input 
+              ref={streetRef}
               label="Calle *"
               placeholder="Ej: Av. Providencia" 
               value={street} 
               onChangeText={setStreet} 
+              returnKeyType="next"
+              onSubmitEditing={() => numberRef.current?.focus()}
               containerStyle={[styles.inputGroup, { flex: 2 }]}
             />
             <Input 
+              ref={numberRef}
               label="Número *"
               placeholder="Ej: 1234" 
               value={number} 
               onChangeText={setNumber} 
               keyboardType="numeric"
+              returnKeyType="next"
+              onSubmitEditing={() => additionalRef.current?.focus()}
               containerStyle={[styles.inputGroup, { flex: 1 }]}
             />
           </View>
 
           <Input 
+            ref={additionalRef}
             label="Depto / Casa / Info Adicional"
             placeholder="Ej: Depto 502, Torre B" 
             value={additional} 
             onChangeText={setAdditional} 
+            returnKeyType="next"
+            onSubmitEditing={() => receiverNameRef.current?.focus()}
             containerStyle={styles.inputGroup}
           />
 
           <Input 
+            ref={receiverNameRef}
             label="Nombre de quien recibe *"
             placeholder="Ej: Juan Pérez" 
             value={receiverName} 
             onChangeText={setReceiverName} 
+            returnKeyType="next"
+            onSubmitEditing={() => phoneRef.current?.focus()}
             containerStyle={styles.inputGroup}
           />
 
           <Input 
+            ref={phoneRef}
             label="Teléfono de contacto *"
             placeholder="Ej: +56 9 1234 5678" 
             value={phone} 
             onChangeText={setPhone} 
             keyboardType="phone-pad"
             mask="phone"
+            returnKeyType="done"
+            onSubmitEditing={handleSubmit}
             containerStyle={styles.inputGroup}
           />
 
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      <View style={styles.footer}>
-        <Button 
-          title="Continuar al Pago" 
-          onPress={handleSubmit} 
-          style={{ width: '100%' }}
-        />
-      </View>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, TOKENS.spacing.sm) }]}>
+          <Button 
+            title="Continuar al Pago" 
+            onPress={handleSubmit} 
+            style={{ width: '100%' }}
+          />
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -138,7 +157,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: TOKENS.spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   instructions: {
     fontSize: TOKENS.typography.sizes.sm,

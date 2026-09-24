@@ -258,6 +258,7 @@ export const LoginScreen: React.FC = () => {
                     if (error) setError('');
                   }}
                   isPassword
+                  autoFocus
                   editable={!isBusy}
                   onSubmitEditing={handlePasswordSubmit}
                   returnKeyType="done"
@@ -378,8 +379,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
     paddingHorizontal: TOKENS.spacing.lg,
+    paddingVertical: TOKENS.spacing.md,
     paddingBottom: TOKENS.spacing.xl,
   },
   header: {

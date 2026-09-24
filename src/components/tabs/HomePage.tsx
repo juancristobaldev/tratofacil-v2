@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image, Keyboard } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Dimensions, Image, Keyboard, Animated, Easing, ActivityIndicator, BackHandler } from 'react-native';
 import MapView from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
-import { TOKENS, DARK_VISIBLE_MAP_STYLE } from '../../theme';
-import { Icon, Avatar, Rating, Badge, ProviderPin, AnimatedUserMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../ui';
+import { TOKENS, DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from '../../theme';
+import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, AnimatedProviderMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
@@ -18,12 +18,16 @@ import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCategories } from '../../context/CategoriesContext';
+import { useFocusSession } from '../../features/focus-session/useFocusSession';
+import { FocusChatOverlay } from '../../screens/client/components/FocusChatOverlay';
+import { canUseProviderNavigation } from '../../utils/orderStatus';
 import { ENDPOINT } from '../../config/endpoints';
 import { getImageUrl } from '../../utils/imageUrl';
 import { geocodeCity, getCachedCoords } from '../../utils/geocode';
 import type { RouteCoordinate } from '../../utils/directions';
 import { useRoutePolyline } from '../../hooks/useRoute';
 import { resolveCategorySlugs } from '../../utils/categoryTree';
+import { summarizeForRole } from '../../utils/ratings';
 import { EMPTY_ARRAY } from '../../utils/emptyArray';
 import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 import { DevJoystickOverlay } from '../../dev/joystick';
@@ -82,6 +86,7 @@ export const HomePage: React.FC = () => {
     handleMapPanDrag: onSheetAutoCollapsePanDrag,
     handleMapRegionChangeComplete: onSheetAutoCollapseRegionComplete,
     cancelPendingRestore: cancelSheetAutoRestore,
+    isMapManipulating,
   } = useMapSheetCollapse({
     activeSheet: active,
     sheetIndex: sheetMetrics?.index ?? 1,
@@ -95,13 +100,16 @@ export const HomePage: React.FC = () => {
     navigateToCoordinate,
     exitNavigationMode,
     toggleNavigationMode,
+    restoreNavigationCamera,
     fitToDefaultRegion,
     handlePanDrag: onCameraPanDrag,
     handleRegionChangeComplete: onCameraRegionChangeComplete,
     recenter: recenterCamera,
     dynamicEdgePadding,
-    isUserExploring,
+    isFollowing,
     isNavigating,
+    navigationPosition,
+    isUserExploring,
   } = useMapCamera({
     mapRef,
     headerBottom,
@@ -114,26 +122,44 @@ export const HomePage: React.FC = () => {
   });
   const userDeselectedProviderCategoryRef = useRef<string | null>(null);
   const lastRoleReconcileLogRef = useRef<string | null>(null);
+  const focusTerminationGraceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFocusTerminationGraceTimeout = useCallback(() => {
+    if (focusTerminationGraceTimeoutRef.current) {
+      clearTimeout(focusTerminationGraceTimeoutRef.current);
+      focusTerminationGraceTimeoutRef.current = null;
+    }
+  }, []);
   const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(DEFAULT_TEMUCO_PLC_REGION);
   const initialCenterDone = useRef(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const { role } = useRole();
   const realtime = useRealtime();
+  const focusSession = useFocusSession();
+  const providerSession = focusSession.provider;
+  const clientSession = focusSession.client;
+  const { showChat, setShowChat } = role === 'provider' ? providerSession : clientSession;
+
+  const clientActiveOrder = useMemo(() => {
+    return selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+  }, [realtime.localActiveOrder, realtime.activeOrder]);
+
+  const clientOrderStatus = clientActiveOrder?.status;
+
   const hasActiveRealtimeOrder = useMemo(() => {
-    const order = role === 'provider' ? realtime.providerActiveOrder : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+    const order = role === 'provider' ? realtime.providerActiveOrder : clientActiveOrder;
     if (!order?.status) return false;
     return !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status);
-  }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
+  }, [role, clientActiveOrder, realtime.providerActiveOrder]);
 
   const desiredMapSurface = useMemo<DesiredMapSurface>(() => {
-    const clientOrder = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
     return deriveDesiredMapSurface({
       role,
-      clientActiveOrder: clientOrder,
+      clientActiveOrder,
       providerActiveOrder: realtime.providerActiveOrder,
     });
-  }, [role, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder]);
+  }, [role, clientActiveOrder, realtime.providerActiveOrder]);
 
   const isFocusMapSurfaceActive = desiredMapSurface.kind === 'SHEET'
     && (desiredMapSurface.key === 'focus_client' || desiredMapSurface.key === 'focus_provider');
@@ -141,8 +167,8 @@ export const HomePage: React.FC = () => {
   useEffect(() => {
       const order = role === 'provider'
       ? realtime.providerActiveOrder
-      : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
-    const desired = desiredMapSurface.kind === 'SHEET' ? desiredMapSurface.key : 'NO_SHEET_BY_DESIGN';
+      : clientActiveOrder;
+    const desired = desiredMapSurface.kind === 'SHEET' ? desiredMapSurface.key : desiredMapSurface.kind;
     bottomSheetDebug('DESIRED', {
       role,
       orderId: order?.id ?? null,
@@ -153,7 +179,7 @@ export const HomePage: React.FC = () => {
       hasProvider: !!order?.provider,
       hasServiceProvider: !!order?.serviceProvider,
     });
-  }, [active, desiredMapSurface, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
+  }, [active, desiredMapSurface, clientActiveOrder, realtime.providerActiveOrder, role]);
 
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -176,21 +202,40 @@ export const HomePage: React.FC = () => {
   const activeDestinationCoords = useMemo<RouteCoordinate | null>(() => {
     if (role === 'provider') {
       const order = realtime.providerActiveOrder;
-      if (order && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(order.status)) {
+      if (
+        order &&
+        !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'ARRIVED', 'IN_PROGRESS'].includes(order.status)
+      ) {
         const lat = order.clientLat;
         const lng = order.clientLng;
-        if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+        if (
+          lat != null &&
+          lng != null &&
+          Number.isFinite(lat) &&
+          Number.isFinite(lng) &&
+          (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+        ) {
           return { latitude: lat, longitude: lng };
         }
       }
       return null;
     }
 
-    const clientOrder = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
-    if (clientOrder && !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'].includes(clientOrder.status)) {
-      const lat = clientOrder.providerLat ?? (clientOrder.provider as any)?.lat;
-      const lng = clientOrder.providerLng ?? (clientOrder.provider as any)?.lng;
-      if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    if (
+      clientActiveOrder &&
+      !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'ARRIVED', 'IN_PROGRESS'].includes(clientActiveOrder.status)
+    ) {
+      const lat = clientActiveOrder.providerLat ?? (clientActiveOrder.provider as any)?.lat;
+      const lng = clientActiveOrder.providerLng ?? (clientActiveOrder.provider as any)?.lng;
+      if (
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      ) {
         return { latitude: lat, longitude: lng };
       }
     }
@@ -198,19 +243,361 @@ export const HomePage: React.FC = () => {
     if (selectedProvider) {
       const lat = selectedProvider.lat ?? selectedProvider.latitude;
       const lng = selectedProvider.lng ?? selectedProvider.longitude;
-      return lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)
+      return lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
         ? { latitude: lat, longitude: lng }
         : null;
     }
 
     return null;
-  }, [role, realtime.providerActiveOrder, realtime.localActiveOrder, realtime.activeOrder, selectedProvider]);
+  }, [role, realtime.providerActiveOrder, clientActiveOrder, selectedProvider]);
+
+  // Regla Cardinal 4: Para cualquier orden activa, la polyline SIEMPRE conecta la ubicación del proveedor
+  // con el Punto de Encuentro (HousePin). NUNCA se conecta al GPS móvil del cliente.
+  const activeRouteOrigin = useMemo<RouteCoordinate | null>(() => {
+    if (role === 'provider') {
+      return activeUserCoords;
+    }
+
+    if (
+      hasActiveRealtimeOrder &&
+      clientActiveOrder &&
+      !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'ARRIVED', 'IN_PROGRESS'].includes(clientActiveOrder.status)
+    ) {
+      const lat = clientActiveOrder.providerLat ?? (clientActiveOrder.provider as any)?.lat;
+      const lng = clientActiveOrder.providerLng ?? (clientActiveOrder.provider as any)?.lng;
+      if (
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      ) {
+        return { latitude: lat, longitude: lng };
+      }
+      return null;
+    }
+
+    // Cliente explorando catálogo (sin orden activa): su propia ubicación
+    return activeUserCoords;
+  }, [role, hasActiveRealtimeOrder, clientActiveOrder, activeUserCoords]);
+
+  const activeRouteDestination = useMemo<RouteCoordinate | null>(() => {
+    if (role === 'provider') {
+      const order = realtime.providerActiveOrder;
+      if (
+        order &&
+        !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'ARRIVED', 'IN_PROGRESS'].includes(order.status)
+      ) {
+        const lat = order.clientLat;
+        const lng = order.clientLng;
+        if (
+          lat != null &&
+          lng != null &&
+          Number.isFinite(lat) &&
+          Number.isFinite(lng) &&
+          (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+        ) {
+          return { latitude: lat, longitude: lng };
+        }
+      }
+      return null;
+    }
+
+    if (
+      hasActiveRealtimeOrder &&
+      clientActiveOrder &&
+      !['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED', 'ARRIVED', 'IN_PROGRESS'].includes(clientActiveOrder.status)
+    ) {
+      // Punto de encuentro fijo del servicio (HousePin)
+      const lat = clientActiveOrder.clientLat;
+      const lng = clientActiveOrder.clientLng;
+      if (
+        lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+      ) {
+        return { latitude: lat, longitude: lng };
+      }
+      return null;
+    }
+
+    // Cliente explorando catálogo sin orden activa: proveedor seleccionado
+    if (selectedProvider) {
+      const lat = selectedProvider.lat ?? selectedProvider.latitude;
+      const lng = selectedProvider.lng ?? selectedProvider.longitude;
+      return lat != null &&
+        lng != null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        (Math.abs(lat) > 1e-4 || Math.abs(lng) > 1e-4) &&
+        lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+        ? { latitude: lat, longitude: lng }
+        : null;
+    }
+
+    return null;
+  }, [role, hasActiveRealtimeOrder, clientActiveOrder, realtime.providerActiveOrder, selectedProvider]);
+
+  const isRouteActive = Boolean(
+    activeRouteOrigin &&
+    activeRouteDestination &&
+    isFocused &&
+    (hasActiveRealtimeOrder ? (role === 'provider' || clientOrderStatus === 'ACCEPTED') : Boolean(selectedProvider))
+  );
 
   const { routeCoords } = useRoutePolyline(
-    activeUserCoords,
-    activeDestinationCoords,
-    Boolean(activeDestinationCoords && activeUserCoords && isFocused),
+    activeRouteOrigin,
+    activeRouteDestination,
+    isRouteActive,
   );
+
+  const canUseNavigation = useMemo(() => {
+    return canUseProviderNavigation({
+      role,
+      isFocusModeProviderActive: hasActiveRealtimeOrder,
+      activeOrder: realtime.providerActiveOrder,
+      orderState: providerSession.orderState,
+    });
+  }, [role, hasActiveRealtimeOrder, realtime.providerActiveOrder, providerSession.orderState]);
+
+  const userManuallyExitedNavOrderRef = useRef<number | null>(null);
+
+  const handleToggleNavigation = useCallback(
+    (coord?: RouteCoordinate | null, options?: { heading?: number; pitch?: number; animated?: boolean; force?: boolean; duration?: number }) => {
+      if (!canUseNavigation) return;
+
+      if (isNavigating) {
+        userManuallyExitedNavOrderRef.current = realtime.providerActiveOrder?.id ?? null;
+      } else {
+        userManuallyExitedNavOrderRef.current = null;
+      }
+
+      // Invariante Fase 1: El sujeto de navegación es SIEMPRE y exclusivamente el GPS local del vehículo.
+      // Jamás debe usarse la coordenada de destino como sujeto móvil.
+      const subjectCoord = coord || activeUserCoords || null;
+      if (!subjectCoord) return;
+
+      const heading =
+        options?.heading ??
+        (location?.coords?.heading != null &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? location.coords.heading
+          : undefined);
+
+      toggleNavigationMode(subjectCoord, {
+        heading,
+        speed: location?.coords?.speed ?? undefined,
+        accuracy: location?.coords?.accuracy ?? undefined,
+        timestamp: location?.timestamp,
+        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
+        pitch: options?.pitch ?? 65,
+        animated: options?.animated ?? true,
+      });
+    },
+    [canUseNavigation, isNavigating, activeUserCoords, location?.coords?.heading, location?.coords?.speed, location?.coords?.accuracy, location?.timestamp, routeCoords, toggleNavigationMode, realtime.providerActiveOrder?.id],
+  );
+
+  useEffect(() => {
+    if (!canUseNavigation && isNavigating) {
+      toggleNavigationMode(activeUserCoords, { animated: true });
+    }
+  }, [canUseNavigation, isNavigating, activeUserCoords, toggleNavigationMode]);
+
+  useEffect(() => {
+    return () => {
+      if (isNavigating) {
+        toggleNavigationMode(null, { animated: false });
+      }
+    };
+  }, [isNavigating, toggleNavigationMode]);
+
+  // Al haber una orden realtime no terminal para el proveedor con trazado de ruta activo (polyline),
+  // activar y mantener activo de forma continua el modo navegación 3D a menos que el usuario esté en exploración gestual libre.
+  useEffect(() => {
+    if (!canUseNavigation) {
+      userManuallyExitedNavOrderRef.current = null;
+      return;
+    }
+
+    const pOrder = realtime.providerActiveOrder;
+    if (!pOrder?.id) return;
+
+    if (
+      !isNavigating &&
+      !isUserExploring &&
+      userManuallyExitedNavOrderRef.current !== pOrder.id &&
+      routeCoords.length >= 2 &&
+      activeUserCoords
+    ) {
+      if (__DEV__) {
+        console.log(`[NAV:CONTINUOUS_ACTIVATE] Provider order ${pOrder.id} active with polyline; activating 3D navigation mode`);
+      }
+      handleToggleNavigation(activeUserCoords, {
+        heading:
+          location?.coords?.heading != null &&
+          Number.isFinite(location.coords.heading) &&
+          location.coords.heading >= 0
+            ? location.coords.heading
+            : undefined,
+        pitch: 65,
+        animated: true,
+      });
+    }
+  }, [
+    canUseNavigation,
+    isNavigating,
+    isUserExploring,
+    realtime.providerActiveOrder,
+    routeCoords,
+    activeUserCoords,
+    location?.coords?.heading,
+    handleToggleNavigation,
+  ]);
+
+  // Radar Animation for Client PENDING state
+  const pingScale = useRef(new Animated.Value(1)).current;
+  const pingOpacity = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(0.5)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (role === 'provider' || clientOrderStatus !== 'PENDING') return;
+
+    pingScale.setValue(1);
+    pingOpacity.setValue(1);
+    pulseOpacity.setValue(0.5);
+    floatAnim.setValue(0);
+
+    const pingLoop = Animated.loop(
+      Animated.parallel([
+        Animated.timing(pingScale, {
+          toValue: 1.5,
+          duration: 2500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pingOpacity, {
+          toValue: 0,
+          duration: 2500,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseOpacity, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseOpacity, {
+          toValue: 0.5,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const floatLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: -10,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 2000,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const composite = Animated.parallel([pingLoop, pulseLoop, floatLoop]);
+    composite.start();
+
+    return () => {
+      composite.stop();
+    };
+  }, [clientOrderStatus, role]);
+
+  const hasNavigatedToRatingRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (role !== 'provider' && clientActiveOrder?.status === 'COMPLETED' && clientActiveOrder?.provider && clientActiveOrder?.id) {
+      if (hasNavigatedToRatingRef.current === clientActiveOrder.id || realtime.isOrderReviewed?.(clientActiveOrder.id)) return;
+      hasNavigatedToRatingRef.current = clientActiveOrder.id;
+      const providerImg = getImageUrl(clientActiveOrder.provider.logoImage?.cdnUrl || null);
+      const reviews = clientActiveOrder.provider.reviews || [];
+      const avgRating = reviews.length
+        ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
+        : 0;
+      navigation.navigate('Rating', {
+        role: 'client',
+        targetUser: {
+          name: clientActiveOrder.provider.name || 'Profesional',
+          avatar: providerImg || undefined,
+          rating: avgRating,
+          reviewsCount: reviews.length,
+          subtext: clientActiveOrder.serviceProvider?.service?.name || '',
+        },
+        serviceDetails: clientActiveOrder.clientDescription || '',
+        amount: clientActiveOrder.payment?.amount || clientActiveOrder.quotedPrice || 0,
+        address: clientActiveOrder.clientAddress || '',
+        paymentMethod: clientActiveOrder.payment ? 'Flow.cl' : '-',
+        orderRealtimeId: clientActiveOrder.id,
+        providerId: clientActiveOrder.provider.id,
+      });
+      setSelectedProvider(null);
+      dismiss();
+    } else if (role === 'provider' && realtime.providerActiveOrder?.status === 'COMPLETED' && realtime.providerActiveOrder?.id) {
+      const pOrder = realtime.providerActiveOrder;
+      if (hasNavigatedToRatingRef.current === pOrder.id || realtime.isOrderReviewed?.(pOrder.id)) return;
+      hasNavigatedToRatingRef.current = pOrder.id;
+      const clientSummary = summarizeForRole(pOrder?.client, 'client');
+      navigation.navigate('Rating', {
+        role: 'provider',
+        targetUser: {
+          name: pOrder?.client?.displayName || 'Cliente',
+          avatar: null,
+          rating: clientSummary?.rating ?? 0,
+          reviewsCount: clientSummary?.count ?? 0,
+          subtext: pOrder?.serviceProvider?.service?.name || '',
+        },
+        serviceDetails: pOrder?.clientDescription || '',
+        amount: pOrder?.payment?.amount || pOrder?.quotedPrice || 0,
+        address: pOrder?.clientAddress || '',
+        orderRealtimeId: pOrder?.id,
+        clientId: pOrder?.client?.id,
+      });
+      setSelectedProvider(null);
+      dismiss();
+    }
+  }, [clientActiveOrder, dismiss, navigation, realtime, role]);
+
+  const wasActiveRealtimeOrderRef = useRef(hasActiveRealtimeOrder);
+  useEffect(() => {
+    if (!hasActiveRealtimeOrder && wasActiveRealtimeOrderRef.current) {
+      setSelectedProvider(null);
+      hasNavigatedToRatingRef.current = null;
+      userManuallyExitedNavOrderRef.current = null;
+    }
+    wasActiveRealtimeOrderRef.current = hasActiveRealtimeOrder;
+  }, [hasActiveRealtimeOrder]);
   const hydratedCategoriesPayloadRef = useRef(false);
   const hydratedProviderPreviewPayloadRef = useRef(false);
 
@@ -324,9 +711,13 @@ export const HomePage: React.FC = () => {
   // Seguimiento continuo del stream GPS cuando isFollowing está activo y el usuario no está explorando manualmente
   useEffect(() => {
     if (location?.coords && !isUserExploring) {
-      const heading = (location.coords.heading != null && Number.isFinite(location.coords.heading) && location.coords.heading >= 0)
-        ? location.coords.heading
-        : undefined;
+      const heading =
+        location.coords.heading != null &&
+        Number.isFinite(location.coords.heading) &&
+        location.coords.heading >= 0
+          ? location.coords.heading
+          : undefined;
+
       followCoordinate(
         {
           latitude: location.coords.latitude,
@@ -335,11 +726,26 @@ export const HomePage: React.FC = () => {
         {
           animated: true,
           heading,
-          reason: isNavigating ? 'gps_stream_navigation_follow' : 'gps_stream_follow',
+          speed: location.coords.speed ?? undefined,
+          accuracy: location.coords.accuracy ?? undefined,
+          timestamp: location.timestamp,
+          routeCoords: isNavigating && routeCoords.length >= 2 ? routeCoords : undefined,
+          reason: isNavigating ? 'nav_gps_stream_follow' : 'gps_stream_follow',
         },
       );
     }
-  }, [location?.coords?.latitude, location?.coords?.longitude, location?.coords?.heading, isUserExploring, isNavigating, followCoordinate]);
+  }, [
+    location?.coords?.latitude,
+    location?.coords?.longitude,
+    location?.coords?.heading,
+    location?.coords?.speed,
+    location?.coords?.accuracy,
+    location?.timestamp,
+    isUserExploring,
+    isNavigating,
+    routeCoords,
+    followCoordinate,
+  ]);
 
   const { token } = useAuth();
 
@@ -350,19 +756,12 @@ export const HomePage: React.FC = () => {
   } = useCategories();
 
   useEffect(() => {
-    const socket = (realtime as any).socketRef?.current;
-    if (!socket) return;
-
-    const onProviderStatus = () => {
+    if (!realtime?.subscribe) return;
+    const unsubscribe = realtime.subscribe('provider:realtime:status', () => {
       refetchServicesByCategory();
-    };
-
-    socket.on('provider:realtime:status', onProviderStatus);
-
-    return () => {
-      socket.off('provider:realtime:status', onProviderStatus);
-    };
-  }, [(realtime as any).socketRef, refetchServicesByCategory]);
+    });
+    return unsubscribe;
+  }, [realtime?.subscribe, refetchServicesByCategory]);
 
   const [resolvedCoords, setResolvedCoords] = useState<Record<string, { lat: number; lng: number }>>({});
 
@@ -396,8 +795,17 @@ export const HomePage: React.FC = () => {
         const p = sp.provider;
         const cityKey = (sp.cities?.[0]?.city || p.location || '').toLowerCase();
         const fallbackCoords = resolvedCoords[cityKey];
-        const lat = p.lat ?? fallbackCoords?.lat ?? null;
-        const lng = p.lng ?? fallbackCoords?.lng ?? null;
+        let lat = p.lat ?? null;
+        let lng = p.lng ?? null;
+        if (lat == null && fallbackCoords?.lat != null) {
+          const hash = Number(p.id) || 1;
+          const angle = (hash * 137.5) * (Math.PI / 180);
+          const radiusMeters = 120 + ((hash * 47) % 320);
+          const deltaLat = (radiusMeters / 111000) * Math.cos(angle);
+          const deltaLng = (radiusMeters / (111000 * Math.cos((fallbackCoords.lat * Math.PI) / 180))) * Math.sin(angle);
+          lat = fallbackCoords.lat + deltaLat;
+          lng = fallbackCoords.lng + deltaLng;
+        }
         if (service.slug === 'reparacion-de-llaves-de-agua' || service.slug === 'albanileria-en-general') {
           if (__DEV__) console.log('[DEBUG:MAP] Provider found | service:', service.slug, '| catSlug:', service.category?.slug, '| provider:', p.name, '| lat:', lat, '| lng:', lng, '| city:', cityKey, '| hasFallback:', !!fallbackCoords, '| isRealtime:', p.isRealtimeActive);
         }
@@ -478,6 +886,19 @@ export const HomePage: React.FC = () => {
     });
   }, [filteredProviders, location?.coords?.latitude, location?.coords?.longitude]);
 
+  // Memoización estable de GeoJSON Features excluyendo selectedProvider (que se renderiza como pin dedicado e inmutable)
+  const fallbackFeatures = useMemo(() => {
+    return orderedFilteredProviders
+      .filter((p: any) => !selectedProvider || String(p.id) !== String(selectedProvider.id))
+      .map((p: any) => ({
+        type: 'Feature' as const,
+        properties: { cluster: false, provider: p },
+        geometry: { type: 'Point' as const, coordinates: [p.lng ?? p.longitude, p.lat ?? p.latitude] },
+      }));
+  }, [orderedFilteredProviders, selectedProvider]);
+
+
+
   useEffect(() => {
     if (__DEV__) console.log('[AUDIT:1] supercluster effect START | selectedCategory:', selectedCategory?.slug, '| filteredProviders.length:', filteredProviders.length, '| region:', region?.latitude.toFixed(5), region?.longitude.toFixed(5), '| latDelta:', region?.latitudeDelta, '| lngDelta:', region?.longitudeDelta);
 
@@ -501,6 +922,10 @@ export const HomePage: React.FC = () => {
     filteredProviders
       .filter((p: any) => p.lat != null && p.lng != null)
       .forEach((p: any) => {
+        // Invariante de verdad geográfica: selectedProvider se renderiza como pin dedicado e inmutable fuera de clusters
+        if (selectedProvider && String(p.id) === String(selectedProvider.id)) {
+          return;
+        }
         if (!uniqueProvidersMap.has(p.id)) {
           uniqueProvidersMap.set(p.id, p);
         }
@@ -526,7 +951,7 @@ export const HomePage: React.FC = () => {
 
     updateClusters(region);
     if (__DEV__) console.log('[DEBUG:MAP] clusters loaded | points prepared:', points.length, '| filteredProviders total:', filteredProviders.length, '| filtered with coords:', uniqueProvidersMap.size);
-  }, [filteredProviders, updateClusters]);
+  }, [filteredProviders, selectedProvider?.id, updateClusters]);
 
   const handleCategoryPress = useCallback((category: Category) => {
     userDeselectedProviderCategoryRef.current = null;
@@ -608,6 +1033,8 @@ export const HomePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (hasActiveRealtimeOrder || isFocusMapSurfaceActive) return;
+    if (activeRef.current === 'focus_client' || activeRef.current === 'focus_provider') return;
     if (!selectedCategory || filteredProviders.length === 0) return;
     const withCoords = filteredProviders.filter(
       (p: any) =>
@@ -684,7 +1111,15 @@ export const HomePage: React.FC = () => {
     location?.coords?.latitude,
     location?.coords?.longitude,
     logTransitionRequest,
+    hasActiveRealtimeOrder,
+    isFocusMapSurfaceActive,
   ]);
+
+  useEffect(() => {
+    if (hasActiveRealtimeOrder && selectedProvider) {
+      setSelectedProvider(null);
+    }
+  }, [hasActiveRealtimeOrder, selectedProvider]);
 
   const handleClearCategory = useCallback(() => {
     userDeselectedProviderCategoryRef.current = null;
@@ -788,13 +1223,90 @@ export const HomePage: React.FC = () => {
   onViewProviderProfileRef.current = handleViewProviderProfile;
   onDeselectProviderRef.current = handleDeselectProvider;
 
+  // Botón atrás nativo de Android (hardwareBackPress):
+  // 1. Si el overlay de chat está abierto -> cerrarlo
+  // 2. Si un proveedor está seleccionado o preview abierto -> deseleccionarlo y restaurar categories
+  // 3. Si hay una categoría filtrada -> limpiarla y restaurar vista general
+  // 4. Si hay texto de búsqueda -> limpiarlo
+  // 5. Si el bottom sheet está expandido (índice > 0) y es colapsable -> colapsar a índice 0
+  // 6. De lo contrario retornar false para delegar a MainLayout o navegación superior
+  useEffect(() => {
+    if (!isFocused) return;
+
+    const onBackPress = () => {
+      if (showChat) {
+        setShowChat(false);
+        return true;
+      }
+      if (role !== 'provider' && clientOrderStatus === 'PENDING') {
+        if (clientActiveOrder?.id) {
+          realtime.cancelOrder(clientActiveOrder.id).catch(() => {});
+        }
+        dismiss();
+        return true;
+      }
+      if (role !== 'provider' && clientOrderStatus === 'PAYMENT_PENDING' && active !== 'focus_client') {
+        if (clientActiveOrder?.id) {
+          realtime.cancelOrder(clientActiveOrder.id).catch(() => {});
+        }
+        dismiss();
+        return true;
+      }
+      if (selectedProvider || active === 'provider_preview') {
+        handleDeselectProvider();
+        return true;
+      }
+      if (selectedCategory) {
+        handleClearCategory();
+        return true;
+      }
+      if (searchQuery.trim().length > 0) {
+        handleClearSearch();
+        return true;
+      }
+      if (
+        sheetMetrics &&
+        sheetMetrics.index > 0 &&
+        !sheetMetrics.isCollapsed &&
+        active !== 'focus_provider' &&
+        active !== 'focus_client'
+      ) {
+        setIndex?.(0);
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [
+    isFocused,
+    showChat,
+    setShowChat,
+    role,
+    clientOrderStatus,
+    clientActiveOrder?.id,
+    realtime,
+    dismiss,
+    selectedProvider,
+    active,
+    handleDeselectProvider,
+    selectedCategory,
+    handleClearCategory,
+    searchQuery,
+    handleClearSearch,
+    sheetMetrics,
+    setIndex,
+  ]);
+
   useEffect(() => {
     bottomSheetDebug('MAP_FLOW', { reason: 'home_mounted' });
     return () => {
       bottomSheetDebug('MAP_FLOW', { reason: 'home_unmounted', mapFlowActive: false });
       setMapFlowActive(false);
+      clearFocusTerminationGraceTimeout();
     };
-  }, [setMapFlowActive]);
+  }, [clearFocusTerminationGraceTimeout, setMapFlowActive]);
 
   useEffect(() => {
     const owner = runtimeOwnerRef.current;
@@ -894,40 +1406,26 @@ export const HomePage: React.FC = () => {
       ? realtime.providerActiveOrder
       : selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
 
-    if (desiredMapSurface.kind === 'NO_SHEET_BY_DESIGN') {
-      bottomSheetDebug('NO_SHEET', {
-        role,
-        orderId: reconcileOrder?.id ?? null,
-        status: reconcileOrder?.status ?? null,
-        current: active,
-        reason: desiredMapSurface.reason,
-      });
-
-      bottomSheetDebug('RECONCILE_DECISION', {
-        role,
-        orderId: reconcileOrder?.id ?? null,
-        status: reconcileOrder?.status ?? null,
-        current: active,
-        desired: 'NO_SHEET_BY_DESIGN',
-        decision: active ? 'DISMISS' : 'KEEP',
-        reason: desiredMapSurface.reason,
-        hasProvider: !!reconcileOrder?.provider,
-        hasServiceProvider: !!reconcileOrder?.serviceProvider,
-      });
-
-      if (active) {
-        dismiss();
-      }
-      return;
-    }
-
-    const target = desiredMapSurface.key;
+    const target = desiredMapSurface.kind === 'SHEET' ? desiredMapSurface.key : null;
     const activeAllowed = active ? isSheetAllowedForRole(active, role) : false;
     const activeIsFocus = active === 'focus_client' || active === 'focus_provider';
     const targetHasRealtimePriority = target === 'focus_client' || target === 'focus_provider';
     const needsReconcile = active !== target && (!activeAllowed || !active || targetHasRealtimePriority || activeIsFocus);
 
+    const isAnyOverlayActive = Boolean(
+      (role !== 'provider' && clientOrderStatus === 'PENDING') ||
+      showChat
+    );
+
+    if (desiredMapSurface.kind === 'NO_SHEET_BY_DESIGN' || isAnyOverlayActive) {
+      if (active !== null) {
+        dismiss();
+      }
+      return;
+    }
+
     if (!needsReconcile) {
+      clearFocusTerminationGraceTimeout();
       bottomSheetDebug('RECONCILE_DECISION', {
         role,
         orderId: reconcileOrder?.id ?? null,
@@ -951,6 +1449,46 @@ export const HomePage: React.FC = () => {
       }
       return;
     }
+
+    const isFocusTermination = activeIsFocus && !targetHasRealtimePriority;
+    const isConfirmedTerminal = Boolean(
+      reconcileOrder?.status && TERMINAL_REALTIME_STATUSES.includes(reconcileOrder.status)
+    );
+
+    // Hysteresis / Grace period against transient null orders during reconnect/refetch:
+    // If we are in Focus mode and target degrades to default without an explicit terminal status,
+    // hold Focus mode for 800ms to allow socket/cache to rehydrate.
+    if (isFocusTermination && !isConfirmedTerminal) {
+      if (!focusTerminationGraceTimeoutRef.current) {
+        bottomSheetDebug('RECONCILE_DECISION', {
+          role,
+          orderId: reconcileOrder?.id ?? null,
+          status: reconcileOrder?.status ?? null,
+          current: active,
+          desired: target,
+          decision: 'GRACE_WAIT',
+          reason: 'awaiting_confirmed_terminal_or_reconnect',
+        });
+        focusTerminationGraceTimeoutRef.current = setTimeout(() => {
+          focusTerminationGraceTimeoutRef.current = null;
+          const currentDesired = deriveDesiredMapSurface({
+            role,
+            clientActiveOrder: selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder),
+            providerActiveOrder: realtime.providerActiveOrder,
+          });
+          if (currentDesired.kind === 'SHEET') {
+            if (currentDesired.key === 'categories') {
+              presentCategories();
+            } else if (currentDesired.key === 'provider_dashboard') {
+              present('provider_dashboard', undefined);
+            }
+          }
+        }, 800);
+      }
+      return;
+    }
+
+    clearFocusTerminationGraceTimeout();
 
     const reason = active && !activeAllowed
       ? (target === 'focus_client' || target === 'focus_provider'
@@ -1006,35 +1544,53 @@ export const HomePage: React.FC = () => {
       logTransitionRequest({ from: active, to: 'focus_provider', origin: 'REALTIME_RECONCILE', reason });
       present('focus_provider', { orderId: order.id });
     }
-  }, [active, desiredMapSurface, dismiss, isFocused, logTransitionRequest, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role]);
+  }, [active, clearFocusTerminationGraceTimeout, clientOrderStatus, desiredMapSurface, dismiss, isFocused, logTransitionRequest, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role, showChat]);
 
-  const handleNavigationMode = (source: 'nav_button' | 'user_marker' = 'nav_button') => {
-    console.log(`[MAP:INTERACTION] type=NAVIGATION_MODE_PRESS source=${source} isNavigating=${isNavigating}`);
-    if (location?.coords) {
-      const userCoord = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
-      if (isNavigating) {
-        exitNavigationMode(userCoord, true);
-      } else {
-        const heading = (location.coords.heading != null && Number.isFinite(location.coords.heading) && location.coords.heading >= 0)
-          ? location.coords.heading
-          : 0;
-        navigateToCoordinate(
-          userCoord,
-          {
-            heading,
-            pitch: 60,
-            animated: true,
-          },
-        );
+  const recoverSheetIfDismissed = useCallback(() => {
+    const isAnyOverlayActive = Boolean(
+      (role !== 'provider' && clientOrderStatus === 'PENDING') ||
+      showChat
+    );
+    if (active === null && !isAnyOverlayActive && desiredMapSurface.kind === 'SHEET') {
+      const target = desiredMapSurface.key;
+      if (target === 'categories') {
+        presentCategories();
+      } else if (target === 'provider_dashboard') {
+        present('provider_dashboard', undefined);
+      } else if (target === 'focus_client') {
+        const order = selectClientRealtimeOrder(realtime.localActiveOrder, realtime.activeOrder);
+        if (order?.id) present('focus_client', { orderId: order.id });
+      } else if (target === 'focus_provider') {
+        const order = realtime.providerActiveOrder;
+        if (order?.id) present('focus_provider', { orderId: order.id });
       }
     }
-  };
+  }, [active, clientOrderStatus, desiredMapSurface, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role, showChat]);
 
   const handleRecenter = (source: 'recenter_button' | 'user_marker' = 'recenter_button') => {
     console.log(`[MAP:INTERACTION] type=RECENTER_PRESS source=${source}`);
+    recoverSheetIfDismissed();
+    userManuallyExitedNavOrderRef.current = null;
+
+    if (canUseNavigation && activeUserCoords) {
+      restoreNavigationCamera(activeUserCoords, {
+        heading:
+          location?.coords?.heading != null &&
+          Number.isFinite(location.coords.heading) &&
+          location.coords.heading >= 0
+            ? location.coords.heading
+            : undefined,
+        speed: location?.coords?.speed ?? undefined,
+        accuracy: location?.coords?.accuracy ?? undefined,
+        timestamp: location?.timestamp,
+        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
+        pitch: 65,
+        animated: true,
+        reason: 'provider_navigation_recenter',
+      });
+      return;
+    }
+
     if (location?.coords) {
       followCoordinate(
         {
@@ -1052,6 +1608,7 @@ export const HomePage: React.FC = () => {
 
   const handleSmartFraming = () => {
     console.log('[MAP:INTERACTION] type=SMART_FRAMING_PRESS');
+    recoverSheetIfDismissed();
     
     // 1. Si existe orden realtime activa no terminal
     const order = role === 'provider'
@@ -1141,6 +1698,7 @@ export const HomePage: React.FC = () => {
   const handleMapPress = () => {
     Keyboard.dismiss();
     console.log('[MAP:INTERACTION] type=BACKGROUND_PRESS');
+    recoverSheetIfDismissed();
   };
 
   return (
@@ -1154,6 +1712,9 @@ export const HomePage: React.FC = () => {
           onPanDrag={handleMapPanDrag}
           onPress={handleMapPress}
           customMapStyle={mapStyle}
+          userInterfaceStyle="dark"
+          loadingBackgroundColor={MAP_BACKGROUND_COLOR}
+          loadingEnabled={false}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
@@ -1164,18 +1725,110 @@ export const HomePage: React.FC = () => {
               latitude: location.coords.latitude, 
               longitude: location.coords.longitude 
             }} 
-            onPress={() => handleNavigationMode('user_marker')}
+            isMapManipulating={isMapManipulating || mapPanActiveRef.current}
+            onPress={() => {
+              if (canUseNavigation) {
+                handleToggleNavigation(activeUserCoords, {
+                  heading:
+                    location?.coords?.heading != null &&
+                    Number.isFinite(location.coords.heading) &&
+                    location.coords.heading >= 0
+                      ? location.coords.heading
+                      : 0,
+                  animated: true,
+                });
+              } else {
+                handleRecenter('user_marker');
+              }
+            }}
           />
         )}
         {role === 'provider' && activeDestinationCoords && (
           <HousePin coordinate={activeDestinationCoords} />
         )}
-        {orderedFilteredProviders.map((provider: any) => {
-          const latitude = provider.lat ?? provider.latitude;
-          const longitude = provider.lng ?? provider.longitude;
+        {role !== 'provider' &&
+          hasActiveRealtimeOrder &&
+          clientActiveOrder?.clientLat != null &&
+          clientActiveOrder?.clientLng != null &&
+          (Math.abs(clientActiveOrder.clientLat) > 1e-4 || Math.abs(clientActiveOrder.clientLng) > 1e-4) && (
+          <HousePin coordinate={{ latitude: clientActiveOrder.clientLat, longitude: clientActiveOrder.clientLng }} />
+        )}
+        {role !== 'provider' && hasActiveRealtimeOrder && clientOrderStatus !== 'PENDING' && activeDestinationCoords && (
+          <AnimatedProviderMarker
+            coordinate={activeDestinationCoords}
+            text={clientOrderStatus === 'ACCEPTED' ? 'En camino' : clientOrderStatus === 'IN_PROGRESS' ? 'Llegó a tu domicilio' : undefined}
+          />
+        )}
+        {!hasActiveRealtimeOrder && selectedProvider && (() => {
+          const sLat = selectedProvider.lat ?? selectedProvider.latitude;
+          const sLng = selectedProvider.lng ?? selectedProvider.longitude;
+          if (sLat == null || sLng == null || !Number.isFinite(sLat) || !Number.isFinite(sLng)) return null;
+          return (
+            <ProviderPin
+              key={`selected-provider-${selectedProvider.spId || selectedProvider.id}`}
+              provider={selectedProvider}
+              coordinate={{ latitude: sLat, longitude: sLng }}
+              isSelected={true}
+              isMapManipulating={isMapManipulating || mapPanActiveRef.current}
+              onPress={() => {
+                cancelSheetAutoRestore();
+                clearFocusTerminationGraceTimeout();
+                console.log(`[MAP:INTERACTION] type=SELECTED_PROVIDER_PRESS providerId=${selectedProvider.id}`);
+                const idx = orderedFilteredProviders.findIndex(
+                  (p: any) => String(p.id) === String(selectedProvider.id),
+                );
+                animateToProvider(selectedProvider);
+                const previewPayload = {
+                  provider: selectedProvider,
+                  providers: orderedFilteredProviders,
+                  selectedIndex: idx < 0 ? 0 : idx,
+                };
+                if (active === 'provider_preview') {
+                  update(previewPayload);
+                } else {
+                  logTransitionRequest({ from: active, to: 'provider_preview', origin: 'PROVIDER_PRESS', reason: 'provider_pin_press' });
+                  present('provider_preview', previewPayload);
+                }
+              }}
+            />
+          );
+        })()}
+        {!hasActiveRealtimeOrder && (clusters.length > 0 ? clusters : fallbackFeatures).map((item: any, itemIdx: number) => {
+          const isCluster = item.properties?.cluster;
+          const [longitude, latitude] = item.geometry?.coordinates || [];
           if (latitude == null || longitude == null || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
 
-          const isSelected = !!(selectedProvider && String(selectedProvider.id) === String(provider.id));
+          if (isCluster) {
+            return (
+              <ClusterPin
+                key={`cluster-${item.id || item.properties?.cluster_id || itemIdx}`}
+                coordinate={{ latitude, longitude }}
+                pointCount={item.properties.point_count}
+                isMapManipulating={isMapManipulating || mapPanActiveRef.current}
+                onPress={() => {
+                  try {
+                    const expansionZoom = superclusterRef.current.getClusterExpansionZoom(item.id);
+                    const nextLongitudeDelta = Math.min(DEFAULT_TEMUCO_PLC_REGION.longitudeDelta, 360 / Math.pow(2, expansionZoom));
+                    const nextLatitudeDelta = nextLongitudeDelta * 0.8;
+                    mapRef.current?.animateToRegion({
+                      latitude,
+                      longitude,
+                      latitudeDelta: nextLatitudeDelta,
+                      longitudeDelta: nextLongitudeDelta,
+                    }, 350);
+                  } catch (err) {
+                    console.log('[MAP:CLUSTER_ZOOM_ERR]', err);
+                  }
+                }}
+              />
+            );
+          }
+
+          const provider = item.properties?.provider || item;
+          if (!provider) return null;
+          if (selectedProvider && String(selectedProvider.id) === String(provider.id)) return null;
+
+          const isSelected = false;
 
           return (
             <ProviderPin
@@ -1183,8 +1836,10 @@ export const HomePage: React.FC = () => {
               provider={provider}
               coordinate={{ latitude, longitude }}
               isSelected={isSelected}
+              isMapManipulating={isMapManipulating || mapPanActiveRef.current}
               onPress={() => {
                 cancelSheetAutoRestore();
+                clearFocusTerminationGraceTimeout();
                 console.log(`[MAP:INTERACTION] type=PROVIDER_PRESS providerId=${provider.id}`);
                 bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'PROVIDER_PRESS', origin: 'MAP_PROVIDER_PIN' });
                 bottomSheetDebug('FLOW_INTENT', { key: 'provider_preview', action: 'PROVIDER_PRESS', target: 'provider_preview' });
@@ -1212,7 +1867,7 @@ export const HomePage: React.FC = () => {
           <AnimatedPolyline
             coordinates={routeCoords}
             strokeColor={TOKENS.colors.brand500}
-            latitudeDelta={region?.latitudeDelta}
+            latitudeDelta={isNavigating ? 0.0025 : region?.latitudeDelta}
           />
         )}
       </MapView>
@@ -1265,31 +1920,100 @@ export const HomePage: React.FC = () => {
           </View>
         )}
 
-        {!isFocusMapSurfaceActive && (
+        {!(role !== 'provider' && clientOrderStatus === 'PENDING') && (
           <MapFloatingNavigationControls
             isNavigating={isNavigating}
+            subjectCoordinate={activeUserCoords}
             targetCoordinate={activeUserCoords}
+            destinationCoordinate={activeDestinationCoords}
             heading={location?.coords?.heading}
-            onToggleNavigation={toggleNavigationMode}
+            onToggleNavigation={canUseNavigation ? handleToggleNavigation : undefined}
             onSmartFraming={handleSmartFraming}
-            showNavigation={role === 'provider'}
+            showNavigation={canUseNavigation}
             showSmartFraming={true}
           />
         )}
       </View>
 
+      {/* PENDING RADAR OVERLAY (Cliente) */}
+      {role !== 'provider' && clientOrderStatus === 'PENDING' && (
+        <View style={styles.radarOverlay}>
+          <View style={styles.radarContainer}>
+            <View style={styles.staticRing} />
+            <Animated.View
+              style={[
+                styles.pingRing,
+                {
+                  opacity: pingOpacity,
+                  transform: [{ scale: pingScale }],
+                },
+              ]}
+            />
+            <Animated.View
+              style={[
+                styles.pulseRing,
+                {
+                  opacity: pulseOpacity,
+                },
+              ]}
+            />
+            <View style={styles.radarPulseCenter}>
+              {clientSession.provider?.avatar ? (
+                <Avatar uri={clientSession.provider.avatar} name={clientSession.provider.name} size={60} />
+              ) : (
+                <Icon name="Search" size={32} color={TOKENS.colors.white} />
+              )}
+            </View>
+            <Animated.View style={[styles.floatingAvatar1, { transform: [{ translateY: floatAnim }] }]}>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
+            </Animated.View>
+            <Animated.View style={[styles.floatingAvatar2, { transform: [{ translateY: floatAnim.interpolate({ inputRange: [-20, 20], outputRange: [20, -20] }) }] }]}>
+              <Image source={{ uri: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop' }} style={styles.floatingAvatarImage} />
+            </Animated.View>
+          </View>
+          <Text style={styles.radarText}>Esperando respuesta...</Text>
+          <Text style={styles.radarSubText}>Notificando al profesional indicado</Text>
+          <TouchableOpacity
+            onPress={async () => {
+              if (clientActiveOrder?.id) {
+                try { await realtime.cancelOrder(clientActiveOrder.id); } catch {}
+              }
+              dismiss();
+            }}
+            style={styles.cancelBtn}
+          >
+            <Text style={styles.cancelBtnText}>Cancelar búsqueda</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* CHAT OVERLAY */}
+      {showChat && (
+        <FocusChatOverlay
+          chatUser={role === 'provider' ? realtime.providerActiveOrder?.client : (clientActiveOrder?.provider || (clientActiveOrder?.serviceProvider as any)?.provider)}
+          activeOrder={role === 'provider' ? realtime.providerActiveOrder : clientActiveOrder}
+          realtime={realtime}
+          role={role === 'provider' ? 'provider' : 'client'}
+          onClose={() => setShowChat(false)}
+        />
+      )}
+
       {/* Dev Street Navigation Joystick */}
       <DevJoystickOverlay
         onFollowCoordinate={followCoordinate}
-        bottomOffset={bottomNavHeight + 16}
+        bottomOffset={
+          active && sheetMetrics?.sheetHeight
+            ? bottomNavHeight + sheetMetrics.sheetHeight + 12
+            : bottomNavHeight + 16
+        }
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { ...StyleSheet.absoluteFill },
+  container: { flex: 1, backgroundColor: MAP_BACKGROUND_COLOR },
+  map: { ...StyleSheet.absoluteFill, backgroundColor: MAP_BACKGROUND_COLOR },
   sheetSearchBarContainer: {
     height: 52,
     backgroundColor: TOKENS.colors.surface50,
@@ -1377,5 +2101,127 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 6,
+  },
+  radarOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(26, 26, 29, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 90,
+    elevation: 90,
+  },
+  radarContainer: {
+    position: 'relative',
+    width: 300,
+    height: 300,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: TOKENS.spacing.xxl,
+    marginTop: TOKENS.spacing.xxl,
+  },
+  staticRing: {
+    position: 'absolute',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  pingRing: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(236, 72, 153, 0.3)',
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(236, 72, 153, 0.2)',
+  },
+  radarPulseCenter: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: TOKENS.colors.brand500,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: TOKENS.colors.brand500,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 10,
+    zIndex: 10,
+    overflow: 'hidden',
+  },
+  floatingAvatar1: {
+    position: 'absolute',
+    top: 24,
+    right: 40,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: TOKENS.colors.white,
+    opacity: 0.8,
+    zIndex: 15,
+    overflow: 'hidden',
+  },
+  floatingAvatar2: {
+    position: 'absolute',
+    bottom: 24,
+    left: 20,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: TOKENS.colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 15,
+    overflow: 'hidden',
+  },
+  floatingAvatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  radarText: {
+    color: TOKENS.colors.white,
+    fontSize: TOKENS.typography.sizes.xl,
+    fontWeight: TOKENS.typography.weights.black,
+    marginTop: TOKENS.spacing.md,
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  radarSubText: {
+    color: '#9CA3AF',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: TOKENS.spacing.xxl,
+    marginTop: TOKENS.spacing.xs,
+  },
+  cancelBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginTop: 20,
+  },
+  cancelBtnText: {
+    color: TOKENS.colors.white,
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,8 +11,6 @@ import {
   Platform,
   Image,
   Modal,
-  TextInput,
-  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -29,13 +27,15 @@ import {
   EmptyState,
   ReviewCard,
   RatingDistribution,
+  RegionCitySelect,
 } from '../../components';
 import { useAuth } from '../../context/AuthContext';
 import { useProfile } from '../../hooks/useProfile';
 import { useRefresh } from '../../context/RefreshContext';
 import { getImageUrl } from '../../utils/imageUrl';
 import { uploadImage } from '../../utils/uploadImage';
-import { validateRut } from '../../utils/chile';
+import { validateRut, UBICACIONES_CHILE } from '../../utils/chile';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 export const MyProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -59,6 +59,9 @@ export const MyProfileScreen: React.FC = () => {
   const [selectedPortfolioAsset, setSelectedPortfolioAsset] = useState<any>(null);
   const [portfolioTitle, setPortfolioTitle] = useState('');
   const [portfolioDescription, setPortfolioDescription] = useState('');
+  const portfolioScrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollToFocusedField = () => scrollRef.current?.scrollToEnd({ animated: true });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -75,6 +78,7 @@ export const MyProfileScreen: React.FC = () => {
 
   // Provider States
   const [providerName, setProviderName] = useState('');
+  const [providerRegion, setProviderRegion] = useState('');
   const [providerLocation, setProviderLocation] = useState('');
   const [providerRut, setProviderRut] = useState('');
   
@@ -96,6 +100,15 @@ export const MyProfileScreen: React.FC = () => {
       const p = user.provider;
       setProviderName(p.name || '');
       setProviderLocation(p.location || '');
+      if (p.location) {
+        const found = UBICACIONES_CHILE.find((u) =>
+          u.ciudades.some((c) => c.toLowerCase() === p.location?.toLowerCase()) ||
+          u.region.toLowerCase() === p.location?.toLowerCase(),
+        );
+        if (found) {
+          setProviderRegion(found.region);
+        }
+      }
       setProviderRut(p.rut || '');
       
       setBankName(p.bank?.bankName || '');
@@ -333,23 +346,25 @@ export const MyProfileScreen: React.FC = () => {
   }
 
   const tabs = [
-    { id: 0, label: 'Mi Empresa', icon: 'Store' },
-    { id: 1, label: 'Casos de Éxito', icon: 'Camera' },
-    { id: 2, label: 'Reseñas', icon: 'Star' },
-    { id: 3, label: 'Banco', icon: 'Landmark' },
-    { id: 4, label: 'Certificados', icon: 'FileText' },
-    { id: 5, label: 'Contacto', icon: 'Phone' },
+    { id: 0, label: 'Mi Empresa', icon: 'Store' as const },
+    { id: 1, label: 'Casos de Éxito', icon: 'Camera' as const },
+    { id: 2, label: 'Reseñas', icon: 'Star' as const, count: providerReviewCount > 0 ? providerReviewCount : undefined },
+    { id: 3, label: 'Banco', icon: 'Landmark' as const },
+    { id: 4, label: 'Certificados', icon: 'FileText' as const, count: providerData?.certificates?.length ? providerData.certificates.length : undefined },
+    { id: 5, label: 'Contacto', icon: 'Phone' as const },
   ];
 
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
     >
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[styles.scrollBody, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
       >
         {/* Profile Hero Card */}
@@ -456,9 +471,9 @@ export const MyProfileScreen: React.FC = () => {
                 </View>
               </View>
               <View style={styles.formSection}>
-                <Input label="Nombre completo" value={name} onChangeText={setName} />
-                <Input label="Correo electrónico" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-                <Input label="Número móvil" value={phone} onChangeText={setPhone} mask="phone" />
+                <Input label="Nombre completo" value={name} onChangeText={setName} onFocus={scrollToFocusedField} />
+                <Input label="Correo electrónico" value={email} onChangeText={setEmail} onFocus={scrollToFocusedField} keyboardType="email-address" autoCapitalize="none" />
+                <Input label="Número móvil" value={phone} onChangeText={setPhone} onFocus={scrollToFocusedField} mask="phone" />
               </View>
               <Button title="Guardar Cambios" onPress={handleContactSave} loading={saving} style={styles.saveBtn} />
             </View>
@@ -469,9 +484,15 @@ export const MyProfileScreen: React.FC = () => {
         {role === 'provider' && (
           <>
             <SegmentedTabs
-              tabs={tabs.map((t) => ({ key: t.id, label: t.label }))}
+              tabs={tabs.map((t) => ({
+                key: t.id,
+                label: t.label,
+                icon: t.icon,
+                count: t.count,
+              }))}
               activeTab={providerTab}
               onTabChange={setProviderTab}
+              scrollable
               style={{ marginBottom: TOKENS.spacing.md }}
             />
 
@@ -488,9 +509,19 @@ export const MyProfileScreen: React.FC = () => {
                     </View>
                   </View>
                   <View style={styles.formSection}>
-                    <Input label="Nombre Comercial" value={providerName} onChangeText={setProviderName} />
-                    <Input label="RUT de Empresa (o Personal)" value={providerRut} onChangeText={setProviderRut} mask="rut" />
-                    <Input label="Ciudad / Comuna (Base)" value={providerLocation} onChangeText={setProviderLocation} />
+                    <Input label="Nombre Comercial" value={providerName} onChangeText={setProviderName} onFocus={scrollToFocusedField} />
+                    <Input label="RUT de Empresa (o Personal)" value={providerRut} onChangeText={setProviderRut} onFocus={scrollToFocusedField} mask="rut" />
+                    <RegionCitySelect
+                      region={providerRegion}
+                      city={providerLocation}
+                      onRegionChange={setProviderRegion}
+                      onCityChange={setProviderLocation}
+                      regionLabel="Región (Base)"
+                      cityLabel="Ciudad / Comuna (Base)"
+                      regionPlaceholder="Selecciona región base"
+                      cityPlaceholder="Selecciona ciudad base"
+                      testIDPrefix="provider-profile"
+                    />
                   </View>
                   <Button title="Guardar Perfil Comercial" onPress={handleProviderSave} loading={saving} style={styles.saveBtn} />
                 </>
@@ -621,10 +652,10 @@ export const MyProfileScreen: React.FC = () => {
                     </View>
                   </View>
                   <View style={styles.formSection}>
-                    <Input label="Banco" value={bankName} onChangeText={setBankName} />
-                    <Input label="Tipo de Cuenta" value={accountType} onChangeText={setAccountType} />
-                    <Input label="Número de Cuenta" value={accountNumber} onChangeText={setAccountNumber} keyboardType="numeric" />
-                    <Input label="RUT Titular" value={bankRut} onChangeText={setBankRut} mask="rut" />
+                    <Input label="Banco" value={bankName} onChangeText={setBankName} onFocus={scrollToFocusedField} />
+                    <Input label="Tipo de Cuenta" value={accountType} onChangeText={setAccountType} onFocus={scrollToFocusedField} />
+                    <Input label="Número de Cuenta" value={accountNumber} onChangeText={setAccountNumber} onFocus={scrollToFocusedField} keyboardType="numeric" />
+                    <Input label="RUT Titular" value={bankRut} onChangeText={setBankRut} onFocus={scrollToFocusedField} mask="rut" />
                   </View>
                   <Button title="Guardar Datos Bancarios" onPress={handleBankSave} loading={saving} style={styles.saveBtn} />
                 </>
@@ -645,7 +676,7 @@ export const MyProfileScreen: React.FC = () => {
                     {(!providerData?.certificates || providerData.certificates.length === 0) && (
                       <Text style={styles.emptyText}>No tienes certificados subidos actualmente.</Text>
                     )}
-                    {providerData?.certificates?.map((cert) => (
+                    {providerData?.certificates?.filter((cert): cert is NonNullable<typeof cert> => Boolean(cert)).map((cert) => (
                       <View key={cert.id} style={styles.certCard}>
                         <View style={styles.certIconCircle}>
                           <Icon name="FileCheck" size={18} color={TOKENS.colors.brand500} />
@@ -673,9 +704,9 @@ export const MyProfileScreen: React.FC = () => {
                     </View>
                   </View>
                   <View style={styles.formSection}>
-                    <Input label="Nombre completo" value={name} onChangeText={setName} />
-                    <Input label="Correo electrónico" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-                    <Input label="Número móvil" value={phone} onChangeText={setPhone} mask="phone" />
+                    <Input label="Nombre completo" value={name} onChangeText={setName} onFocus={scrollToFocusedField} />
+                    <Input label="Correo electrónico" value={email} onChangeText={setEmail} onFocus={scrollToFocusedField} keyboardType="email-address" autoCapitalize="none" />
+                    <Input label="Número móvil" value={phone} onChangeText={setPhone} onFocus={scrollToFocusedField} mask="phone" />
                   </View>
                   <Button title="Guardar Contacto" onPress={handleContactSave} loading={saving} style={styles.saveBtn} />
                 </>
@@ -711,43 +742,52 @@ export const MyProfileScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {selectedPortfolioAsset?.uri && (
-              <View style={styles.modalPreviewWrapper}>
-                <Image source={{ uri: selectedPortfolioAsset.uri }} style={styles.modalPreviewImg} />
+            <ScrollView
+              ref={portfolioScrollRef}
+              contentContainerStyle={styles.modalScrollBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {selectedPortfolioAsset?.uri && (
+                <View style={styles.modalPreviewWrapper}>
+                  <Image source={{ uri: selectedPortfolioAsset.uri }} style={styles.modalPreviewImg} />
+                </View>
+              )}
+
+              <View style={styles.modalForm}>
+                <Input
+                  label="Título del trabajo (opcional)"
+                  placeholder="Ej: Instalación de Calefont SEC"
+                  value={portfolioTitle}
+                  onChangeText={setPortfolioTitle}
+                  onFocus={() => portfolioScrollRef.current?.scrollToEnd({ animated: true })}
+                />
+                <Input
+                  label="Descripción breve (opcional)"
+                  placeholder="Ej: Cambio de cañerías y prueba de presión"
+                  value={portfolioDescription}
+                  onChangeText={setPortfolioDescription}
+                  onFocus={() => portfolioScrollRef.current?.scrollToEnd({ animated: true })}
+                  multiline
+                />
               </View>
-            )}
 
-            <View style={styles.modalForm}>
-              <Input
-                label="Título del trabajo (opcional)"
-                placeholder="Ej: Instalación de Calefont SEC"
-                value={portfolioTitle}
-                onChangeText={setPortfolioTitle}
-              />
-              <Input
-                label="Descripción breve (opcional)"
-                placeholder="Ej: Cambio de cañerías y prueba de presión"
-                value={portfolioDescription}
-                onChangeText={setPortfolioDescription}
-                multiline
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <Button
-                title="Cancelar"
-                variant="outline"
-                onPress={() => setPortfolioModalVisible(false)}
-                disabled={uploadingPortfolio}
-                style={{ flex: 1 }}
-              />
-              <Button
-                title="Publicar en mi galería"
-                onPress={handleSavePortfolio}
-                loading={uploadingPortfolio}
-                style={{ flex: 1 }}
-              />
-            </View>
+              <View style={styles.modalActions}>
+                <Button
+                  title="Cancelar"
+                  variant="outline"
+                  onPress={() => setPortfolioModalVisible(false)}
+                  disabled={uploadingPortfolio}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Publicar en mi galería"
+                  onPress={handleSavePortfolio}
+                  loading={uploadingPortfolio}
+                  style={{ flex: 1 }}
+                />
+              </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </View>
       </Modal>
@@ -1070,11 +1110,15 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
+    width: '100%',
     backgroundColor: TOKENS.colors.white,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: TOKENS.spacing.lg,
     maxHeight: '90%',
+  },
+  modalScrollBody: {
+    paddingBottom: TOKENS.spacing.md,
   },
   modalHeader: {
     flexDirection: 'row',

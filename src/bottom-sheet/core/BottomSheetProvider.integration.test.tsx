@@ -349,17 +349,53 @@ describe('BottomSheet Provider & Reconciler Integration Layer (Layer 2)', () => 
     expect(getCtx().pendingMapFlowKey).toBeNull();
   });
 
-  it('Collapsible Contract: Todos los sheets registrados tienen snapPoints colapsables y dynamic sizing', () => {
-    const { registry } = require('./bottomSheet.registry');
-    const collapsibleSheets: Array<keyof typeof registry> = [
+  it('dismiss() invocado durante estado REQUESTED cancela de inmediato a CLOSED sin quedar en el limbo', async () => {
+    const { view, getCtx } = await renderHarness('client');
+
+    await act(async () => {
+      getCtx().setMapFlowActive(true);
+      getCtx().present('provider_preview', {
+        providers: [{ id: 45, providerName: 'Electricista Juan' }],
+      });
+      // Inmediatamente se descarta antes de que se monte/anime el modal (ej. orden entra a PENDING)
+      getCtx().dismiss();
+    });
+
+    expect(view.getByTestId('active-sheet').props.children).toBe('NO_ACTIVE_SHEET');
+    expect(getCtx().active).toBeNull();
+  });
+
+  it('focus_client NO es reemplazo de provider_preview y presenta limpiamente tras estado PENDING', async () => {
+    const { view, getCtx } = await renderHarness('client');
+
+    // 1. Cliente en provider_preview e inmediatamente entra a PENDING descartando el sheet
+    await act(async () => {
+      getCtx().setMapFlowActive(true);
+      getCtx().present('provider_preview', {
+        providers: [{ id: 39, providerName: 'Juan Quezada' }],
+      });
+      getCtx().dismiss();
+    });
+    expect(view.getByTestId('active-sheet').props.children).toBe('NO_ACTIVE_SHEET');
+
+    // 2. Llega oferta QUOTED -> se presenta focus_client limpiamente
+    await act(async () => {
+      getCtx().present('focus_client', { orderId: 230 });
+    });
+    expect(view.getByTestId('active-sheet').props.children).toBe('focus_client');
+    expect(getCtx().active).toBe('focus_client');
+  });
+
+  it('Collapsible Contract: Sheets multifase (>220px) tienen snapPoints colapsables y provider_preview opera en single-detent', () => {
+    const { registry, isSheetCollapsible } = require('./bottomSheet.registry');
+    const multiDetentCollapsibleSheets: Array<keyof typeof registry> = [
       'categories',
-      'provider_preview',
       'focus_client',
       'focus_provider',
       'provider_dashboard',
     ];
 
-    collapsibleSheets.forEach((key) => {
+    multiDetentCollapsibleSheets.forEach((key) => {
       const descriptor = registry[key];
       expect(descriptor).toBeDefined();
       expect(descriptor.enableDynamicSizing).toBe(true);
@@ -369,6 +405,15 @@ describe('BottomSheet Provider & Reconciler Integration Layer (Layer 2)', () => 
       expect(descriptor.snapPoints?.length).toBeGreaterThanOrEqual(1);
       expect(descriptor.snapPoints?.[0]).toBe(descriptor.collapsedHeight);
       expect(descriptor.initialIndex).toBe(1);
+      expect(isSheetCollapsible(key)).toBe(true);
     });
+
+    // provider_preview es contenido corto autosuficiente (H <= 220px) -> Single-Detent
+    const previewDescriptor = registry.provider_preview;
+    expect(previewDescriptor).toBeDefined();
+    expect(previewDescriptor.enableDynamicSizing).toBe(true);
+    expect(previewDescriptor.collapsible).toBe(false);
+    expect(previewDescriptor.initialIndex).toBe(0);
+    expect(isSheetCollapsible('provider_preview')).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ export function analyzeRouteProgress(
   let bestIndex = 0;
   let bestFraction = 0;
   let bestBearing = 0;
+  let bestClosestPoint: RouteCoordinate | null = null;
 
   // Busca en una ventana de +/- 4 segmentos alrededor del último índice conocido
   const startIdx = Math.max(0, lastSegmentIndex - 2);
@@ -49,6 +50,7 @@ export function analyzeRouteProgress(
       bestIndex = i;
       bestFraction = proj.fraction;
       bestBearing = proj.segmentBearing;
+      bestClosestPoint = proj.closestPoint;
     }
   }
 
@@ -62,6 +64,7 @@ export function analyzeRouteProgress(
         bestIndex = i;
         bestFraction = proj.fraction;
         bestBearing = proj.segmentBearing;
+        bestClosestPoint = proj.closestPoint;
       }
     }
   }
@@ -136,15 +139,21 @@ export function analyzeRouteProgress(
     if (accumulatedDistToTurn > 150) break; // Límite de horizonte de anticipación
   }
 
+  let distanceAlongRoute = bestFraction * currentSegLength;
+  for (let i = 0; i < bestIndex; i++) {
+    distanceAlongRoute += getDistanceMeters(routeCoords[i], routeCoords[i + 1]);
+  }
+
   const progress: RouteProgress = {
     currentSegmentIndex: bestIndex,
     progressAlongSegment: bestFraction,
-    distanceAlongRoute: 0,
+    distanceAlongRoute,
     distanceFromRoute: bestDist,
     isOffRoute,
     remainingDistance: remainingDist,
     routeBearing: bestBearing,
     lookAheadBearing,
+    closestPoint: bestClosestPoint ?? routeCoords[bestIndex],
   };
 
   const turn: TurnAnalysis = {

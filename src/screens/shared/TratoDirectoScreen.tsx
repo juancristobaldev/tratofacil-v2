@@ -12,11 +12,13 @@ import {
   Linking,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
-import { Icon, Button, Input } from '../../components/ui';
+import { Icon, Button, Input, RegionCitySelect } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { usePlans } from '../../hooks/usePlans';
 import { useCategories } from '../../context/CategoriesContext';
@@ -25,6 +27,7 @@ import { RequireAuth } from '../../components/ui/RequireAuth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { uploadImage } from '../../utils/uploadImage';
 import { getImageUrl } from '../../utils/imageUrl';
+import { getKeyboardVerticalOffset } from '../../utils/layoutMetrics';
 
 export const TratoDirectoScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -40,6 +43,7 @@ export const TratoDirectoScreen: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [region, setRegion] = useState('');
   const [city, setCity] = useState('');
   const [imageKey, setImageKey] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -91,10 +95,16 @@ export const TratoDirectoScreen: React.FC = () => {
   return (
     <RequireAuth role={role}>
     <View style={styles.safeArea}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={getKeyboardVerticalOffset(false, insets.top)}
       >
+        <ScrollView
+          contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 80 }]}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
+        >
         
         {/* Header Section */}
         <View style={styles.headerSection}>
@@ -143,16 +153,17 @@ export const TratoDirectoScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Región y Ciudad <Text style={styles.required}>*</Text></Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Ej: Santiago, Metropolitana"
-              placeholderTextColor={TOKENS.colors.textMuted}
-              value={city}
-              onChangeText={setCity}
-            />
-          </View>
+          <RegionCitySelect
+            region={region}
+            city={city}
+            onRegionChange={setRegion}
+            onCityChange={setCity}
+            regionLabel="Región *"
+            cityLabel="Ciudad / Comuna *"
+            regionPlaceholder="Selecciona una región"
+            cityPlaceholder="Selecciona tu ciudad o comuna"
+            testIDPrefix="trato-directo"
+          />
 
           <Input
             label="Enlace a tu Web o Red Social *"
@@ -245,7 +256,7 @@ export const TratoDirectoScreen: React.FC = () => {
                 Alert.alert('Error', 'Debes iniciar sesión para crear un anuncio.');
                 return;
               }
-              if (!selectedCategory || !city || !info || !link) {
+              if (!selectedCategory || !region || !city || !info || !link) {
                 Alert.alert('Error', 'Completa todos los campos requeridos.');
                 return;
               }
@@ -315,7 +326,8 @@ export const TratoDirectoScreen: React.FC = () => {
           </GestureHandlerRootView>
         </RNModal>
 
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
     </RequireAuth>
   );
@@ -325,6 +337,9 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: TOKENS.colors.surface50,
+  },
+  keyboardView: {
+    flex: 1,
   },
   container: {
     padding: TOKENS.spacing.md,

@@ -111,7 +111,7 @@ export const ProviderPanelContent: React.FC<SheetComponentProps<'provider_dashbo
 
   const walletBalance = wallet?.balance || 0;
   const completedOrdersCount = user?.provider?.completedOrdersCount || 0;
-  const planActive = user?.planOrders?.some((p) => p.planActive) || false;
+  const planActive = user?.planOrders?.some((p) => p?.planActive) || false;
 
   const handleAcceptRequest = (orderId: number) => {
     const actionId = nextBottomSheetActionId();
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   walletLabel: {
-    color: TOKENS.colors.textMuted,
+    color: '#CBD5E1',
     fontSize: 11,
     textTransform: 'uppercase',
     fontWeight: 'bold',

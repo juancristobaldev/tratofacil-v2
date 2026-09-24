@@ -21,6 +21,7 @@ export type ButtonSize = 'lg' | 'md' | 'sm' | 'xs';
 export interface ButtonProps {
   title: string;
   onPress: () => void;
+  accessibilityLabel?: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
@@ -40,6 +41,7 @@ export interface ButtonProps {
 export const Button: React.FC<ButtonProps> = ({
   title,
   onPress,
+  accessibilityLabel,
   variant = 'primary',
   size = 'md',
   fullWidth = true,
@@ -221,7 +223,7 @@ export const Button: React.FC<ButtonProps> = ({
       disabled={isUnavailable}
       activeOpacity={0.92}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={accessibilityLabel || title}
       accessibilityState={{ disabled: isUnavailable, busy: loading }}
       onLayout={(event) => {
         if (__DEV__ && debugId) {

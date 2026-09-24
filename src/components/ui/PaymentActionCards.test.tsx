@@ -23,7 +23,7 @@ jest.mock('lucide-react-native', () => {
 });
 
 describe('PaymentActionCards', () => {
-  it('renders saved card action card and Webpay card when hasCard is true', async () => {
+  it('renders saved card and Flow action cards when hasCard is true', async () => {
     const onPayWithSavedCard = jest.fn();
     const onPayWithFlow = jest.fn();
 
@@ -39,16 +39,16 @@ describe('PaymentActionCards', () => {
 
     expect(view.getByText('VISA •••• 4242')).toBeTruthy();
     expect(view.getByText('1-CLICK')).toBeTruthy();
-    expect(view.getByText('Pagar con Webpay / Flow')).toBeTruthy();
+    expect(view.getByText('Pagar con Flow')).toBeTruthy();
 
     await fireEvent.press(view.getByText('VISA •••• 4242'));
     expect(onPayWithSavedCard).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(view.getByText('Pagar con Webpay / Flow'));
+    await fireEvent.press(view.getByText('Pagar con Flow'));
     expect(onPayWithFlow).toHaveBeenCalledTimes(1);
   });
 
-  it('renders CTA to link card and direct Webpay when hasCard is false', async () => {
+  it('renders CTA to link card and direct Flow payment when hasCard is false', async () => {
     const onRegisterCard = jest.fn();
     const onPayWithFlow = jest.fn();
 
@@ -62,12 +62,12 @@ describe('PaymentActionCards', () => {
 
     expect(view.getByText('Vincular tarjeta nueva')).toBeTruthy();
     expect(view.getByText('RECOMENDADO')).toBeTruthy();
-    expect(view.getByText('Pagar con Flow / Webpay')).toBeTruthy();
+    expect(view.getByText('Pagar con Flow')).toBeTruthy();
 
     await fireEvent.press(view.getByText('Vincular tarjeta nueva'));
     expect(onRegisterCard).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(view.getByText('Pagar con Flow / Webpay'));
+    await fireEvent.press(view.getByText('Pagar con Flow'));
     expect(onPayWithFlow).toHaveBeenCalledTimes(1);
   });
 

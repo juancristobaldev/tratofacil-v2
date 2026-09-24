@@ -187,6 +187,7 @@ export interface SheetDescriptor<K extends SheetKey> {
   snapPoints?: readonly (string | number)[];
   initialIndex?: number;
   collapsedHeight?: number;
+  collapsible?: boolean;
   enableDynamicSizing?: boolean;
   maxDynamicContentSize?: number;
   contentMode?: 'view' | 'scroll' | 'list' | 'mixed';

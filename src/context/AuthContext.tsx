@@ -8,7 +8,10 @@ import {
   REGISTER_MUTATION,
   LOGIN_WITH_GOOGLE_MUTATION,
   SET_GUEST_PASSWORD,
+  DELETE_ACCOUNT_MUTATION,
+  UNREGISTER_PUSH_TOKEN_MUTATION,
 } from '../graphql/operations/auth';
+import { getLastRegisteredPushToken, clearPushTokenCache } from '../push/usePushToken';
 import { REGISTER_PROVIDER } from '../graphql/operations/providers';
 import { User, Role } from '../graphql/generated';
 import { AppRole } from '../types/appRole';
@@ -52,6 +55,7 @@ interface AuthContextType {
   setSession: (token: string, user: User) => Promise<void>;
   isGuest: boolean;
   setGuestPassword: (newPassword: string) => Promise<void>;
+  deleteAccount: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -78,6 +82,7 @@ const AuthContext = createContext<AuthContextType>({
   isGuest: false,
   setGuestPassword: async (_newPassword: string) => {},
   becomeProvider: async () => {},
+  deleteAccount: async () => false,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -132,6 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [becomeProviderMut] = useMutation<{
     registerProvider: { accessToken: string; user: { id: number; role: Role } };
   }>(REGISTER_PROVIDER);
+  const [deleteAccountMut] = useMutation<{ deleteAccount: boolean }>(DELETE_ACCOUNT_MUTATION);
 
   const hydrateSession = useCallback(
     async (accessToken: string) => {
@@ -200,6 +206,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const logout = useCallback(async () => {
+    const pushToken = getLastRegisteredPushToken();
+    if (pushToken) {
+      try {
+        await client.mutate({
+          mutation: UNREGISTER_PUSH_TOKEN_MUTATION,
+          variables: { token: pushToken },
+        });
+      } catch (_) {}
+      clearPushTokenCache();
+    }
+
     await clearToken();
     setUser(null);
     setToken(null);
@@ -229,6 +246,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await setGuestPasswordMut({ variables: { newPassword } });
     await refetch();
   }, [setGuestPasswordMut, refetch]);
+
+  const deleteAccount = useCallback(async (): Promise<boolean> => {
+    const { data: deleteData } = await deleteAccountMut();
+    if (deleteData?.deleteAccount) {
+      await logout();
+      return true;
+    }
+    return false;
+  }, [deleteAccountMut, logout]);
 
   const serverRole: AppRole = user ? mapRole(user.role) : 'guest';
   const hasProvider = !!user?.provider;
@@ -302,6 +328,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     becomeProvider,
     isGuest,
     setGuestPassword,
+    deleteAccount,
   }), [
     user,
     isLoading,
@@ -326,6 +353,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     becomeProvider,
     isGuest,
     setGuestPassword,
+    deleteAccount,
   ]);
 
   return (

@@ -374,4 +374,55 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     expect(hookValue.routeDestination).toBeNull();
     expect(hookValue.routeCalculatedAt).toBeNull();
   });
+
+  it('should suppress polyline calculation when both points are in the same house (<= 30m)', async () => {
+    // 2 puntos a ~11 metros
+    const origin = { latitude: -33.44890, longitude: -70.66930 };
+    const dest = { latitude: -33.44899, longitude: -70.66930 };
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TestComponent origin={origin} dest={dest} active={true} />,
+      );
+    });
+
+    // Validado: getDirections NO es invocado y routeCoords es []
+    expect(getDirectionsSpy).not.toHaveBeenCalled();
+    expect(hookValue.routeCoords).toEqual([]);
+    expect(hookValue.status).toBe('ready');
+    expect(hookValue.routeDistance).toBe(0);
+    expect(hookValue.routeDuration).toBe(0);
+  });
+
+  it('should discard routes that make absurd detour loops around the block for short distances', async () => {
+    const origin = { latitude: -33.4489, longitude: -70.6693 };
+    const dest = { latitude: -33.4493, longitude: -70.6693 }; // ~44m
+
+    // Mock de vuelta tonta a la manzana: 650 metros para una distancia recta de 44m
+    const mockLoopRoute: directionsModule.RouteResult = {
+      coordinates: [origin, { latitude: -33.450, longitude: -70.670 }, dest],
+      distanceMeters: 650,
+      durationSeconds: 180,
+      distance: 650,
+      duration: 180,
+      provider: 'osrm',
+      origin,
+      destination: dest,
+      calculatedAt: Date.now(),
+    };
+
+    getDirectionsSpy.mockResolvedValueOnce(mockLoopRoute);
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TestComponent origin={origin} dest={dest} active={true} />,
+      );
+    });
+
+    // Validado: La ruta absurda es descartada y routeCoords se limpia a []
+    expect(hookValue.routeCoords).toEqual([]);
+    expect(hookValue.status).toBe('error');
+  });
 });

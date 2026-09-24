@@ -9,7 +9,11 @@ import {
   ROUTE_FIT_HORIZONTAL_CLEARANCE,
   ROUTE_FIT_TOP_CLEARANCE,
   ROUTE_FIT_ZOOM_SCALE,
+  NAVIGATION_LATITUDE_DELTA,
+  NAVIGATION_LONGITUDE_DELTA,
+  projectCoordinateToScreen,
 } from '../utils/mapGeometry';
+import { SMART_NAV_CONSTANTS } from '../navigation-engine';
 
 describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
   let hookValue: ReturnType<typeof useMapCamera>;
@@ -353,7 +357,7 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
         heading: 90,
-        pitch: 40,
+        pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH,
         zoom: 18,
       }),
       expect.any(Object),
@@ -361,6 +365,71 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(hookValue.isFollowing).toBe(true);
     expect(hookValue.isNavigating).toBe(true);
     expect(hookValue.cameraMode).toBe('NAVIGATION');
+  });
+
+  it('NAVIGATION_LOOKAHEAD_CENTER: navigateToCoordinate delivers lookahead target.center to animateCamera', () => {
+    const windowDimensions = { width: 390, height: 844 };
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={500}
+          windowDimensions={windowDimensions}
+        />
+      );
+    });
+
+    const userCoord: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+
+    act(() => {
+      hookValue.navigateToCoordinate(userCoord, { heading: 90, animated: true });
+    });
+
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+    const cameraArg = mockMapRef.current.animateCamera.mock.calls[0][0];
+
+    // En navegación 3D, el centro de cámara proyecta hacia adelante (lookahead) a lo largo del rumbo (90° = Este)
+    expect(cameraArg.center.latitude).toBeCloseTo(-38.745, 4);
+    expect(cameraArg.center.longitude).toBeGreaterThan(-72.595);
+    expect(hookValue.navigationPosition).toEqual(userCoord);
+  });
+
+  it('NAVIGATION_VIEWPORT_SETTLE: sheetTop changes do not disrupt active 50/50 navigation mode', async () => {
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    const windowDimensions = { width: 390, height: 844 };
+    const userCoord: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+
+    await act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={650}
+          windowDimensions={windowDimensions}
+        />
+      );
+    });
+
+    act(() => {
+      hookValue.navigateToCoordinate(userCoord, { heading: 90, animated: true });
+    });
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      renderer!.update(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={350}
+          windowDimensions={windowDimensions}
+        />
+      );
+    });
+
+    // La navegación permanece en 50/50 y no compite con el movimiento del bottom sheet
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
   });
 
   it('NAVIGATION_TOGGLE: toggleNavigationMode activates 3D navigation and deactivates to 2D on second click', () => {
@@ -385,7 +454,7 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(hookValue.isNavigating).toBe(true);
     expect(hookValue.cameraMode).toBe('NAVIGATION');
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
-      expect.objectContaining({ pitch: 40, heading: 45 }),
+      expect.objectContaining({ pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH, heading: 45 }),
       expect.any(Object),
     );
 
@@ -432,9 +501,38 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
         heading: expect.any(Number),
-        pitch: 40,
+        pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH,
         zoom: expect.any(Number),
       }),
+      expect.any(Object),
+    );
+  });
+
+  it('NAVIGATION_FOLLOW_STREAM: preserves the active navigation pitch across GPS updates', async () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const coord1: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
+    act(() => {
+      hookValue.navigateToCoordinate(coord1, { heading: 0, pitch: 60 });
+    });
+    mockMapRef.current.animateCamera.mockClear();
+
+    const coord2: RouteCoordinate = { latitude: -38.74502, longitude: -72.59502 };
+    await act(async () => {
+      await hookValue.followCoordinate(coord2, { heading: 120, speed: 10, force: true, animated: true });
+    });
+
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({ pitch: 60 }),
       expect.any(Object),
     );
   });
@@ -458,7 +556,7 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
       expect.objectContaining({
         heading: 0,
-        pitch: 40,
+        pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH,
       }),
       expect.any(Object),
     );
@@ -522,6 +620,41 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(hookValue.isFollowing).toBe(false);
     expect(hookValue.isUserExploring).toBe(true);
     expect(hookValue.cameraMode).toBe('USER_EXPLORING');
+  });
+
+  it('NAVIGATION_ATOMIC_AUTHORITY: executes a single atomic animateCamera call with SmartNavigationEngine target', async () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const userCoord = { latitude: -38.745, longitude: -72.595 };
+    act(() => {
+      hookValue.navigateToCoordinate(userCoord, { heading: 45, animated: true });
+    });
+
+    // Exactamente 1 llamada a animateCamera, con rumbo 45°, pitch canónico 40° y centro proyectado lookahead
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH,
+        heading: 45,
+        center: expect.objectContaining({
+          latitude: expect.any(Number),
+          longitude: expect.any(Number),
+        }),
+      }),
+      expect.any(Object),
+    );
+    const cameraArg = mockMapRef.current.animateCamera.mock.calls[0][0];
+    expect(cameraArg.center.latitude).toBeCloseTo(-38.745, 3);
+    expect(cameraArg.center.longitude).toBeCloseTo(-72.595, 3);
   });
 
   it('DEFAULT_REGION_FIT: fitToDefaultRegion animates camera to default Temuco + Padre Las Casas bounds', () => {

@@ -39,6 +39,8 @@ export interface FocusClientSession {
   distanceToProviderKm: number | null;
   providerCoords: FocusGeoPoint | null;
   clientCoords: FocusGeoPoint | null;
+  clientUserCoords?: FocusGeoPoint | null;
+  serviceDestinationCoords?: FocusGeoPoint | null;
   routeCoords: FocusGeoPoint[];
   realtime: UseTimeRealServicesReturn;
   showChat: boolean;
@@ -52,13 +54,17 @@ export interface FocusProviderSession {
   setOrderState: (state: ProviderOrderState) => void;
   distanceLabel: string | null;
   etaLabel: string | null;
+  distanceMeters?: number | null;
+  isWithinArrivalRadius?: boolean;
   providerCoords: FocusGeoPoint | null;
+  providerLocalCoords?: FocusGeoPoint | null;
   clientCoords: FocusGeoPoint | null;
+  serviceDestinationCoords?: FocusGeoPoint | null;
   routeCoords: FocusGeoPoint[];
   realtime: UseTimeRealServicesReturn;
   showChat: boolean;
   setShowChat: (visible: boolean) => void;
-  handleFinish: () => void;
+  handleFinish: (overrideState?: ProviderOrderState) => void;
 }
 
 export interface FocusSessionValue {

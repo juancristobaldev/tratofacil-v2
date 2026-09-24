@@ -26,13 +26,14 @@ jest.mock('lucide-react-native', () => {
 describe('MapFloatingNavigationControls Component', () => {
   const mockTarget: RouteCoordinate = { latitude: -38.745, longitude: -72.595 };
 
-  it('renders correctly in inactive state (2D mode)', async () => {
+  it('renders correctly in inactive state (2D mode) when showNavigation is true', async () => {
     const onToggleNavigation = jest.fn();
     const view = await render(
       <MapFloatingNavigationControls
         isNavigating={false}
         targetCoordinate={mockTarget}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -42,6 +43,17 @@ describe('MapFloatingNavigationControls Component', () => {
     expect(btn.props.accessibilityState.disabled).toBe(false);
   });
 
+  it('does NOT render navigation button by default (showNavigation defaults to false)', async () => {
+    const view = await render(
+      <MapFloatingNavigationControls
+        isNavigating={false}
+        targetCoordinate={mockTarget}
+      />
+    );
+
+    expect(view.queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+  });
+
   it('renders correctly in active state (3D navigation mode)', async () => {
     const onToggleNavigation = jest.fn();
     const view = await render(
@@ -49,6 +61,7 @@ describe('MapFloatingNavigationControls Component', () => {
         isNavigating={true}
         targetCoordinate={mockTarget}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -66,6 +79,7 @@ describe('MapFloatingNavigationControls Component', () => {
         targetCoordinate={mockTarget}
         heading={135}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -87,6 +101,7 @@ describe('MapFloatingNavigationControls Component', () => {
         isNavigating={true}
         targetCoordinate={mockTarget}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -99,7 +114,7 @@ describe('MapFloatingNavigationControls Component', () => {
     });
   });
 
-  it('sanitizes negative or invalid heading to 0° on activation', async () => {
+  it('sanitizes negative or invalid heading to undefined on activation so navigation engine handles fallback', async () => {
     const onToggleNavigation = jest.fn();
     const view = await render(
       <MapFloatingNavigationControls
@@ -107,6 +122,7 @@ describe('MapFloatingNavigationControls Component', () => {
         targetCoordinate={mockTarget}
         heading={-1}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -114,7 +130,7 @@ describe('MapFloatingNavigationControls Component', () => {
     await fireEvent.press(btn);
 
     expect(onToggleNavigation).toHaveBeenCalledWith(mockTarget, {
-      heading: 0,
+      heading: undefined,
       animated: true,
       force: true,
     });
@@ -127,6 +143,7 @@ describe('MapFloatingNavigationControls Component', () => {
         isNavigating={false}
         targetCoordinate={null}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 
@@ -169,6 +186,7 @@ describe('MapFloatingNavigationControls Component', () => {
         targetCoordinate={mockTarget}
         disabled={true}
         onToggleNavigation={onToggleNavigation}
+        showNavigation={true}
       />
     );
 

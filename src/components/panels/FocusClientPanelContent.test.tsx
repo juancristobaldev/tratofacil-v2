@@ -52,6 +52,7 @@ jest.mock('../../bottom-sheet/primitives', () => {
   const { View } = require('react-native');
   return {
     BottomSheetScrollView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
+    BottomSheetView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
   };
 });
 
@@ -109,7 +110,8 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     expect(view.getByText('Mario Profesional')).toBeTruthy();
     expect(view.getByText('Oferta del profesional')).toBeTruthy();
     expect(view.getByText('Aceptar oferta')).toBeTruthy();
-    expect(view.getByText('Rechazar oferta')).toBeTruthy();
+    expect(view.getByText('Cancelar orden')).toBeTruthy();
+    expect(view.queryByText('Rechazar oferta')).toBeNull();
     expect(view.queryByText('Cancelar servicio')).toBeNull();
   });
 
@@ -121,6 +123,7 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     await waitFor(() => {
       expect(view.getByText('Enviar contraoferta')).toBeTruthy();
+      expect(view.getByText('Cancelar orden')).toBeTruthy();
     });
 
     const sendCounterBtn = view.getByText('Enviar contraoferta');
@@ -128,27 +131,113 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     await waitFor(() => {
       expect(mockClientCounterOffer).toHaveBeenCalledWith(101, 34000, 2, 5000);
-      expect(view.getByText('Contraoferta enviada')).toBeTruthy();
+      expect(view.getByText('Esperando respuesta del profesional')).toBeTruthy();
+      expect(view.getByText('TU CONTRAOFERTA ENVIADA')).toBeTruthy();
+      expect(view.getByText('$34.000')).toBeTruthy();
+      expect(view.getByText('Cancelar orden')).toBeTruthy();
+      expect(view.queryByText('Aceptar oferta')).toBeNull();
     });
   });
 
-  it('REJECT: al presionar rechazar oferta abre el modal y permite cancelar la orden', async () => {
+  it('WAITING_PROVIDER_RESPONSE: cuando se monta con contraoferta activa existente, muestra tarjeta de espera con spinner y nunca Aceptar oferta', async () => {
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: 32000,
+      counterOfferHours: 2,
+      counterOfferTransport: 3000,
+    };
+
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
-    const rejectBtn = view.getByText('Rechazar oferta');
-    fireEvent.press(rejectBtn);
+    expect(view.getByText('Esperando respuesta del profesional')).toBeTruthy();
+    expect(view.getByText('TU CONTRAOFERTA ENVIADA')).toBeTruthy();
+    expect(view.getByText('$32.000')).toBeTruthy();
+    expect(view.getByText('Propuesta: 2h de trabajo • 3000km traslado')).toBeTruthy();
+    expect(view.getByText('Cancelar orden')).toBeTruthy();
+    expect(view.queryByText('Aceptar oferta')).toBeNull();
+    expect(view.queryByLabelText('Disminuir monto de contraoferta')).toBeNull();
+  });
+
+  it('WAITING_PROVIDER_RESPONSE (isCollapsed): muestra resumen compacto de contraoferta enviada y badge con monto', async () => {
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: 32000,
+      counterOfferHours: 2,
+      counterOfferTransport: 3000,
+    };
+
+    const view = await render(
+      <FocusClientPanelContent {...mockSheetProps} isCollapsed={true} />,
+    );
+
+    expect(view.getByText('Mario Profesional')).toBeTruthy();
+    expect(view.getByText('Contraoferta enviada • Esperando')).toBeTruthy();
+    expect(view.getByText('$32.000')).toBeTruthy();
+    expect(view.getByText('Esperando al profesional')).toBeTruthy();
+    expect(view.queryByText('Aceptar oferta')).toBeNull();
+  });
+
+  it('RESOLUTION: cuando el profesional rechaza la contraoferta, notifica y restaura negociación', async () => {
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: 32000,
+    };
+
+    const { rerender } = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: null,
+      quotedPrice: 35000,
+    };
+
+    await rerender(<FocusClientPanelContent {...mockSheetProps} />);
 
     await waitFor(() => {
-      expect(view.getByText('¿Deseas cancelar la orden o hacer una contraoferta?')).toBeTruthy();
-      expect(view.getByText('Crear contraoferta')).toBeTruthy();
-      expect(view.getByText('Cancelar orden')).toBeTruthy();
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Contraoferta rechazada',
+          type: 'error',
+        }),
+      );
     });
+  });
 
-    const cancelModalBtn = view.getByText('Cancelar orden');
-    fireEvent.press(cancelModalBtn);
+  it('RESOLUTION: cuando el profesional acepta la contraoferta, notifica éxito y actualiza el precio pactado', async () => {
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: 32000,
+    };
+
+    const { rerender } = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    mockSessionValue.activeOrder = {
+      ...mockSessionValue.activeOrder,
+      counterOfferPrice: null,
+      quotedPrice: 32000,
+    };
+
+    await rerender(<FocusClientPanelContent {...mockSheetProps} />);
+
+    await waitFor(() => {
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '¡Contraoferta aceptada!',
+          type: 'success',
+        }),
+      );
+    });
+  });
+
+  it('CANCEL: al presionar cancelar orden ejecuta directamente la cancelación sin modal', async () => {
+    const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    const cancelBtn = view.getByText('Cancelar orden');
+    fireEvent.press(cancelBtn);
 
     await waitFor(() => {
       expect(mockCancelOrder).toHaveBeenCalledWith(101);
+      expect(view.queryByText('¿Deseas cancelar la orden o hacer una contraoferta?')).toBeNull();
     });
   });
 
@@ -183,7 +272,7 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
       expect(view.getByText('Método de Pago')).toBeTruthy();
       expect(view.getByText('MASTERCARD •••• 9876')).toBeTruthy();
       expect(view.getByText('1-CLICK')).toBeTruthy();
-      expect(view.getByText('Pagar con Webpay / Flow')).toBeTruthy();
+      expect(view.getByText('Pagar con Flow')).toBeTruthy();
     });
 
     const payCardBtn = view.getByText('MASTERCARD •••• 9876');
@@ -199,9 +288,22 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     });
   });
 
-  it('ACCEPTED: muestra botón de confirmar inicio cuando el profesional llegó (<= 5m)', async () => {
+  it('ACCEPTED: NO muestra botón de confirmar inicio si el proveedor no ha confirmado su llegada (incluso a <= 20m)', async () => {
     mockSessionValue.activeOrder.status = 'ACCEPTED';
-    mockSessionValue.distanceToProviderKm = 0.003;
+    mockSessionValue.distanceToProviderKm = 0.015;
+
+    const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    expect(view.queryByText('LLEGÓ AL DOMICILIO')).toBeNull();
+    expect(view.queryByText('Confirmar inicio de servicio')).toBeNull();
+    expect(view.getByText('Llegada estimada')).toBeTruthy();
+    expect(view.getByText('Abrir Chat')).toBeTruthy();
+  });
+
+  it('ARRIVED: permite iniciar orden sin importar la distancia cuando el estado es ARRIVED', async () => {
+    mockSessionValue.activeOrder.status = 'ARRIVED';
+    // Distancia mayor a 50m o desconocida, sin importar los metros
+    mockSessionValue.distanceToProviderKm = 0.150;
 
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
@@ -213,6 +315,26 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     await waitFor(() => {
       expect(mockStartOrder).toHaveBeenCalledWith(101);
+    });
+  });
+
+  it('ARRIVED: notifica error si la mutación de startOrder falla', async () => {
+    mockSessionValue.activeOrder.status = 'ARRIVED';
+    mockStartOrder.mockRejectedValueOnce(new Error('El proveedor debe confirmar su llegada en el domicilio'));
+
+    const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    const startBtn = view.getByText('Confirmar inicio de servicio');
+    fireEvent.press(startBtn);
+
+    await waitFor(() => {
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'No se pudo iniciar el servicio',
+          message: 'El proveedor debe confirmar su llegada en el domicilio',
+          type: 'error',
+        }),
+      );
     });
   });
 });

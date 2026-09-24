@@ -15,6 +15,7 @@ export interface PaymentActionCardsProps {
   onPayWithFlow: () => void | Promise<void>;
   isProcessing?: boolean;
   activeAction?: PaymentActionType | null;
+  titleColor?: string;
 }
 
 export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
@@ -26,10 +27,11 @@ export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
   onPayWithFlow,
   isProcessing = false,
   activeAction = null,
+  titleColor,
 }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.sectionTitle}>MÉTODO DE PAGO</Text>
+      <Text style={[styles.sectionTitle, titleColor ? { color: titleColor } : null]}>MÉTODO DE PAGO</Text>
 
       {hasCard ? (
         <>
@@ -70,7 +72,7 @@ export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
             </View>
           </TouchableOpacity>
 
-          {/* Card 2: Pagar con Flow / Webpay */}
+          {/* Card 2: Pagar con Flow */}
           <TouchableOpacity
             style={[
               styles.actionCard,
@@ -80,14 +82,14 @@ export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
             activeOpacity={0.75}
             disabled={isProcessing}
             accessibilityRole="button"
-            accessibilityLabel="Pagar con Flow o Webpay"
+            accessibilityLabel="Pagar con Flow"
           >
             <View style={styles.cardLeft}>
               <View style={styles.iconBox}>
                 <Icon name="Globe" size={18} color={TOKENS.colors.textSubtle} />
               </View>
               <View style={styles.cardTexts}>
-                <Text style={styles.cardTitle}>Pagar con Webpay / Flow</Text>
+                <Text style={styles.cardTitle}>Pagar con Flow</Text>
                 <Text style={styles.cardSubtitle}>Débito, crédito o transferencia</Text>
               </View>
             </View>
@@ -138,7 +140,7 @@ export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
             </View>
           </TouchableOpacity>
 
-          {/* Card B: Pagar con Flow / Webpay (1-Tap) */}
+          {/* Card B: Pagar con Flow */}
           <TouchableOpacity
             style={[
               styles.actionCard,
@@ -148,14 +150,14 @@ export const PaymentActionCards: React.FC<PaymentActionCardsProps> = ({
             activeOpacity={0.75}
             disabled={isProcessing}
             accessibilityRole="button"
-            accessibilityLabel="Pagar con Flow o Webpay"
+            accessibilityLabel="Pagar con Flow"
           >
             <View style={styles.cardLeft}>
               <View style={styles.iconBox}>
                 <Icon name="Globe" size={18} color={TOKENS.colors.textSubtle} />
               </View>
               <View style={styles.cardTexts}>
-                <Text style={styles.cardTitle}>Pagar con Flow / Webpay</Text>
+                <Text style={styles.cardTitle}>Pagar con Flow</Text>
                 <Text style={styles.cardSubtitle}>Pago directo sin guardar tarjeta</Text>
               </View>
             </View>

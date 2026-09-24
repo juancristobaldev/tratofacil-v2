@@ -33,7 +33,8 @@ export function buildCategoryTree(
     if (!fullRoot) continue;
 
     const subs = fullRoot.subCategories || [];
-    const subsWithServices = subs.filter((sub) => {
+    const subsWithServices = subs.filter((sub): sub is Category => {
+      if (!sub) return false;
       const count = (servicesByCategoryId.get(sub.id) || []).length;
       return count > 0;
     });
@@ -43,10 +44,10 @@ export function buildCategoryTree(
         const nodeServices = servicesByCategoryId.get(sub.id) || [];
         const sortedServices = [...nodeServices].sort((a, b) => {
           const aOnline = (a.serviceProviders || []).some(
-            (sp: any) => sp.provider?.isRealtimeActive,
+            (sp: any) => sp?.provider?.isRealtimeActive,
           );
           const bOnline = (b.serviceProviders || []).some(
-            (sp: any) => sp.provider?.isRealtimeActive,
+            (sp: any) => sp?.provider?.isRealtimeActive,
           );
           if (aOnline !== bOnline) return bOnline ? 1 : -1;
           return a.name.localeCompare(b.name);
@@ -63,7 +64,7 @@ export function buildCategoryTree(
           services: sortedServices,
           providerCount: allProviders.length,
           onlineProviderCount: allProviders.filter(
-            (p) => p.provider?.isRealtimeActive,
+            (p) => p?.provider?.isRealtimeActive,
           ).length,
         });
       }
@@ -72,10 +73,10 @@ export function buildCategoryTree(
       if (directServices.length > 0) {
         const sortedServices = [...directServices].sort((a, b) => {
           const aOnline = (a.serviceProviders || []).some(
-            (sp: any) => sp.provider?.isRealtimeActive,
+            (sp: any) => sp?.provider?.isRealtimeActive,
           );
           const bOnline = (b.serviceProviders || []).some(
-            (sp: any) => sp.provider?.isRealtimeActive,
+            (sp: any) => sp?.provider?.isRealtimeActive,
           );
           if (aOnline !== bOnline) return bOnline ? 1 : -1;
           return a.name.localeCompare(b.name);
@@ -91,7 +92,7 @@ export function buildCategoryTree(
           services: sortedServices,
           providerCount: allProviders.length,
           onlineProviderCount: allProviders.filter(
-            (p) => p.provider?.isRealtimeActive,
+            (p) => p?.provider?.isRealtimeActive,
           ).length,
         });
       }
@@ -118,7 +119,7 @@ export function resolveCategorySlugs(
   function collectDescendants(cat: Category) {
     slugs.push(cat.slug);
     for (const child of cat.subCategories || []) {
-      collectDescendants(child);
+      if (child) collectDescendants(child);
     }
   }
 
@@ -128,7 +129,7 @@ export function resolveCategorySlugs(
       return true;
     }
     for (const child of cat.subCategories || []) {
-      if (searchAndCollect(child)) return true;
+      if (child && searchAndCollect(child)) return true;
     }
     return false;
   }

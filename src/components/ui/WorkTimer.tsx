@@ -3,12 +3,17 @@ import { StyleSheet, View, Text } from 'react-native';
 import { TOKENS } from '../../theme';
 
 interface WorkTimerProps {
-  startedAt?: string | Date | null;
+  startedAt?: string | Date | number | null;
+  label?: string;
 }
 
 export function formatTimer(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '00:00';
+  }
+  const totalSecs = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(totalSecs / 60);
+  const secs = totalSecs % 60;
   const hours = Math.floor(mins / 60);
   const remainingMins = mins % 60;
 
@@ -18,19 +23,52 @@ export function formatTimer(seconds: number): string {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
 
-export const WorkTimer: React.FC<WorkTimerProps> = ({ startedAt }) => {
-  const [seconds, setSeconds] = useState<number>(() => {
-    if (!startedAt) return 0;
-    const startMs = new Date(startedAt).getTime();
-    return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
-  });
+export function parseTimerStartMs(raw?: string | Date | number | null): number | null {
+  if (!raw) return null;
+  if (typeof raw === 'number') {
+    return Number.isFinite(raw) ? raw : null;
+  }
+  if (raw instanceof Date) {
+    const ms = raw.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      return Number.isFinite(num) ? num : null;
+    }
+    let normalized = trimmed;
+    if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(normalized)) {
+      normalized = normalized.replace(' ', 'T') + 'Z';
+    }
+    const ms = new Date(normalized).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return null;
+}
+
+export function calculateElapsedSeconds(
+  startedAt?: string | Date | number | null,
+  fallbackStartMs?: number | null,
+): number {
+  const startMs = parseTimerStartMs(startedAt) ?? (Number.isFinite(fallbackStartMs as number) ? (fallbackStartMs as number) : null);
+  if (startMs == null) return 0;
+  return Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+}
+
+export const WorkTimer: React.FC<WorkTimerProps> = ({ startedAt, label = 'Tiempo transcurrido' }) => {
+  const mountStartRef = React.useRef<number>(Date.now());
+  const [seconds, setSeconds] = useState<number>(() =>
+    calculateElapsedSeconds(startedAt, mountStartRef.current)
+  );
 
   useEffect(() => {
-    const startMs = startedAt ? new Date(startedAt).getTime() : Date.now();
-    setSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+    setSeconds(calculateElapsedSeconds(startedAt, mountStartRef.current));
 
     const timer = setInterval(() => {
-      setSeconds(Math.max(0, Math.floor((Date.now() - startMs) / 1000)));
+      setSeconds(calculateElapsedSeconds(startedAt, mountStartRef.current));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -38,7 +76,7 @@ export const WorkTimer: React.FC<WorkTimerProps> = ({ startedAt }) => {
 
   return (
     <View style={styles.timerContainer}>
-      <Text style={styles.timerLabel}>Tiempo transcurrido</Text>
+      <Text style={styles.timerLabel}>{label}</Text>
       <Text style={styles.timerVal}>{formatTimer(seconds)}</Text>
     </View>
   );

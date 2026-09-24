@@ -14,17 +14,20 @@ function log(tag: string, fields: Record<string, unknown>) {
 }
 
 function tryDeliver(ref: PaymentReturnRef) {
-  if (processedTokens.has(ref.token)) {
-    log('PAY:DEDUP', { paymentId: ref.token, action: 'IGNORE' });
+  const key = ref.attemptId || ref.token || '';
+  if (!key) return;
+
+  if (processedTokens.has(key)) {
+    log('PAY:DEDUP', { paymentId: key, action: 'IGNORE' });
     return;
   }
   if (!consumer || !navigationRef.isReady()) {
     pending = ref;
     return;
   }
-  processedTokens.add(ref.token);
+  processedTokens.add(key);
   pending = null;
-  log('PAY:CONTEXT_RESOLVED', { type: ref.type, paymentRef: ref.token });
+  log('PAY:CONTEXT_RESOLVED', { type: ref.type, paymentRef: key });
   consumer(ref);
 }
 

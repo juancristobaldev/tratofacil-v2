@@ -17,9 +17,10 @@ export const MEDIA_ENDPOINT = `${MEDIA_BASE}/`;
 export const WEB_CALLBACK_URL = `${FRONTEND_BASE}/api/callback`;
 export const REGISTER_CARD_CALLBACK_URL = `${FRONTEND_BASE}/api/register-card`;
 export const DEEP_LINK_CALLBACK = 'tratofacilv2://payment/callback';
+export const CARD_DEEP_LINK_CALLBACK = `${DEEP_LINK_CALLBACK}?type=card`;
 
-// Distancia maxima (km) para habilitar el inicio de la orden en tiempo real (5 metros = 0.005 km).
-export const START_ORDER_DISTANCE_KM = 0.005;
+// Distancia maxima (km) para habilitar el inicio de la orden en tiempo real (20 metros = 0.02 km).
+export const START_ORDER_DISTANCE_KM = 0.02;
 
 // Servidor de rutas (OSRM). Apuntar a una instancia propia en producción;
 // el servidor público gratuito es solo para desarrollo (rate-limit e inestable).

@@ -15,6 +15,7 @@ export const GET_PRODUCTS = gql`
       subCategorySlug
       images {
         id
+        url
         image {
           id
           cdnUrl
@@ -59,6 +60,7 @@ export const GET_PRODUCT = gql`
       }
       images {
         id
+        url
         image {
           id
           cdnUrl
@@ -99,6 +101,7 @@ export const GET_PRODUCT_BY_SLUG = gql`
       }
       images {
         id
+        url
         image { id cdnUrl }
       }
       user {
@@ -215,6 +218,7 @@ export const GET_MARKETPLACE_DATA = gql`
         }
         images {
           id
+          url
           image { id cdnUrl }
         }
         deliveryCondition {

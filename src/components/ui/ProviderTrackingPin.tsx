@@ -103,10 +103,13 @@ export const ProviderTrackingPin: React.FC<ProviderTrackingPinProps> = ({ coordi
             },
           ]}
         />
+        {/* Halo estático exterior de profundidad (visible siempre) */}
+        <View style={styles.ambientHalo} />
+
         {/* Pin central del profesional */}
         <View style={styles.circle}>
           <View style={styles.iconContainer}>
-            <Icon name="Briefcase" size={16} color={TOKENS.colors.white} />
+            <Icon name="Briefcase" size={17} color={TOKENS.colors.white} />
           </View>
         </View>
       </View>
@@ -126,9 +129,18 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(230, 0, 126, 0.22)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(230, 0, 126, 0.45)',
+    backgroundColor: 'rgba(230, 0, 126, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(230, 0, 126, 0.38)',
+  },
+  ambientHalo: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(230, 0, 126, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(230, 0, 126, 0.25)',
   },
   circle: {
     width: 36,
@@ -137,9 +149,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: TOKENS.colors.white,
-    ...TOKENS.shadows.floating,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 8,
   },
   iconContainer: {
     alignItems: 'center',

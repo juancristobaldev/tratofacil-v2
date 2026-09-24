@@ -1,4 +1,4 @@
-export { DARK_VISIBLE_MAP_STYLE } from './mapStyle';
+export { DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from './mapStyle';
 
 export const TOKENS = {
   colors: {

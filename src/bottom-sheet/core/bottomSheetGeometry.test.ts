@@ -19,4 +19,25 @@ describe('bottom sheet shared geometry', () => {
     expect(sheetTopInWindow).toBeGreaterThanOrEqual(geometry.topClearance);
     expect(sheetTopInWindow - geometry.encuadreBottomOffset).toBeGreaterThanOrEqual(24);
   });
+
+  it.each([
+    { device: 'Android Emulator', windowHeight: 800, safeTopInset: 28, safeBottomInset: 0 },
+    { device: 'iPhone Notch', windowHeight: 844, safeTopInset: 47, safeBottomInset: 34 },
+    { device: 'iPhone Dynamic Island', windowHeight: 852, safeTopInset: 59, safeBottomInset: 34 },
+  ])('calculates categories search geometry just below the header with 4px gap for $device', ({ windowHeight, safeTopInset, safeBottomInset }) => {
+    const geometry = getBottomSheetGeometry({ windowHeight, safeTopInset, safeBottomInset });
+
+    const expectedHeaderBottom = safeTopInset + 60;
+    expect(geometry.categoriesSearchTopClearance).toBe(expectedHeaderBottom + 4);
+
+    const expectedSearchAvailableHeight = windowHeight - geometry.categoriesSearchTopClearance - geometry.navbarHeight;
+    expect(geometry.categoriesSearchMaxHeight).toBe(expectedSearchAvailableHeight);
+
+    // Categories search sheet top position in window coordinates
+    const searchSheetTopInWindow = geometry.bottomNavTop - geometry.categoriesSearchMaxHeight;
+    expect(searchSheetTopInWindow).toBe(geometry.categoriesSearchTopClearance);
+    expect(searchSheetTopInWindow - expectedHeaderBottom).toBe(4);
+    // Verifies search mode provides significantly larger height than standard sheet mode
+    expect(geometry.categoriesSearchMaxHeight).toBeGreaterThan(geometry.maxDynamicContentSize);
+  });
 });

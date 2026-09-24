@@ -139,7 +139,11 @@ export function useMarketplace(): UseMarketplaceReturn {
   const subCategoryIds = useMemo(
     () =>
       new Set(
-        categories.flatMap((c) => (c.subCategories || []).map((sub) => sub.id)),
+        categories.flatMap((c) =>
+          (c.subCategories || [])
+            .filter((sub): sub is CategoryProduct => sub != null)
+            .map((sub) => sub.id),
+        ),
       ),
     [categories],
   );
@@ -150,7 +154,10 @@ export function useMarketplace(): UseMarketplaceReturn {
   );
 
   const allProducts = useMemo(
-    () => categories.flatMap((c) => c.products || []),
+    () =>
+      categories.flatMap((c) =>
+        (c.products || []).filter((p): p is Product => p != null),
+      ),
     [categories],
   );
 
@@ -159,13 +166,21 @@ export function useMarketplace(): UseMarketplaceReturn {
     [categories, selectedCategory],
   );
 
-  const currentSubCategories: CategoryProduct[] = activeCategory?.subCategories ?? EMPTY_ARRAY;
+  const currentSubCategories: CategoryProduct[] = useMemo(
+    () =>
+      (activeCategory?.subCategories || []).filter(
+        (sub): sub is CategoryProduct => sub != null,
+      ),
+    [activeCategory],
+  );
 
   const filteredProducts = useMemo(() => {
     let filtered = allProducts;
 
     if (selectedCategory) {
-      filtered = activeCategory?.products || [];
+      filtered = (activeCategory?.products || []).filter(
+        (p): p is Product => p != null,
+      );
       if (selectedSubCategory) {
         filtered = filtered.filter(
           (p) => p.subCategorySlug === selectedSubCategory,

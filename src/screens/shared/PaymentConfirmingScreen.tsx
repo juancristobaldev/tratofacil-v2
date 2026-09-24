@@ -5,16 +5,18 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Icon, Button } from '../../components/ui';
 import { useFlow } from '../../hooks/useFlow';
-import type { PaymentReturnType } from '../../payments/parsePaymentReturnUrl';
+import type { ConfirmablePaymentReturnType } from '../../payments/parsePaymentReturnUrl';
 import type { PaymentConfirmationState } from '../../payments/paymentReturnState';
 
 const RETRY_DELAYS_MS = [0, 3000, 6000];
 
-const OUTCOME_MESSAGES: Record<PaymentReturnType, { title: string; subtitle: string }> = {
+const OUTCOME_MESSAGES: Record<ConfirmablePaymentReturnType, { title: string; subtitle: string }> = {
   product: { title: '¡Compra Exitosa!', subtitle: 'Tu producto será enviado pronto.' },
   job: { title: '¡Trabajador Contratado!', subtitle: 'El profesional será notificado.' },
   ad: { title: '¡Anuncio Publicado!', subtitle: 'Tu anuncio ya está activo.' },
   realtime: { title: '¡Pago Exitoso!', subtitle: 'Tu transacción se ha procesado correctamente.' },
+  service: { title: '¡Servicio Agendado!', subtitle: 'Tu servicio ha sido pagado y confirmado con éxito.' },
+  plan: { title: '¡Suscripción Activada!', subtitle: 'Tu plan ha sido activado con éxito.' },
 };
 
 function classifyStatus(status: string): 'SUCCESS' | 'FAILED' | 'PENDING' {
@@ -27,7 +29,11 @@ function classifyStatus(status: string): 'SUCCESS' | 'FAILED' | 'PENDING' {
 export const PaymentConfirmingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { type, token } = (route.params || {}) as { type: PaymentReturnType; token: string };
+  const { type, token, attemptId } = (route.params || {}) as {
+    type: ConfirmablePaymentReturnType;
+    token?: string;
+    attemptId?: string;
+  };
   const { confirm } = useFlow();
 
   const [state, setState] = useState<PaymentConfirmationState>('RECEIVED');
@@ -52,13 +58,16 @@ export const PaymentConfirmingScreen: React.FC = () => {
     async (attemptIndex: number) => {
       if (!mountedRef.current) return;
       setState('CONFIRMING');
-      if (__DEV__) console.log(`[PAY:CONFIRM_START] paymentId=${token} type=${type}`);
+      const correlationId = attemptId || token || '';
+      if (__DEV__) console.log(`[PAY:CONFIRM_START] paymentId=${correlationId} type=${type}`);
 
       try {
-        const status = await confirm(type, token);
+        const status = attemptId
+          ? await confirm(type, token || '', attemptId)
+          : await confirm(type, token || '');
         if (!mountedRef.current) return;
         const outcome = classifyStatus(status);
-        if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${token} status=${status} outcome=${outcome}`);
+        if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${correlationId} status=${status} outcome=${outcome}`);
 
         if (outcome === 'SUCCESS') {
           setState('SUCCESS');
@@ -85,7 +94,7 @@ export const PaymentConfirmingScreen: React.FC = () => {
       } catch {
         // Network/API unavailability is not the same as a FAILED payment (§38).
         if (!mountedRef.current) return;
-        if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${token} status=CONFIRMATION_UNAVAILABLE`);
+        if (__DEV__) console.log(`[PAY:CONFIRM_RESULT] paymentId=${correlationId} status=CONFIRMATION_UNAVAILABLE`);
         if (attemptIndex + 1 < RETRY_DELAYS_MS.length) {
           setState('PENDING');
           setAttempt(attemptIndex + 1);
@@ -97,11 +106,11 @@ export const PaymentConfirmingScreen: React.FC = () => {
         }
       }
     },
-    [confirm, type, token, navigation],
+    [confirm, type, token, attemptId, navigation],
   );
 
   useEffect(() => {
-    if (!token || !type) {
+    if ((!token && !attemptId) || !type) {
       navigation.replace('PaymentFailed', { type });
       return;
     }
