@@ -1,7 +1,7 @@
 import type { GeoPosition } from 'react-native-geolocation-service';
 import type { GeoPoint } from './geoMath';
 import { MovementController, type MovementUpdatePayload } from './movementController';
-import { isDevJoystickEnabled } from './devFlags';
+import { isDevJoystickEnabled, getDevJoystickConfig } from './devFlags';
 
 type LocationSimulatorListener = (position: GeoPosition | null) => void;
 
@@ -99,6 +99,39 @@ class LocationSimulator {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  public setRouteCoords(coords: GeoPoint[] | null | undefined): void {
+    this.movementController.setRouteCoords(coords);
+  }
+
+  public hasActiveRoute(): boolean {
+    return this.movementController.hasRoute();
+  }
+
+  public isAutoNavigating(): boolean {
+    return getDevJoystickConfig().autoNav;
+  }
+
+  public startAutoNav(): boolean {
+    if (!this.movementController.hasRoute()) return false;
+    if (!this.isSimulated) {
+      this.enableSimulation();
+    }
+    return this.movementController.startAutoNav();
+  }
+
+  public stopAutoNav(): void {
+    this.movementController.stopAutoNav();
+  }
+
+  public toggleAutoNav(): boolean {
+    if (this.isAutoNavigating()) {
+      this.stopAutoNav();
+      return false;
+    } else {
+      return this.startAutoNav();
+    }
   }
 
   public getCurrentPosition(): GeoPosition | null {

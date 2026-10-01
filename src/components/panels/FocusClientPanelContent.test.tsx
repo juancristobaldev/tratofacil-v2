@@ -49,10 +49,11 @@ jest.mock('../../hooks/usePlans', () => ({
 }));
 
 jest.mock('../../bottom-sheet/primitives', () => {
-  const { View } = require('react-native');
+  const { View, TouchableOpacity } = require('react-native');
   return {
     BottomSheetScrollView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
     BottomSheetView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
+    TouchableOpacity,
   };
 });
 
@@ -241,16 +242,17 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
     });
   });
 
-  it('ACCEPTED: muestra estado en camino y botón de chat si la distancia > 5m (sin botón de cancelar)', async () => {
+  it('ACCEPTED: muestra servicio en camino y botón de chat sin duplicar telemetría del HUD (sin botón de cancelar)', async () => {
     mockSessionValue.activeOrder.status = 'ACCEPTED';
     mockSessionValue.distanceToProviderKm = 1.2;
 
     const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
 
-    expect(view.getByText('Llegada estimada')).toBeTruthy();
-    expect(view.getByText('8 min')).toBeTruthy();
-    expect(view.getByText('A 1200m de tu ubicación')).toBeTruthy();
+    expect(view.getByText('Servicio en camino')).toBeTruthy();
+    expect(view.getByText('Gasfitería Express')).toBeTruthy();
     expect(view.getByText('Abrir Chat')).toBeTruthy();
+    expect(view.getByText('Profesional verificado y asegurado por TratoFácil')).toBeTruthy();
+    expect(view.queryByText('Llegada estimada')).toBeNull();
     expect(view.queryByText('Cancelar servicio')).toBeNull();
   });
 
@@ -296,8 +298,9 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     expect(view.queryByText('LLEGÓ AL DOMICILIO')).toBeNull();
     expect(view.queryByText('Confirmar inicio de servicio')).toBeNull();
-    expect(view.getByText('Llegada estimada')).toBeTruthy();
+    expect(view.getByText('Servicio en camino')).toBeTruthy();
     expect(view.getByText('Abrir Chat')).toBeTruthy();
+    expect(view.queryByText('Llegada estimada')).toBeNull();
   });
 
   it('ARRIVED: permite iniciar orden sin importar la distancia cuando el estado es ARRIVED', async () => {
@@ -336,5 +339,33 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
         }),
       );
     });
+  });
+
+  it('QUOTED: alerta con error si la pasarela de pago Flow falla al iniciar', async () => {
+    const { Alert } = require('react-native');
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    mockInitPayment.mockRejectedValueOnce(new Error('Network gateway timeout'));
+
+    const view = await render(<FocusClientPanelContent {...mockSheetProps} />);
+
+    const acceptOfferBtn = view.getByText('Aceptar oferta');
+    fireEvent.press(acceptOfferBtn);
+
+    await waitFor(() => {
+      expect(view.getByText('Pagar con Flow')).toBeTruthy();
+    });
+
+    const payFlowBtn = view.getByText('Pagar con Flow');
+    fireEvent.press(payFlowBtn);
+
+    await waitFor(() => {
+      expect(mockInitPayment).toHaveBeenCalledWith(101, expect.any(String));
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Error de Pago',
+        'Network gateway timeout'
+      );
+    });
+
+    alertSpy.mockRestore();
   });
 });

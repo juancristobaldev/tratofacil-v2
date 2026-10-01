@@ -110,4 +110,18 @@ describe('Sheet safe snapToIndex proxy contract', () => {
     ref.current?.dismiss();
     expect(mockDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('passes sheetKey as name and clamps index when dynamic sizing is active with no explicit snap points', async () => {
+    const ref = createRef<SheetModalRef>();
+
+    const { getByTestId } = await render(
+      <Sheet ref={ref} sheetKey="provider_preview" enableDynamicSizing={true} initialIndex={1}>
+        <Text>Provider Preview Content</Text>
+      </Sheet>,
+    );
+
+    const modal = getByTestId('bottom-sheet-modal');
+    expect(modal.props.name).toBe('provider_preview');
+    expect(modal.props.index).toBe(0);
+  });
 });

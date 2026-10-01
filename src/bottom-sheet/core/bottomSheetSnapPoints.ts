@@ -13,13 +13,15 @@ export function resolveSheetSnapPoints({
     return enableDynamicSizing ? undefined : [88, maxDynamicContentSize];
   }
 
-  const resolved = snapPoints.map((point) => (point === 'MAX' ? maxDynamicContentSize : point));
-
-  if (resolved.length === 1 && typeof resolved[0] === 'number') {
-    return [resolved[0], maxDynamicContentSize];
+  if (enableDynamicSizing) {
+    const filtered = snapPoints.filter((point) => point !== 'MAX');
+    if (filtered.length === 0) {
+      return undefined;
+    }
+    return filtered.map((point) => point);
   }
 
-  return resolved;
+  return snapPoints.map((point) => (point === 'MAX' ? maxDynamicContentSize : point));
 }
 
 export function resolveSheetInitialIndex({
@@ -33,10 +35,16 @@ export function resolveSheetInitialIndex({
 }): number {
   const snapPointCount = resolvedSnapPoints?.length ?? 0;
 
-  if (snapPointCount === 0) return requestedIndex ?? 0;
+  if (snapPointCount === 0) {
+    if (enableDynamicSizing) {
+      return requestedIndex === -1 ? -1 : 0;
+    }
+    return requestedIndex ?? 0;
+  }
 
-  const fallbackIndex = snapPointCount > 1 ? 1 : 0;
+  const maxIndex = enableDynamicSizing ? snapPointCount : snapPointCount - 1;
+  const fallbackIndex = maxIndex > 0 ? 1 : 0;
   const index = requestedIndex ?? fallbackIndex;
 
-  return Math.max(-1, Math.min(index, snapPointCount - 1));
+  return Math.max(-1, Math.min(index, maxIndex));
 }

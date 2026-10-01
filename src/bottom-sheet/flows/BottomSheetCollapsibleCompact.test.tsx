@@ -234,6 +234,7 @@ jest.mock('../../bottom-sheet/primitives', () => {
         trailing || null,
       );
     },
+    TouchableOpacity: require('react-native').TouchableOpacity,
   };
 });
 

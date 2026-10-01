@@ -119,6 +119,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
   const [cameraMode, setCameraMode] = useState<CameraMode>('IDLE');
   const [navigationPosition, setNavigationPosition] = useState<RouteCoordinate | null>(null);
+  const [activeNavigationTarget, setActiveNavigationTarget] = useState<SmartCameraTarget | null>(null);
   const cameraModeRef = useRef<CameraMode>('IDLE');
   const updateCameraMode = useCallback((mode: CameraMode) => {
     cameraModeRef.current = mode;
@@ -310,10 +311,15 @@ export function useMapCamera(options: UseMapCameraOptions) {
       }
 
       // Si estamos en modo navegación, procesar a través de SmartNavigationEngine
-      if (cameraMode === 'NAVIGATION') {
+      if (cameraModeRef.current === 'NAVIGATION' || cameraMode === 'NAVIGATION') {
+        const effectivePitch =
+          lastNavigationOptionsRef.current?.pitch && lastNavigationOptionsRef.current.pitch > 0
+            ? lastNavigationOptionsRef.current.pitch
+            : (lastPitchRef.current > 0 ? lastPitchRef.current : INTERACTIVE_NAVIGATION_PITCH);
+
         navigateToCoordinate(coord, {
           heading: followOpts?.heading,
-          pitch: lastNavigationOptionsRef.current?.pitch ?? lastPitchRef.current,
+          pitch: effectivePitch,
           speed: followOpts?.speed,
           accuracy: followOpts?.accuracy,
           timestamp: followOpts?.timestamp,
@@ -387,26 +393,21 @@ export function useMapCamera(options: UseMapCameraOptions) {
 
   /**
    * Manejador de gesto de arrastre (pan drag) por el usuario.
-   * Conmuta limpiamente a USER_EXPLORING y suspende auto-follow.
+   * Conmuta limpiamente a USER_EXPLORING y suspende auto-follow,
+   * preservando el objetivo de navegación activo para no desmontar ni vaciar la telemetría del HUD.
    */
   const handlePanDrag = useCallback(() => {
     if (__DEV__) {
       console.log('[MAP:USER_INTERACTION] type=PAN_DRAG');
     }
     navigationTelemetry.recordUserGesture();
-    if (navigationTelemetry.isActive()) {
-      navigationTelemetry.endSession();
-    }
-    navEngineRef.current.reset();
-    setNavigationPosition(null);
-    lastNavigationSubjectCoordRef.current = null;
-    lastNavigationOptionsRef.current = null;
     setIsFollowing(false);
     updateCameraMode('USER_EXPLORING');
   }, []);
 
   /**
    * Manejador de finalización de movimiento de región (interacción libre del usuario).
+   * Conmuta a USER_EXPLORING preservando el objetivo de navegación del HUD.
    */
   const handleRegionChangeComplete = useCallback(
     (region: Region, details?: { isGesture?: boolean }) => {
@@ -422,11 +423,6 @@ export function useMapCamera(options: UseMapCameraOptions) {
           console.log('[MAP:USER_INTERACTION] type=GESTURE_REGION_CHANGE');
         }
         navigationTelemetry.recordUserGesture();
-        if (navigationTelemetry.isActive()) {
-          navigationTelemetry.endSession();
-        }
-        navEngineRef.current.reset();
-        setNavigationPosition(null);
         setIsFollowing(false);
         updateCameraMode('USER_EXPLORING');
       }
@@ -449,6 +445,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
       }
       navEngineRef.current.reset();
       setNavigationPosition(null);
+      setActiveNavigationTarget(null);
       lastNavigationSubjectCoordRef.current = null;
       lastNavigationOptionsRef.current = null;
       lastPitchRef.current = 0;
@@ -526,6 +523,11 @@ export function useMapCamera(options: UseMapCameraOptions) {
       const target = navEngineRef.current.processMotionSample(sample, navOpts?.routeCoords);
       if (!target) return;
 
+      // Actualización continua e inmediata de telemetría y maniobra para el HUD (desacoplada del coalescer de cámara nativa)
+      const navPosition = target.navigationPosition ?? target.filteredPosition ?? coord;
+      setNavigationPosition(navPosition);
+      setActiveNavigationTarget(target);
+
       const writeDecision = navEngineRef.current.evaluateCameraWrite(
         target,
         sample.timestamp,
@@ -539,16 +541,14 @@ export function useMapCamera(options: UseMapCameraOptions) {
         return;
       }
 
-      const pitch = navOpts?.pitch ?? target.pitch;
+      const pitch = (navOpts?.pitch != null && navOpts.pitch > 0) ? navOpts.pitch : target.pitch;
       const heading = target.heading;
       const zoom = navOpts?.zoom ?? target.zoom;
       const duration = navOpts?.duration ?? writeDecision.durationMs;
       const animated = navOpts?.animated ?? true;
 
-      const navPosition = target.navigationPosition ?? target.filteredPosition ?? coord;
       lastHeadingRef.current = heading;
       lastPitchRef.current = pitch;
-      setNavigationPosition(navPosition);
       lastNavigationSubjectCoordRef.current = { latitude: coord.latitude, longitude: coord.longitude };
       lastNavigationOptionsRef.current = { ...navOpts, heading, pitch, zoom, duration, animated };
 
@@ -626,7 +626,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
    */
   useEffect(() => {
     if (!mapRef.current || !isMountedRef.current) return;
-    if (cameraMode === 'NAVIGATION') return; // En navegación el centro es fijo 50/50
+    if (cameraModeRef.current === 'NAVIGATION' || cameraMode === 'NAVIGATION') return; // En navegación el centro es fijo 50/50
 
     const sheetTopDelta = lastSheetTopRef.current !== null && sheetTop !== null
       ? Math.abs(sheetTop - lastSheetTopRef.current)
@@ -660,10 +660,11 @@ export function useMapCamera(options: UseMapCameraOptions) {
   /**
    * Alterna entre modo navegación 3D y vista 2D plana.
    * Si ya está activo, lo desactiva. Si está inactivo, lo activa con SmartNavigationEngine.
+   * Si navOpts.force es true, siempre activa/actualiza y nunca desactiva.
    */
   const toggleNavigationMode = useCallback(
     (coord?: RouteCoordinate | null, navOpts?: NavigationModeOptions) => {
-      if (cameraMode === 'NAVIGATION') {
+      if ((cameraModeRef.current === 'NAVIGATION' || cameraMode === 'NAVIGATION') && !navOpts?.force) {
         exitNavigationMode(coord, navOpts?.animated ?? true);
       } else {
         navigateToCoordinate(coord, navOpts);
@@ -754,6 +755,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
     isFollowing,
     isNavigating: cameraMode === 'NAVIGATION',
     navigationPosition,
+    activeNavigationTarget,
     isUserExploring,
     dynamicEdgePadding,
     usableRect,

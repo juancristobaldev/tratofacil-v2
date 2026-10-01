@@ -261,7 +261,7 @@ describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
   });
 
   describe('Home floating navigation controls ownership', () => {
-    it('Proveedor con orden ACCEPTED renderiza controles de navegación 3D y encuadre en HomePage', async () => {
+    it('Proveedor con orden ACCEPTED no renderiza controles flotantes manuales ni encuadre en HomePage', async () => {
       mockRole = 'provider';
       mockRealtime.providerActiveOrder = {
         id: 201,
@@ -269,10 +269,10 @@ describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
         client: { displayName: 'Carlos' },
       };
 
-      const { getByTestId } = await render(<HomePage />);
+      const { queryByTestId } = await render(<HomePage />);
 
-      expect(getByTestId('btn-toggle-navigation-mode')).toBeTruthy();
-      expect(getByTestId('btn-smart-framing')).toBeTruthy();
+      expect(queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+      expect(queryByTestId('btn-smart-framing')).toBeNull();
     });
 
     it('Cliente con orden ACCEPTED renderiza encuadre inteligente sin controles de navegación 3D', async () => {
@@ -289,13 +289,13 @@ describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
       expect(getByTestId('btn-smart-framing')).toBeTruthy();
     });
 
-    it('Proveedor sin orden activa conserva controles de navegación de Home', async () => {
+    it('Proveedor sin orden activa no renderiza botón de encuadre en Home', async () => {
       mockRole = 'provider';
       mockRealtime.providerActiveOrder = null;
 
-      const { getByTestId } = await render(<HomePage />);
+      const { queryByTestId } = await render(<HomePage />);
 
-      expect(getByTestId('btn-smart-framing')).toBeTruthy();
+      expect(queryByTestId('btn-smart-framing')).toBeNull();
     });
 
     it('Cliente sin orden activa conserva encuadre de Home sin navegación 3D', async () => {

@@ -54,10 +54,10 @@ export function analyzeRouteProgress(
     }
   }
 
-  // Si la distancia es alta (> 40m), realiza un barrido completo por seguridad
-  if (bestDist > 40) {
+  // Si la distancia es alta (> 25m) o si el lastSegmentIndex está fuera de rango, realiza un barrido completo
+  if (bestDist > 25 || lastSegmentIndex >= numSegments) {
     for (let i = 0; i < numSegments; i++) {
-      if (i >= startIdx && i < endIdx) continue;
+      if (i >= startIdx && i < endIdx && bestDist <= 25) continue;
       const proj = projectPointOnSegment(coordinate, routeCoords[i], routeCoords[i + 1]);
       if (proj.distanceMeters < bestDist) {
         bestDist = proj.distanceMeters;
@@ -102,20 +102,45 @@ export function analyzeRouteProgress(
   let blendedHeading = bestBearing;
 
   let accumulatedDistToTurn = (1 - bestFraction) * currentSegLength;
+  const MAX_TURN_HORIZON_METERS = 500;
 
   for (let i = bestIndex + 1; i < numSegments; i++) {
     const prevSegBearing = calculateBearing(routeCoords[i - 1], routeCoords[i]);
     const nextSegBearing = calculateBearing(routeCoords[i], routeCoords[i + 1]);
     const turnAngle = shortestAngularDelta(prevSegBearing, nextSegBearing);
 
-    if (Math.abs(turnAngle) >= 20) {
+    let effectiveAngle = turnAngle;
+
+    // Si el giro individual no alcanza 20°, verificar si es una curva continua subdividida
+    // agregando los deltas angulares sucesivos dentro de una ventana corta (<= 35m)
+    if (Math.abs(effectiveAngle) < 20 && Math.abs(effectiveAngle) >= 8) {
+      let cumulativeDelta = turnAngle;
+      let clusterDist = 0;
+      for (let j = i + 1; j < numSegments && clusterDist < 35; j++) {
+        const segLen = getDistanceMeters(routeCoords[j], routeCoords[j + 1]);
+        clusterDist += segLen;
+        const b1 = calculateBearing(routeCoords[j - 1], routeCoords[j]);
+        const b2 = calculateBearing(routeCoords[j], routeCoords[j + 1]);
+        const subDelta = shortestAngularDelta(b1, b2);
+        if (Math.sign(subDelta) === Math.sign(cumulativeDelta)) {
+          cumulativeDelta += subDelta;
+        } else {
+          break;
+        }
+      }
+      if (Math.abs(cumulativeDelta) >= 20) {
+        effectiveAngle = cumulativeDelta;
+      }
+    }
+
+    if (Math.abs(effectiveAngle) >= 20) {
       turnDetected = true;
-      deltaAngle = turnAngle;
-      distanceToTurn = accumulatedDistToTurn;
+      deltaAngle = effectiveAngle;
+      distanceToTurn = Math.max(0, accumulatedDistToTurn);
       const safeSpeed = Math.max(2.0, speedMps);
       timeToTurnSec = distanceToTurn / safeSpeed;
 
-      const absAngle = Math.abs(turnAngle);
+      const absAngle = Math.abs(effectiveAngle);
       if (absAngle >= 150) {
         turnType = 'U_TURN';
       } else if (absAngle >= 75) {
@@ -127,7 +152,7 @@ export function analyzeRouteProgress(
       }
 
       // Blending progresivo de rumbo según proximidad al giro
-      // Si está a < 35 metros o < 3.5 segundos del giro, comienza la anticipación suave
+      // Si está a < 40 metros o < 3.5 segundos del giro, comienza la anticipación suave
       if (distanceToTurn < 40 || timeToTurnSec < 3.5) {
         const proximityWeight = Math.max(0, Math.min(0.65, 1 - distanceToTurn / 40));
         blendedHeading = smoothHeadingEMA(bestBearing, nextSegBearing, proximityWeight);
@@ -136,7 +161,7 @@ export function analyzeRouteProgress(
     }
 
     accumulatedDistToTurn += getDistanceMeters(routeCoords[i], routeCoords[i + 1]);
-    if (accumulatedDistToTurn > 150) break; // Límite de horizonte de anticipación
+    if (accumulatedDistToTurn > MAX_TURN_HORIZON_METERS) break; // Horizonte amplio de 500m
   }
 
   let distanceAlongRoute = bestFraction * currentSegLength;

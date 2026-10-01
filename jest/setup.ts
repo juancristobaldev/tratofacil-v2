@@ -33,10 +33,15 @@ jest.mock('react-native-gesture-handler', () => {
   const { View } = require('react-native');
   const mockGestureChain = () => {
     const chain: any = {
+      onBegin: () => chain,
       onStart: () => chain,
       onUpdate: () => chain,
       onEnd: () => chain,
       onFinalize: () => chain,
+      onTouchesDown: () => chain,
+      onTouchesMove: () => chain,
+      onTouchesUp: () => chain,
+      onTouchesCancelled: () => chain,
       enabled: () => chain,
       shouldCancelWhenOutside: () => chain,
       hitSlop: () => chain,

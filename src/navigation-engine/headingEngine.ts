@@ -27,6 +27,20 @@ export function fuseNavigationHeading(
 ): HeadingFusionResult {
   // 1. Caso Estacionario: Si el vehículo está detenido, congela la orientación en lastReliableHeading
   if (estimate.isStationary) {
+    // Si no hay rumbo previo confiable (arranque en frío o 0°) y estamos sobre la ruta,
+    // alinear la cámara al rumbo de la calzada para que la calle quede orientada hacia adelante en pantalla.
+    if (
+      (lastReliableHeading === 0 || !Number.isFinite(lastReliableHeading)) &&
+      routeProgress &&
+      !routeProgress.isOffRoute
+    ) {
+      return {
+        targetHeading: routeProgress.routeBearing,
+        confidence: 0.9,
+        source: 'ROUTE_BEARING',
+      };
+    }
+
     return {
       targetHeading: lastReliableHeading,
       confidence: 0.8,

@@ -23,9 +23,9 @@ export interface StreetEngineStepResult {
   activeRoadId?: string;
 }
 
-const MAX_SNAP_DISTANCE_METERS = 50;
+const MAX_SNAP_DISTANCE_METERS = 60;
 const MAX_ANGLE_ALIGNMENT_DEG = 80;
-const LOOKAHEAD_METERS = 200;
+const LOOKAHEAD_METERS = 350;
 
 export class StreetEngine {
   private roadSegments: RoadSegment[] = [];

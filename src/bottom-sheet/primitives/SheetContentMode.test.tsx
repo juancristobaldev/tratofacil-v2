@@ -62,6 +62,6 @@ describe('Sheet content mode composition contract', () => {
 
     const modal = screen.getByTestId('bottom-sheet-modal');
     expect(modal.props.index).toBe(1);
-    expect(modal.props.snapPoints).toEqual([88, expect.any(Number)]);
+    expect(modal.props.snapPoints).toEqual([88]);
   });
 });

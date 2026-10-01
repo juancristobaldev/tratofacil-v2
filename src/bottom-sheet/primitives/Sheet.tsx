@@ -65,6 +65,13 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
       enableDynamicSizing,
     });
 
+    const safeInitialIndex = useMemo(() => {
+      const maxAllowed = enableDynamicSizing
+        ? (activeSnapPoints ? activeSnapPoints.length : 0)
+        : (activeSnapPoints && activeSnapPoints.length > 0 ? activeSnapPoints.length - 1 : 0);
+      return Math.max(-1, Math.min(initialIndex, maxAllowed));
+    }, [activeSnapPoints, initialIndex, enableDynamicSizing]);
+
     if (__DEV__) {
       console.log('[BS:SHEET_CONFIG]', {
         sheetKey: sheetKey ?? null,
@@ -144,8 +151,10 @@ export const Sheet = forwardRef<SheetModalRef, SheetProps>(
 
     return (
       <BottomSheetModal
+        key={sheetKey}
+        name={sheetKey}
         ref={internalModalRef}
-        index={initialIndex}
+        index={safeInitialIndex}
         snapPoints={activeSnapPoints}
         enableDynamicSizing={enableDynamicSizing}
         maxDynamicContentSize={maxDynamicContentSize ?? computedMaxDynamicContentSize}

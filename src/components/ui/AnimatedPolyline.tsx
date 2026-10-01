@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { Polyline } from 'react-native-maps';
 import { TOKENS } from '../../theme';
-import { getAdaptivePolylineWidth } from '../../utils/mapGeometry';
+import { getAdaptivePolylineWidth, trimRouteToPosition } from '../../utils/mapGeometry';
 import { MIN_RENDERABLE_POLYLINE_METERS } from '../../utils/directions';
 
 export interface LatLng {
@@ -13,6 +13,11 @@ export interface LatLng {
 export interface AnimatedPolylineProps {
   /** Array de coordenadas que definen la ruta completa */
   coordinates: LatLng[];
+  /**
+   * Posición actual del vehículo/proveedor para recortar automáticamente el tramo ya recorrido.
+   * Elimina la cola de polyline detrás del pin en movimiento y conecta la ruta directamente al vehículo.
+   */
+  currentPosition?: LatLng | null;
   /** Color del trazo principal (default: TOKENS.colors.brand500) */
   strokeColor?: string;
   /** Ancho del trazo principal en px (si no se especifica y hay latitudeDelta, se calcula adaptativamente) */
@@ -212,6 +217,7 @@ function easeOutCubic(x: number): number {
  */
 export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
   coordinates,
+  currentPosition,
   strokeColor = TOKENS.colors.brand500,
   strokeWidth,
   dashed = false,
@@ -225,6 +231,34 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
   onAnimationComplete,
   zIndex = 900,
 }) => {
+  const lastSegmentIndexRef = useRef<number>(0);
+  const prevCoordsKeyRef = useRef<string>('');
+
+  const currentCoordsKey = useMemo(() => {
+    if (!coordinates || coordinates.length < 2) return '';
+    const first = coordinates[0];
+    const last = coordinates[coordinates.length - 1];
+    return `${first.latitude.toFixed(5)},${first.longitude.toFixed(5)}->${last.latitude.toFixed(5)},${last.longitude.toFixed(5)}`;
+  }, [coordinates]);
+
+  if (currentCoordsKey !== prevCoordsKeyRef.current) {
+    prevCoordsKeyRef.current = currentCoordsKey;
+    lastSegmentIndexRef.current = 0;
+  }
+
+  // Recorte dinámico de ruta (Vanishing Polyline): si currentPosition está presente,
+  // recorta los tramos ya transitados para que la polyline nazca directamente en el pin.
+  const activeCoordinates = useMemo(() => {
+    if (!currentPosition || !coordinates || coordinates.length < 2) {
+      return coordinates;
+    }
+    const trimmed = trimRouteToPosition(coordinates, currentPosition, {
+      lastSegmentIndex: lastSegmentIndexRef.current,
+      maxSnapDistanceMeters: 40,
+    });
+    return trimmed;
+  }, [coordinates, currentPosition]);
+
   const adaptiveDimensions = useMemo(() => {
     if (adaptiveWidth && latitudeDelta != null) {
       return getAdaptivePolylineWidth(latitudeDelta);
@@ -237,10 +271,10 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
 
   const [opacity, setOpacity] = useState<number>(1);
   const [displayedCoords, setDisplayedCoords] = useState<LatLng[]>(() => {
-    if (!coordinates || coordinates.length < 2) return [];
+    if (!activeCoordinates || activeCoordinates.length < 2) return [];
     // Si animate está activo, iniciamos en [] hasta que el primer frame calcule el avance visible.
     // NUNCA inicializar con [c0, c0], ya que 2 puntos idénticos con lineCap="round" dibujan un punto/círculo sólido en el mapa.
-    return animate ? [] : coordinates;
+    return animate ? [] : activeCoordinates;
   });
 
   const displayedCoordsRef = useRef<LatLng[]>(displayedCoords);
@@ -251,15 +285,15 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
   const fadeRafIdRef = useRef<number | null>(null);
   const lastCoordsRef = useRef<LatLng[] | null>(null);
   const isMountedRef = useRef<boolean>(true);
-  const hasDrawnInitialRef = useRef<boolean>(!animate && Boolean(coordinates && coordinates.length >= 2));
+  const hasDrawnInitialRef = useRef<boolean>(!animate && Boolean(activeCoordinates && activeCoordinates.length >= 2));
 
-  // Pre-calcular distancias acumuladas solo cuando cambian las coordenadas de entrada
+  // Pre-calcular distancias acumuladas solo cuando cambian las coordenadas activas de entrada
   const { cumulativeDistances, totalDistance } = useMemo(() => {
-    if (!coordinates || coordinates.length < 2) {
+    if (!activeCoordinates || activeCoordinates.length < 2) {
       return { cumulativeDistances: [0], totalDistance: 0 };
     }
-    return computeCumulativeDistances(coordinates);
-  }, [coordinates]);
+    return computeCumulativeDistances(activeCoordinates);
+  }, [activeCoordinates]);
 
   const cancelActiveAnimation = () => {
     if (rafIdRef.current !== null) {
@@ -292,8 +326,8 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
         if (nextState.match(/inactive|background/)) {
           cancelActiveAnimation();
           cancelFadeAnimation();
-          if (coordinates && coordinates.length >= 2) {
-            setDisplayedCoords(coordinates);
+          if (activeCoordinates && activeCoordinates.length >= 2) {
+            setDisplayedCoords(activeCoordinates);
             setOpacity(1);
             hasDrawnInitialRef.current = true;
           }
@@ -304,12 +338,12 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
     return () => {
       subscription.remove();
     };
-  }, [coordinates]);
+  }, [activeCoordinates]);
 
   // Efecto principal de animación y transición de coordenadas
   useEffect(() => {
     // 1. Coordenadas ausentes o vacías: manejar fade-out suave o limpieza inmediata
-    if (!coordinates || coordinates.length < 2) {
+    if (!activeCoordinates || activeCoordinates.length < 2) {
       cancelActiveAnimation();
 
       const prevDisplayed = displayedCoordsRef.current;
@@ -357,14 +391,14 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
     cancelFadeAnimation();
     setOpacity(1);
 
-    lastCoordsRef.current = coordinates;
+    lastCoordsRef.current = activeCoordinates;
 
     // 3. Reemplazo Atómico en Movimiento (Hallazgo 3):
     // Si la ruta inicial ya se dibujó con anterioridad (o animate=false), cualquier recálculo,
     // giro o actualización de GPS se aplica instantáneamente sin vaciar la pantalla ni rehacer el draw-in de 1s.
     if (hasDrawnInitialRef.current || !animate || duration <= 0) {
       cancelActiveAnimation();
-      setDisplayedCoords(coordinates);
+      setDisplayedCoords(activeCoordinates);
       hasDrawnInitialRef.current = true;
       onAnimationComplete?.();
       return;
@@ -385,7 +419,7 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
       const easedProgress = easeOutCubic(rawProgress);
 
       const interpolated = interpolateRouteAtProgress(
-        coordinates,
+        activeCoordinates,
         cumulativeDistances,
         totalDistance,
         easedProgress,
@@ -397,7 +431,7 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
         rafIdRef.current = requestAnimationFrame(frame);
       } else {
         rafIdRef.current = null;
-        setDisplayedCoords(coordinates); // Asegurar coordenadas exactas finales
+        setDisplayedCoords(activeCoordinates); // Asegurar coordenadas exactas finales
         hasDrawnInitialRef.current = true;
         onAnimationComplete?.();
       }
@@ -410,7 +444,7 @@ export const AnimatedPolyline: React.FC<AnimatedPolylineProps> = ({
       cancelFadeAnimation();
     };
   }, [
-    coordinates,
+    activeCoordinates,
     cumulativeDistances,
     totalDistance,
     duration,

@@ -6,7 +6,7 @@ export interface RouteCoordinate {
   longitude: number;
 }
 
-export type RouteProvider = 'google' | 'osrm';
+export type RouteProvider = 'google' | 'osrm' | 'geodesic_fallback';
 
 export interface RouteResult {
   coordinates: RouteCoordinate[];
@@ -54,7 +54,8 @@ export const MIN_RENDERABLE_POLYLINE_METERS = 35; // Distancia mínima para que 
 export const SHORT_RANGE_GEODESIC_THRESHOLD_METERS = 100; // Umbral donde se evalúa el ratio de desvío
 export const MAX_SHORT_RANGE_DETOUR_RATIO = 3.5; // Razón máxima (distanciaVial / distanciaGeodésica) en rango corto
 export const MAX_ABSOLUTE_SHORT_RANGE_METERS = 400; // Desvío máximo absoluto cuando están a < 70m en línea recta
-export const OSRM_SNAP_RADIUS_METERS = 40; // Radio máximo de snapping para OSRM
+export const OSRM_SNAP_RADIUS_METERS = 40; // Radio sugerido de snapping inicial
+export const LAST_MILE_MAX_STITCH_METERS = 350; // Distancia máxima para conectar la última calle con el marcador del cliente
 
 export function clearClientRouteCache(): void {
   clientRouteCache.clear();
@@ -183,6 +184,74 @@ export function sanitizeRouteCoordinates(coords: RouteCoordinate[]): RouteCoordi
 }
 
 /**
+ * Conecta los extremos de la ruta vial con las posiciones geográficas reales
+ * del origen y destino (Last-Mile Stitching).
+ * Si el cliente está dentro de una casa/condominio a metros de la última calle,
+ * este método une la última calle con el marcador del cliente sin cortes visuales.
+ */
+export function stitchRouteEndPoints(
+  coords: RouteCoordinate[],
+  origin: RouteCoordinate,
+  dest: RouteCoordinate,
+): RouteCoordinate[] {
+  if (!coords || coords.length < 2) return coords;
+
+  const result = [...coords];
+
+  // 1. Conexión de inicio (Proveedor -> Primera calle transitable)
+  const firstPt = result[0];
+  const originGap = computeGeodesicDistance(origin, firstPt);
+  if (originGap > 2 && originGap <= LAST_MILE_MAX_STITCH_METERS) {
+    result.unshift({ latitude: origin.latitude, longitude: origin.longitude });
+  }
+
+  // 2. Conexión de final (Última calle transitable -> Marcador del Cliente)
+  const lastPt = result[result.length - 1];
+  const destGap = computeGeodesicDistance(lastPt, dest);
+  if (destGap > 2 && destGap <= LAST_MILE_MAX_STITCH_METERS) {
+    result.push({ latitude: dest.latitude, longitude: dest.longitude });
+  }
+
+  return sanitizeRouteCoordinates(result);
+}
+
+/**
+ * Genera una ruta geodésica de contingencia (línea directa interpolada)
+ * cuando ningún servicio de mapas (Backend ni OSRM) tiene conectividad.
+ * Garantiza que la pantalla nunca quede sin guía visual de navegación.
+ */
+export function createGeodesicRouteResult(
+  origin: RouteCoordinate,
+  dest: RouteCoordinate,
+): RouteResult {
+  const dist = Math.round(computeGeodesicDistance(origin, dest));
+  // Velocidad de contingencia estimada en ciudad: ~30 km/h (8.33 m/s)
+  const dur = Math.max(10, Math.round(dist / 8.33));
+
+  // Generar al menos un punto intermedio para animación fluida
+  const midLat = (origin.latitude + dest.latitude) / 2;
+  const midLng = (origin.longitude + dest.longitude) / 2;
+
+  const coordinates: RouteCoordinate[] = [
+    { latitude: origin.latitude, longitude: origin.longitude },
+    { latitude: midLat, longitude: midLng },
+    { latitude: dest.latitude, longitude: dest.longitude },
+  ];
+
+  return {
+    coordinates,
+    distanceMeters: dist,
+    durationSeconds: dur,
+    distance: dist,
+    duration: dur,
+    provider: 'geodesic_fallback',
+    origin: { latitude: origin.latitude, longitude: origin.longitude },
+    destination: { latitude: dest.latitude, longitude: dest.longitude },
+    calculatedAt: Date.now(),
+  };
+}
+
+/**
  * Consulta la ruta vial al Backend Proxy (que orquesta Google Maps y OSRM server-side).
  */
 async function fetchFromBackendProxy(
@@ -217,7 +286,8 @@ async function fetchFromBackendProxy(
       longitude: Number(c.longitude),
     }));
 
-    const sanitized = sanitizeRouteCoordinates(rawCoords);
+    const stitched = stitchRouteEndPoints(rawCoords, origin, dest);
+    const sanitized = sanitizeRouteCoordinates(stitched);
     if (sanitized.length < 2) return null;
 
     const dist = Number(data.distanceMeters ?? data.distance) || 0;
@@ -255,24 +325,41 @@ async function fetchFromClientOsrm(
 ): Promise<RouteResult | null> {
   const startTs = Date.now();
   const baseUrl = OSRM_BASE_URL || 'https://router.project-osrm.org/route/v1/driving';
-  const url = `${baseUrl}/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson&radiuses=${OSRM_SNAP_RADIUS_METERS};${OSRM_SNAP_RADIUS_METERS}`;
 
-  try {
+  // Helper para ejecutar fetch a OSRM con o sin radiuses
+  const executeOsrmQuery = async (useRadiuses: boolean): Promise<any | null> => {
+    const radiusesParam = useRadiuses ? `&radiuses=${OSRM_SNAP_RADIUS_METERS};${OSRM_SNAP_RADIUS_METERS}` : '';
+    const queryUrl = `${baseUrl}/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson${radiusesParam}`;
+
     const timeoutSignal =
       typeof (AbortSignal as any).timeout === 'function'
         ? (AbortSignal as any).timeout(FETCH_TIMEOUT_MS)
         : undefined;
     const combinedSignal = signal || timeoutSignal;
 
-    const res = await fetch(url, { signal: combinedSignal });
+    const res = await fetch(queryUrl, { signal: combinedSignal });
     if (!res.ok) {
       if (__DEV__) console.warn(`[ROUTE:CLIENT_OSRM_ERROR] httpStatus=${res.status} durationMs=${Date.now() - startTs}`);
       return null;
     }
+    return await res.json();
+  };
 
-    const data = await res.json();
-    if (data.code !== 'Ok' || !data.routes?.[0]?.geometry?.coordinates) {
-      if (__DEV__) console.warn(`[ROUTE:CLIENT_OSRM_NO_ROUTE] code=${data.code} durationMs=${Date.now() - startTs}`);
+  try {
+    // 1. Intentar con radiuses estándar
+    let data = await executeOsrmQuery(true);
+
+    // 2. Si falló por NoSegment (coordenada fuera del asfalto o en condominio/interior),
+    // reintentar inmediatamente SIN restricción de radio para proyectar a la calle más cercana.
+    if (!data || data.code === 'NoSegment' || !data.routes?.[0]?.geometry?.coordinates) {
+      if (__DEV__) {
+        console.log('[ROUTE:CLIENT_OSRM_RETRY_UNCONSTRAINED] Reintentando OSRM sin radio restrictivo para alcanzar la última calle cercana...');
+      }
+      data = await executeOsrmQuery(false);
+    }
+
+    if (!data || data.code !== 'Ok' || !data.routes?.[0]?.geometry?.coordinates) {
+      if (__DEV__) console.warn(`[ROUTE:CLIENT_OSRM_NO_ROUTE] code=${data?.code} durationMs=${Date.now() - startTs}`);
       return null;
     }
 
@@ -282,7 +369,9 @@ async function fetchFromClientOsrm(
       longitude: lng,
     }));
 
-    const sanitized = sanitizeRouteCoordinates(rawCoords);
+    // 3. Last-Mile Stitching: Conectar la última calle transitable directamente con la puerta/icono del cliente
+    const stitchedCoords = stitchRouteEndPoints(rawCoords, origin, dest);
+    const sanitized = sanitizeRouteCoordinates(stitchedCoords);
     if (sanitized.length < 2) return null;
 
     const dist = Math.round(route.distance || 0);

@@ -3,6 +3,7 @@ import { useRealtime } from '../../realtime/RealtimeContext';
 import { useLocation } from '../../context/LocationContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useRoutePolyline } from '../../hooks/useRoute';
+import { useRole } from '../../context/RoleContext';
 import { getImageUrl } from '../../utils/imageUrl';
 import { summarizeForRole } from '../../utils/ratings';
 import { navigate } from '../../navigation/navigationRef';
@@ -157,6 +158,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const realtime = useRealtime();
   const { location } = useLocation();
   const { showNotification, clearNotification } = useNotification();
+  const { role } = useRole();
 
   const [showChat, setShowChat] = useState(false);
 
@@ -344,36 +346,85 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   );
 
   const notifiedClientApproachingRef = useRef<Record<number, boolean>>({});
+  const notifiedClientMilestonesRef = useRef<Record<number, Set<string>>>({});
 
-  // Notificación para cliente: profesional en camino por llegar (entre paso 8 y 9)
+  // Notificación escalonada de proximidad para el cliente (1km, 500m, 200m, 5m) y ETA
   useEffect(() => {
+    if (role === 'provider') return;
     const orderId = clientActiveOrder?.id;
     if (!orderId || clientActiveOrder?.status !== 'ACCEPTED') return;
 
+    if (!notifiedClientMilestonesRef.current[orderId]) {
+      notifiedClientMilestonesRef.current[orderId] = new Set<string>();
+    }
+    const orderMilestones = notifiedClientMilestonesRef.current[orderId];
+    const distM = distanceToProviderKm != null ? Math.round(distanceToProviderKm * 1000) : null;
+
+    // Hito 4: 5 metros (llegada inminente / en puerta)
+    if (distM != null && distM <= 10 && !orderMilestones.has('5M')) {
+      orderMilestones.add('5M');
+      orderMilestones.add('200M');
+      orderMilestones.add('500M');
+      orderMilestones.add('1000M');
+      showNotification({
+        id: `clientOrder:${orderId}:DIST_5M`,
+        title: 'Profesional por llegar',
+        message: 'El profesional está en tu puerta (a 5 metros de tu ubicación).',
+        type: 'info',
+      });
+    }
+    // Hito 3: 200 metros
+    else if (distM != null && distM <= 200 && !orderMilestones.has('200M')) {
+      orderMilestones.add('200M');
+      orderMilestones.add('500M');
+      orderMilestones.add('1000M');
+      showNotification({
+        id: `clientOrder:${orderId}:DIST_200M`,
+        title: 'Profesional a 200 m',
+        message: 'El profesional está muy cerca (a 200 metros).',
+        type: 'info',
+      });
+    }
+    // Hito 2: 500 metros
+    else if (distM != null && distM <= 500 && !orderMilestones.has('500M')) {
+      orderMilestones.add('500M');
+      orderMilestones.add('1000M');
+      showNotification({
+        id: `clientOrder:${orderId}:DIST_500M`,
+        title: 'Profesional a 500 m',
+        message: 'El profesional está a 500 metros de tu ubicación.',
+        type: 'info',
+      });
+    }
+    // Hito 1: 1 km (1.000 metros)
+    else if (distM != null && distM <= 1000 && !orderMilestones.has('1000M')) {
+      orderMilestones.add('1000M');
+      showNotification({
+        id: `clientOrder:${orderId}:DIST_1000M`,
+        title: 'Profesional a 1 km',
+        message: 'El profesional se encuentra a aproximadamente 1 km de tu ubicación.',
+        type: 'info',
+      });
+    }
+
+    // Alerta complementaria basada en ETA (<= 5 min)
     if (!notifiedClientApproachingRef.current[orderId]) {
-      const isDistanceClose = distanceToProviderKm != null && distanceToProviderKm <= 0.4;
       const match = etaLabel ? etaLabel.match(/(\d+)\s*min/) : null;
       const isUnderOneMin = etaLabel ? (etaLabel.includes('< 1') || etaLabel.includes('<1')) : false;
       const mins = match ? parseInt(match[1], 10) : (isUnderOneMin ? 1 : null);
       const isEtaClose = mins !== null && mins <= 5 && mins > 0;
 
-      if (isDistanceClose || isEtaClose) {
+      if (isEtaClose) {
         notifiedClientApproachingRef.current[orderId] = true;
-        const msg = etaLabel && isEtaClose
-          ? `El profesional está por llegar en ${etaLabel}.`
-          : (distanceToProviderKm != null
-              ? `El profesional está a menos de ${Math.max(50, Math.round(distanceToProviderKm * 1000))}m de tu ubicación.`
-              : 'El profesional está por llegar a tu ubicación.');
-
         showNotification({
           id: `clientOrder:${orderId}:APPROACHING`,
           title: 'Profesional por llegar',
-          message: msg,
+          message: `El profesional está por llegar en ${etaLabel}.`,
           type: 'info',
         });
       }
     }
-  }, [clientActiveOrder?.id, clientActiveOrder?.status, distanceToProviderKm, etaLabel, showNotification]);
+  }, [role, clientActiveOrder?.id, clientActiveOrder?.status, distanceToProviderKm, etaLabel, showNotification]);
 
   // ---- Session de proveedor ------------------------------------------------
   const [orderState, setOrderState] = useState<ProviderOrderState>('VIEW_REQUEST');
@@ -495,6 +546,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Notificación de proximidad al llegar a la zona del cliente (<= 100m) mientras está en camino.
   useEffect(() => {
+    if (role === 'client') return;
     const currentOrderId = providerOrder?.id;
     if (!currentOrderId) return;
     if (!notifiedStatesByOrderRef.current[currentOrderId]) {
@@ -510,10 +562,11 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         type: 'info',
       });
     }
-  }, [orderState, isWithinArrivalRadius, providerOrder?.id, showNotification]);
+  }, [role, orderState, isWithinArrivalRadius, providerOrder?.id, showNotification]);
 
   // Notificaciones por transición de estado del servicio (garantizadas 1 vez por orden y estado).
   useEffect(() => {
+    if (role === 'client') return;
     const currentOrderId = providerOrder?.id;
     if (!currentOrderId) return;
 
@@ -556,7 +609,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
         type: 'success',
       });
     }
-  }, [orderState, providerOrder?.id, showNotification]);
+  }, [role, orderState, providerOrder?.id, showNotification]);
 
   const handleFinish = useCallback(
     (overrideState?: ProviderOrderState) => {

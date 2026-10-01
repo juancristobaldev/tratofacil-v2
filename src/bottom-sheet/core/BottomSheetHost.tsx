@@ -276,6 +276,7 @@ export const BottomSheetHost: React.FC<BottomSheetHostProps> = ({
 
   return (
     <Sheet
+      key={request.key}
       ref={modalRef}
       sheetKey={request.key}
       contentMode={resolvedContentMode}

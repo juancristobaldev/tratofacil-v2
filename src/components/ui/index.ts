@@ -42,4 +42,6 @@ export * from './SettingsMenuCard';
 export * from './StatsOverviewCard';
 export * from './ReviewCard';
 export * from './MapFloatingNavigationControls';
+export * from './DrivingNavigationHUD';
+export * from './ClientArrivalHUD';
 export * from './RegionCitySelect';

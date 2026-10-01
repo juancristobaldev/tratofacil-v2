@@ -6,10 +6,13 @@ import {
   clearClientRouteCache,
   computeGeodesicDistance,
   isSensibleRoute,
+  stitchRouteEndPoints,
+  createGeodesicRouteResult,
   MIN_ROUTING_PROXIMITY_METERS,
   MIN_RENDERABLE_POLYLINE_METERS,
   SHORT_RANGE_GEODESIC_THRESHOLD_METERS,
   MAX_SHORT_RANGE_DETOUR_RATIO,
+  type RouteCoordinate,
 } from './directions';
 
 describe('Directions Subsystem (Mobile Frontend)', () => {
@@ -230,6 +233,49 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
       expect((globalThis as any).fetch).toHaveBeenCalledTimes(1); // No new network call
     });
 
+    it('should retry OSRM without radiuses when initial response is NoSegment and stitch last mile to client', async () => {
+      // 1. Backend fails
+      ((globalThis as any).fetch as jest.Mock).mockRejectedValueOnce(new Error('Backend offline'));
+
+      // 2. OSRM first attempt returns NoSegment (coordinate off-road / in building)
+      ((globalThis as any).fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          code: 'NoSegment',
+          message: 'Could not find a matching segment for coordinate',
+        }),
+      });
+
+      // 3. OSRM second attempt (unconstrained) returns the route to the nearest road
+      const nearestRoadOrigin = [-70.6693, -33.4489];
+      const nearestRoadDest = [-70.6708, -33.4518]; // Nearest street ~30m away from client
+      ((globalThis as any).fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          code: 'Ok',
+          routes: [
+            {
+              geometry: {
+                coordinates: [nearestRoadOrigin, nearestRoadDest],
+              },
+              distance: 1150,
+              duration: 170,
+            },
+          ],
+        }),
+      });
+
+      const res = await getDirections(origin, dest);
+
+      expect(res).not.toBeNull();
+      expect(res?.provider).toBe('osrm');
+      expect(res?.coordinates.length).toBeGreaterThanOrEqual(2);
+      // Verify that the route was stitched to the exact destination point (client)
+      const lastCoord = res!.coordinates[res!.coordinates.length - 1];
+      expect(lastCoord.latitude).toBeCloseTo(dest.latitude, 4);
+      expect(lastCoord.longitude).toBeCloseTo(dest.longitude, 4);
+    });
+
     it('should suppress directions when origin and destination are in the same house (<= 30m)', async () => {
       // Coordenadas a ~11 metros de distancia
       const origin = { latitude: -33.44890, longitude: -70.66930 };
@@ -241,6 +287,33 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
       const result = await getDirections(origin, dest);
       expect(result).toBeNull();
       expect((globalThis as any).fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Last-Mile Stitching & Geodesic Fallback Helpers', () => {
+    const orig: RouteCoordinate = { latitude: -33.4480, longitude: -70.6680 };
+    const roadStart: RouteCoordinate = { latitude: -33.4482, longitude: -70.6682 };
+    const roadEnd: RouteCoordinate = { latitude: -33.4510, longitude: -70.6700 };
+    const destination: RouteCoordinate = { latitude: -33.4512, longitude: -70.6702 };
+
+    it('should connect origin and destination to road endpoints within 350m', () => {
+      const roadCoords = [roadStart, roadEnd];
+      const stitched = stitchRouteEndPoints(roadCoords, orig, destination);
+
+      expect(stitched.length).toBe(4);
+      expect(stitched[0]).toEqual(orig);
+      expect(stitched[stitched.length - 1]).toEqual(destination);
+    });
+
+    it('should generate a valid fallback RouteResult with createGeodesicRouteResult', () => {
+      const fallback = createGeodesicRouteResult(orig, destination);
+
+      expect(fallback.provider).toBe('geodesic_fallback');
+      expect(fallback.coordinates.length).toBe(3); // origin, midPoint, destination
+      expect(fallback.distanceMeters).toBeGreaterThan(0);
+      expect(fallback.durationSeconds).toBeGreaterThan(0);
+      expect(fallback.origin).toEqual(orig);
+      expect(fallback.destination).toEqual(destination);
     });
   });
 

@@ -657,6 +657,78 @@ describe('useMapCamera Hook & Real Safe Viewport Validation', () => {
     expect(cameraArg.center.longitude).toBeCloseTo(-72.595, 3);
   });
 
+  it('NAVIGATION_FORCE_IDEMPOTENCY: toggleNavigationMode with force=true stays in NAVIGATION mode and updates camera', () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const userCoord = { latitude: -38.745, longitude: -72.595 };
+    // Activar navegación inicial
+    act(() => {
+      hookValue.toggleNavigationMode(userCoord, { heading: 45, force: true, pitch: 65 });
+    });
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+    mockMapRef.current.animateCamera.mockClear();
+
+    // Sincronización de ruta (route_geometry_ready_sync) con force: true
+    act(() => {
+      hookValue.toggleNavigationMode(userCoord, {
+        heading: 50,
+        force: true,
+        pitch: 65,
+        reason: 'route_geometry_ready_sync',
+      });
+    });
+
+    // Debe permanecer en NAVIGATION y NO llamar a exitNavigationMode (pitch > 0)
+    expect(hookValue.cameraMode).toBe('NAVIGATION');
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pitch: 65,
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('NAVIGATION_FOLLOW_PITCH_RETENTION: followCoordinate in navigation mode does not collapse pitch to 0', async () => {
+    act(() => {
+      ReactTestRenderer.create(
+        <TestComponent
+          mapRef={mockMapRef}
+          headerBottom={100}
+          sheetTop={600}
+          windowDimensions={{ width: 390, height: 844 }}
+        />
+      );
+    });
+
+    const userCoord = { latitude: -38.745, longitude: -72.595 };
+    act(() => {
+      hookValue.navigateToCoordinate(userCoord, { heading: 45, pitch: 65, force: true });
+    });
+    mockMapRef.current.animateCamera.mockClear();
+
+    // Stream de GPS llama a followCoordinate
+    await act(async () => {
+      await hookValue.followCoordinate(userCoord, {
+        heading: 45,
+        force: true,
+        reason: 'nav_gps_stream_follow',
+      });
+    });
+
+    expect(mockMapRef.current.animateCamera).toHaveBeenCalledTimes(1);
+    const cameraCall = mockMapRef.current.animateCamera.mock.calls[0][0];
+    expect(cameraCall.pitch).toBeGreaterThan(0);
+  });
+
   it('DEFAULT_REGION_FIT: fitToDefaultRegion animates camera to default Temuco + Padre Las Casas bounds', () => {
     act(() => {
       ReactTestRenderer.create(

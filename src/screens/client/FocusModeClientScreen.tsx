@@ -12,7 +12,7 @@ import {
 import MapView, { type Region } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from '../../theme';
-import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../../components/ui';
+import { Icon, Avatar, AnimatedUserMarker, AnimatedProviderMarker, AnimatedPolyline, HousePin, MapFloatingNavigationControls, ClientArrivalHUD } from '../../components/ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -29,7 +29,6 @@ import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 
 export const FocusModeClientScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const headerBottom = 60 + insets.top;
   const bottomNavHeight = useBottomNavHeight();
   const navigation = useNavigation<any>();
   const { dismiss, sheetMetrics, setIndex, active } = useBottomSheet();
@@ -43,6 +42,8 @@ export const FocusModeClientScreen: React.FC = () => {
   ) || null;
 
   const status = activeOrder?.status || 'PENDING';
+  const isClientArrivalHUDVisible = status === 'ACCEPTED';
+  const headerBottom = isClientArrivalHUDVisible ? Math.max(165, 109 + 44 + 12) : 60 + insets.top;
 
   const polylineCoords = routeCoords;
 
@@ -285,6 +286,7 @@ export const FocusModeClientScreen: React.FC = () => {
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
+          testID="client-map-view"
           style={styles.map}
           initialRegion={initialCenterRegion}
           onPanDrag={() => {
@@ -318,11 +320,31 @@ export const FocusModeClientScreen: React.FC = () => {
           {status === 'ACCEPTED' && polylineCoords.length >= 2 && (
             <AnimatedPolyline
               coordinates={polylineCoords}
+              currentPosition={providerCoords}
               strokeColor={TOKENS.colors.brand500}
               latitudeDelta={mapLatitudeDelta}
             />
           )}
         </MapView>
+
+        {/* Client Arrival HUD: Misma posición canónica que Driving HUD (top: 25, left: 0, right: 0) */}
+        {isClientArrivalHUDVisible && (
+          <ClientArrivalHUD
+            providerName={provider?.name || provider?.providerName || activeOrder?.provider?.name || 'Profesional'}
+            providerAvatar={getImageUrl(provider?.avatar || activeOrder?.provider?.logoImage?.cdnUrl || null)}
+            providerRating={provider?.rating}
+            vehicleInfo={provider?.serviceName}
+            etaMinutes={session.etaLabel}
+            distanceRemaining={session.distanceLabel}
+            style={{
+              position: 'absolute',
+              top: 25,
+              left: 0,
+              right: 0,
+              zIndex: 60,
+            }}
+          />
+        )}
 
         {status !== 'PENDING' && (
           <MapFloatingNavigationControls
@@ -331,10 +353,8 @@ export const FocusModeClientScreen: React.FC = () => {
             onSmartFraming={handleFollow}
             showNavigation={false}
             showSmartFraming={true}
-            style={[
-              styles.floatingControls,
-              { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },
-            ]}
+            topOffset={isClientArrivalHUDVisible ? 109 : (insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md)}
+            style={styles.floatingControls}
           />
         )}
 

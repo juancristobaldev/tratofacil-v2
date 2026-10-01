@@ -10,6 +10,7 @@ import {
   interpolateRouteAtProgress,
   type LatLng,
 } from './AnimatedPolyline';
+import { trimRouteToPosition } from '../../utils/mapGeometry';
 
 describe('AnimatedPolyline Geodetic Utilities', () => {
   const p1: LatLng = { latitude: -33.4489, longitude: -70.6693 };
@@ -385,3 +386,89 @@ describe('AnimatedPolyline Component Lifecycle & Concurrency', () => {
     expect(renderer!.toJSON()).toBeNull();
   });
 });
+
+describe('trimRouteToPosition & Vanishing Polyline (Zero Trail Behind Pin)', () => {
+  const p1: LatLng = { latitude: -33.4489, longitude: -70.6693 };
+  const p2: LatLng = { latitude: -33.4520, longitude: -70.6710 };
+  const p3: LatLng = { latitude: -33.4560, longitude: -70.6740 };
+  const route = [p1, p2, p3];
+
+  it('preserves full route if currentPosition is null or route has < 2 points', () => {
+    expect(trimRouteToPosition(route, null)).toEqual(route);
+    expect(trimRouteToPosition(route, undefined)).toEqual(route);
+    expect(trimRouteToPosition([p1], p1)).toEqual([p1]);
+  });
+
+  it('preserves route if vehicle is off-route (> 40m)', () => {
+    // 5 km away (way off route)
+    const farOff: LatLng = { latitude: -33.5000, longitude: -70.6000 };
+    expect(trimRouteToPosition(route, farOff)).toEqual(route);
+  });
+
+  it('trims past vertices and starts exactly at currentPosition when provider has moved past p1 towards p2', () => {
+    // Posición a mitad de camino entre p1 y p2
+    const midwayP1P2: LatLng = {
+      latitude: (-33.4489 + -33.4520) / 2,
+      longitude: (-70.6693 + -70.6710) / 2,
+    };
+
+    const trimmed = trimRouteToPosition(route, midwayP1P2);
+    // El punto de inicio de la polyline visible es EXACTAMENTE el pin del vehículo
+    expect(trimmed[0]).toEqual(midwayP1P2);
+    // Y el resto de la ruta va hacia p2 y p3
+    expect(trimmed[1]).toEqual(p2);
+    expect(trimmed[2]).toEqual(p3);
+    // p1 ya no existe en la polyline visible (cero cola detrás del pin)
+    expect(trimmed.length).toBe(3);
+  });
+
+  it('discards p1 and p2 when vehicle has moved to segment p2 -> p3', () => {
+    // Posición a mitad de camino entre p2 y p3
+    const midwayP2P3: LatLng = {
+      latitude: (-33.4520 + -33.4560) / 2,
+      longitude: (-70.6710 + -70.6740) / 2,
+    };
+
+    const trimmed = trimRouteToPosition(route, midwayP2P3);
+    expect(trimmed[0]).toEqual(midwayP2P3);
+    expect(trimmed[1]).toEqual(p3);
+    // p1 y p2 fueron descartados por haber sido ya transitados
+    expect(trimmed.length).toBe(2);
+  });
+
+  it('returns empty array when vehicle arrives at destination (< 15m)', () => {
+    // 2 metros del destino p3
+    const arrived: LatLng = {
+      latitude: p3.latitude + 0.00001,
+      longitude: p3.longitude + 0.00001,
+    };
+
+    const trimmed = trimRouteToPosition(route, arrived, { minRemainingDistanceMeters: 15 });
+    expect(trimmed).toEqual([]);
+  });
+
+  it('renders AnimatedPolyline with currentPosition without trailing polyline behind pin', () => {
+    const midwayP1P2: LatLng = {
+      latitude: (-33.4489 + -33.4520) / 2,
+      longitude: (-70.6693 + -70.6710) / 2,
+    };
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = ReactTestRenderer.create(
+        <AnimatedPolyline
+          coordinates={route}
+          currentPosition={midwayP1P2}
+          animate={false}
+        />,
+      );
+    });
+
+    const polylines = renderer!.root.children as any[];
+    expect(polylines.length).toBe(2); // Glow + Core
+    // La polyline renderizada empieza en midwayP1P2, NO en p1
+    expect(polylines[0].props.coordinates[0]).toEqual(midwayP1P2);
+    expect(polylines[1].props.coordinates[0]).toEqual(midwayP1P2);
+  });
+});
+

@@ -482,3 +482,152 @@ export function calculateDynamicEdgePadding(params: DynamicPaddingParams): Dynam
     left: horizontalPadding,
   };
 }
+
+export interface SegmentProjection {
+  closestPoint: RouteCoordinate;
+  distanceMeters: number;
+  fraction: number; // 0..1
+}
+
+/**
+ * Proyecta un punto sobre un segmento de calle (segStart -> segEnd).
+ */
+export function projectPointOnSegment(
+  point: RouteCoordinate,
+  segStart: RouteCoordinate,
+  segEnd: RouteCoordinate,
+): SegmentProjection {
+  const segLength = getDistanceMeters(segStart, segEnd);
+
+  if (segLength < 0.1) {
+    return {
+      closestPoint: { ...segStart },
+      distanceMeters: getDistanceMeters(point, segStart),
+      fraction: 0,
+    };
+  }
+
+  const midLatRad = ((segStart.latitude + segEnd.latitude) / 2) * (Math.PI / 180);
+  const metersPerDegreeLat = 111132.954;
+  const metersPerDegreeLng = 111412.84 * Math.cos(midLatRad);
+
+  const ax = segStart.longitude * metersPerDegreeLng;
+  const ay = segStart.latitude * metersPerDegreeLat;
+  const bx = segEnd.longitude * metersPerDegreeLng;
+  const by = segEnd.latitude * metersPerDegreeLat;
+  const px = point.longitude * metersPerDegreeLng;
+  const py = point.latitude * metersPerDegreeLat;
+
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+
+  const abSq = abx * abx + aby * aby;
+  let t = (apx * abx + apy * aby) / abSq;
+  t = Math.max(0, Math.min(1, t));
+
+  const projLat = segStart.latitude + t * (segEnd.latitude - segStart.latitude);
+  const projLng = segStart.longitude + t * (segEnd.longitude - segStart.longitude);
+
+  const closestPoint: RouteCoordinate = { latitude: projLat, longitude: projLng };
+  const distanceMeters = getDistanceMeters(point, closestPoint);
+
+  return {
+    closestPoint,
+    distanceMeters,
+    fraction: t,
+  };
+}
+
+export interface TrimRouteOptions {
+  lastSegmentIndex?: number;
+  maxSnapDistanceMeters?: number;
+  minRemainingDistanceMeters?: number;
+}
+
+/**
+ * Recorta la polyline de una ruta eliminando los tramos ya transitados detrás del vehículo/proveedor.
+ * Hace nacer el trazo visible directamente en el pin (o proyección sobre la calle) hacia el destino,
+ * garantizando cero estela/cola detrás del pin en movimiento y cero parpadeo a 60 FPS.
+ */
+export function trimRouteToPosition(
+  coordinates: RouteCoordinate[],
+  currentPosition: RouteCoordinate | null | undefined,
+  options?: TrimRouteOptions,
+): RouteCoordinate[] {
+  if (!coordinates || coordinates.length < 2) {
+    return coordinates || [];
+  }
+  if (!currentPosition || !isValidGeoCoordinate(currentPosition)) {
+    return coordinates;
+  }
+
+  const maxSnapDist = options?.maxSnapDistanceMeters ?? 40; // 40m de tolerancia
+  const minRemainingDist = options?.minRemainingDistanceMeters ?? 15; // 15m para llegada
+  const numSegments = coordinates.length - 1;
+  const lastIndex = options?.lastSegmentIndex ?? 0;
+
+  // 1. Búsqueda con ventana acotada para priorizar avance monotónico (evitar saltos en calles paralelas o loops)
+  let bestDist = Infinity;
+  let bestIndex = -1;
+  let bestProjection: SegmentProjection | null = null;
+
+  const startIdx = Math.max(0, lastIndex - 1);
+  const endIdx = Math.min(numSegments, lastIndex + 6);
+
+  for (let i = startIdx; i < endIdx; i++) {
+    const proj = projectPointOnSegment(currentPosition, coordinates[i], coordinates[i + 1]);
+    if (proj.distanceMeters < bestDist) {
+      bestDist = proj.distanceMeters;
+      bestIndex = i;
+      bestProjection = proj;
+    }
+  }
+
+  // Si la distancia en la ventana supera el umbral, realizar un barrido completo por seguridad
+  if (bestDist > maxSnapDist) {
+    for (let i = 0; i < numSegments; i++) {
+      if (i >= startIdx && i < endIdx) continue;
+      const proj = projectPointOnSegment(currentPosition, coordinates[i], coordinates[i + 1]);
+      if (proj.distanceMeters < bestDist) {
+        bestDist = proj.distanceMeters;
+        bestIndex = i;
+        bestProjection = proj;
+      }
+    }
+  }
+
+  // 2. Si el vehículo está fuera de ruta (> 40m), conservar la ruta intacta hasta que el servidor devuelva el nuevo trazado
+  if (bestIndex === -1 || bestDist > maxSnapDist || !bestProjection) {
+    return coordinates;
+  }
+
+  // 3. Comprobar si ya llegó al destino (distancia restante al último punto < minRemainingDist)
+  const destPoint = coordinates[coordinates.length - 1];
+  const distToDest = getDistanceMeters(currentPosition, destPoint);
+  if (bestIndex === numSegments - 1 && distToDest < minRemainingDist) {
+    return [];
+  }
+
+  // 4. Construir la ruta recortada desde la posición actual hacia adelante
+  const remainingPointsAhead = coordinates.slice(bestIndex + 1);
+
+  const startPoint: RouteCoordinate = {
+    latitude: currentPosition.latitude,
+    longitude: currentPosition.longitude,
+  };
+
+  if (remainingPointsAhead.length === 0) {
+    return [startPoint, destPoint];
+  }
+
+  // Si el primer punto restante está excesivamente cerca (< 3m), evitar dos puntos colindantes
+  const distToNext = getDistanceMeters(startPoint, remainingPointsAhead[0]);
+  if (distToNext < 3 && remainingPointsAhead.length > 1) {
+    return [startPoint, ...remainingPointsAhead.slice(1)];
+  }
+
+  return [startPoint, ...remainingPointsAhead];
+}
+

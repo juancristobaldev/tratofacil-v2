@@ -105,25 +105,57 @@ export const DevJoystickStick: React.FC<DevJoystickStickProps> = ({
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },
-        { scale: isDragging.value ? 1.08 : 1.0 },
+        { scale: isDragging.value ? 1.10 : 1.0 },
       ],
-      backgroundColor: isDragging.value ? '#22d3ee' : '#38bdf8',
+      backgroundColor: isDragging.value ? '#0284c7' : '#0369a1',
+      borderColor: isDragging.value ? '#38bdf8' : 'rgba(56, 189, 248, 0.7)',
     };
   });
 
   const halfSize = size / 2;
   const halfStick = stickSize / 2;
+  const midGuideRadius = (size * 0.6) / 2;
+  const deadZoneRadius = (size * 0.22) / 2;
 
   return (
     <View style={[styles.baseCircle, { width: size, height: size, borderRadius: halfSize }]}>
-      {/* Retícula de ejes */}
-      <View style={[styles.axisCrossHorizontal, { width: size - 24, left: 12, top: halfSize - 0.5 }]} />
-      <View style={[styles.axisCrossVertical, { height: size - 24, top: 12, left: halfSize - 0.5 }]} />
+      {/* Anillo guía de medio recorrido (50-60% throttle) */}
+      <View
+        style={[
+          styles.guideCircle,
+          {
+            width: midGuideRadius * 2,
+            height: midGuideRadius * 2,
+            borderRadius: midGuideRadius,
+          },
+        ]}
+      />
 
-      {/* Indicador de rumbo Norte */}
-      <View style={[styles.northTick, { top: 6, left: halfSize - 3 }]} />
+      {/* Anillo guía de zona muerta (Deadzone) */}
+      <View
+        style={[
+          styles.deadzoneCircle,
+          {
+            width: deadZoneRadius * 2,
+            height: deadZoneRadius * 2,
+            borderRadius: deadZoneRadius,
+          },
+        ]}
+      />
 
-      {/* Stick táctil */}
+      {/* Retícula sutil de ejes */}
+      <View style={[styles.axisCrossHorizontal, { width: size - 32, left: 16, top: halfSize - 0.5 }]} />
+      <View style={[styles.axisCrossVertical, { height: size - 32, top: 16, left: halfSize - 0.5 }]} />
+
+      {/* Indicadores cardinales sutiles */}
+      <View style={[styles.cardinalNorth, { top: 6, left: halfSize - 8 }]}>
+        <View style={styles.northDot} />
+      </View>
+      <View style={[styles.cardinalDot, { right: 8, top: halfSize - 2 }]} />
+      <View style={[styles.cardinalDot, { bottom: 8, left: halfSize - 2 }]} />
+      <View style={[styles.cardinalDot, { left: 8, top: halfSize - 2 }]} />
+
+      {/* Stick táctil de precisión */}
       <GestureDetector gesture={panGesture}>
         <Animated.View
           style={[
@@ -138,7 +170,10 @@ export const DevJoystickStick: React.FC<DevJoystickStickProps> = ({
             animatedStickStyle,
           ]}
         >
-          <View style={styles.stickCenterDot} />
+          {/* Anillo interno de agarre táctil */}
+          <View style={styles.stickInnerGrip}>
+            <View style={styles.stickCenterBeacon} />
+          </View>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -147,50 +182,87 @@ export const DevJoystickStick: React.FC<DevJoystickStickProps> = ({
 
 const styles = StyleSheet.create({
   baseCircle: {
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    borderWidth: 2,
-    borderColor: 'rgba(56, 189, 248, 0.45)',
+    backgroundColor: 'rgba(10, 18, 38, 0.95)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.35)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  guideCircle: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  deadzoneCircle: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.12)',
+    backgroundColor: 'rgba(56, 189, 248, 0.03)',
   },
   axisCrossHorizontal: {
     position: 'absolute',
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   axisCrossVertical: {
     position: 'absolute',
     width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
-  northTick: {
+  cardinalNorth: {
     position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#f43f5e',
+    width: 16,
+    alignItems: 'center',
+  },
+  northDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#38bdf8',
+    shadowColor: '#38bdf8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  cardinalDot: {
+    position: 'absolute',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   stick: {
     position: 'absolute',
     borderWidth: 2,
-    borderColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#38bdf8',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.6,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  stickCenterDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#0f172a',
+  stickInnerGrip: {
+    width: '68%',
+    height: '68%',
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stickCenterBeacon: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#38bdf8',
   },
 });

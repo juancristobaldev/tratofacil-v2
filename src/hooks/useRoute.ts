@@ -3,6 +3,7 @@ import {
   getDirections,
   isUsableRoutingCoordinate,
   computeGeodesicDistance,
+  createGeodesicRouteResult,
   isSensibleRoute,
   MIN_ROUTING_PROXIMITY_METERS,
   type RouteCoordinate,
@@ -74,18 +75,22 @@ export function useRoutePolyline(
   const lastRequestTimeRef = useRef<number>(0);
 
   // Temporizadores
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOriginRef = useRef<RouteCoordinate | null>(null);
+  const pendingDestRef = useRef<RouteCoordinate | null>(null);
   const maxWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimers = useCallback(() => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
+    if (throttleTimerRef.current) {
+      clearTimeout(throttleTimerRef.current);
+      throttleTimerRef.current = null;
     }
     if (maxWaitTimerRef.current) {
       clearTimeout(maxWaitTimerRef.current);
       maxWaitTimerRef.current = null;
     }
+    pendingOriginRef.current = null;
+    pendingDestRef.current = null;
   }, []);
 
   const executeFetch = useCallback(
@@ -187,6 +192,31 @@ export function useRoutePolyline(
     }
 
     // Si no hay ruta previa válida o quedó excesivamente obsoleta:
+    // Si la falla se debe a desconexión o falla total de red (NETWORK_ERROR / TIMEOUT / HTTP_ERROR),
+    // proveer un fallback geodésico suave (línea directa interpolada) para no dejar la pantalla ciega.
+    // Si la ruta fue descartada deliberadamente por insensata (NO_ROUTE por vuelta absurda o proximidad),
+    // se respeta el filtrado y se limpia a [].
+    const geodesicDist = computeGeodesicDistance(orig, destination);
+    if (
+      err.reason === 'NETWORK_ERROR' ||
+      err.reason === 'TIMEOUT' ||
+      err.reason === 'HTTP_ERROR'
+    ) {
+      if (geodesicDist > MIN_ROUTING_PROXIMITY_METERS) {
+        if (__DEV__) console.warn(`[ROUTE:GEODESIC_EMERGENCY_FALLBACK] seq=${seq} aplicando ruta directa de contingencia (${Math.round(geodesicDist)}m).`);
+        const fallbackResult = createGeodesicRouteResult(orig, destination);
+        setRouteCoords(fallbackResult.coordinates);
+        setRouteDuration(fallbackResult.durationSeconds);
+        setRouteDistance(fallbackResult.distanceMeters);
+        setRouteProvider(fallbackResult.provider);
+        setRouteCalculatedAt(fallbackResult.calculatedAt);
+        setRouteOrigin(fallbackResult.origin);
+        setRouteDestination(fallbackResult.destination);
+        setStatus('error');
+        return;
+      }
+    }
+
     setRouteCoords([]);
     setRouteDuration(null);
     setRouteDistance(null);
@@ -268,32 +298,48 @@ export function useRoutePolyline(
       }
 
       // Movimiento significativo (>= 20 metros):
-      const timeSinceLastRequest = Date.now() - lastRequestTimeRef.current;
+      const now = Date.now();
+      const timeSinceLastRequest = now - lastRequestTimeRef.current;
 
-      // Throttle: respetar intervalo mínimo de 1.5s
-      const delayMs =
-        timeSinceLastRequest < ROUTE_REFRESH_MIN_INTERVAL_MS
-          ? Math.max(200, ROUTE_REFRESH_MIN_INTERVAL_MS - timeSinceLastRequest)
-          : 400;
-
-      // Debounce timer para agrupar actualizaciones rápidas consecutivas
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = setTimeout(() => {
+      if (timeSinceLastRequest >= ROUTE_REFRESH_MIN_INTERVAL_MS) {
+        // Cooldown cumplido (>= 1.5s): ejecutar de inmediato sin esperar a que el vehículo se detenga
+        clearTimers();
         executeFetch(currentOrigin, currentDest, false);
-      }, delayMs);
+      } else {
+        // En periodo de cooldown (< 1.5s): retener la última posición emitida
+        pendingOriginRef.current = currentOrigin;
+        pendingDestRef.current = currentDest;
 
-      // Anti-Starvation: Garantizar que si el GPS emite constantemente cada 500ms,
-      // se ejecute un recálculo a más tardar después de ROUTE_REFRESH_MAX_INTERVAL_MS (6s).
-      if (!maxWaitTimerRef.current) {
-        maxWaitTimerRef.current = setTimeout(() => {
-          executeFetch(currentOrigin, currentDest, false);
-        }, ROUTE_REFRESH_MAX_INTERVAL_MS);
+        // Si ya hay un timer de enfriamiento corriendo, NO cancelarlo.
+        // Se disparará al terminar la ventana de cooldown con las coordenadas más recientes.
+        if (!throttleTimerRef.current) {
+          const waitTime = Math.max(100, ROUTE_REFRESH_MIN_INTERVAL_MS - timeSinceLastRequest);
+          throttleTimerRef.current = setTimeout(() => {
+            throttleTimerRef.current = null;
+            const targetOrigin = pendingOriginRef.current;
+            const targetDest = pendingDestRef.current;
+            pendingOriginRef.current = null;
+            pendingDestRef.current = null;
+            if (targetOrigin && targetDest) {
+              executeFetch(targetOrigin, targetDest, false);
+            }
+          }, waitTime);
+        }
+
+        // Anti-Starvation safety net
+        if (!maxWaitTimerRef.current) {
+          maxWaitTimerRef.current = setTimeout(() => {
+            clearTimers();
+            executeFetch(currentOrigin, currentDest, false);
+          }, ROUTE_REFRESH_MAX_INTERVAL_MS);
+        }
       }
     }
 
     return () => {
-      // Limpiar timers en cleanup del efecto
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      // NOTA: NO cancelar throttleTimerRef en el cleanup de coordenadas
+      // para permitir que el enfriamiento venza y ejecute con la coordenada más reciente
+      // mientras el vehículo sigue en marcha continua.
     };
   }, [
     active,

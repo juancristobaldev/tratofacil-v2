@@ -102,6 +102,19 @@ export type SocketStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 const TERMINAL_ORDER_STATUSES = ['COMPLETED', 'CANCELLED', 'REJECTED', 'EXPIRED'];
 
+const ORDER_STATUS_PROGRESSION: Record<string, number> = {
+  PENDING: 1,
+  QUOTED: 2,
+  PAYMENT_PENDING: 3,
+  ACCEPTED: 4,
+  ARRIVED: 5,
+  IN_PROGRESS: 6,
+  COMPLETED: 7,
+  REJECTED: 8,
+  CANCELLED: 8,
+  EXPIRED: 8,
+};
+
 export interface UseTimeRealServicesReturn {  loading: boolean;
   activeOrder: OrderRealTime | null;
   localActiveOrder: OrderRealTime | null;
@@ -295,7 +308,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   }, [providerId]);
 
   const orderStatusHistoryRef = useRef<Map<number, string>>(new Map());
+  const lastOrderEventTimestampRef = useRef<Map<number, number>>(new Map());
   const approachingNotifiedRef = useRef<Set<number>>(new Set());
+  const distanceMilestonesNotifiedRef = useRef<Map<number, Set<string>>>(new Map());
+  const lastQuoteNotifiedRef = useRef<Map<number, number>>(new Map());
+  const lastCounterOfferNotifiedRef = useRef<Map<number, number>>(new Map());
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -308,6 +325,10 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   activeOrderRef.current = activeOrder;
   const providerActiveOrderRef = useRef<OrderRealTime | null>(providerState?.activeRealtimeOrder as OrderRealTime | null);
   providerActiveOrderRef.current = providerState?.activeRealtimeOrder as OrderRealTime | null;
+  const localActiveOrderRef = useRef<OrderRealTime | null>(localActiveOrder);
+  localActiveOrderRef.current = localActiveOrder;
+  const localProviderActiveOrderRef = useRef<OrderRealTime | null>(localProviderActiveOrder);
+  localProviderActiveOrderRef.current = localProviderActiveOrder;
 
   // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
   // en modo cliente, pasamos a modo proveedor.
@@ -711,7 +732,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       refetchClientOrdersRef.current();
       refetchProviderOrdersRef.current();
       const orderId = payload?.orderRealtimeId ?? payload?.id ?? 0;
-      const isMyProviderOrder = payload?.providerId && providerIdRef.current ? payload.providerId === providerIdRef.current : roleRef.current === 'provider';
+      const isMyProviderOrder = Boolean(
+        payload?.providerId && providerIdRef.current
+          ? payload.providerId === providerIdRef.current
+          : roleRef.current === 'provider' && (!payload?.clientId || payload.clientId !== clientIdRef.current)
+      );
       if (isMyProviderOrder) {
         notifyRef.current({
           id: `orderCreated:${orderId}`,
@@ -738,6 +763,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       counterOfferHours?: number | null;
       counterOfferTransport?: number | null;
       paymentExpiresAt?: string | null;
+      updatedAt?: string | null;
     }) => {
       logSocketIn('order-realtime:updated', payload);
       if (!payload?.orderRealtimeId) return;
@@ -745,6 +771,48 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       const orderId = payload.orderRealtimeId;
       const status = payload.status;
       const prevStatus = orderStatusHistoryRef.current.get(orderId);
+
+      // 1. Monotonic Timestamp & Precedence Guard:
+      // Si el evento trae updatedAt autorizado de la base de datos:
+      if (payload.updatedAt) {
+        const incomingTs = new Date(payload.updatedAt).getTime();
+        const lastTs = lastOrderEventTimestampRef.current.get(orderId);
+        if (Number.isFinite(incomingTs) && lastTs && incomingTs < lastTs) {
+          if (__DEV__) {
+            console.warn(
+              `[RT:OUT_OF_ORDER_DROPPED] orderId=${orderId} incomingStatus=${status} incomingTs=${incomingTs} lastTs=${lastTs}`
+            );
+          }
+          return;
+        }
+        if (Number.isFinite(incomingTs)) {
+          lastOrderEventTimestampRef.current.set(orderId, incomingTs);
+        }
+
+        // Prevenir que una orden ya confirmada/pagada (ACCEPTED o superior) retroceda a PAYMENT_PENDING o anterior
+        const currentProgression = ORDER_STATUS_PROGRESSION[prevStatus || ''] ?? 0;
+        const incomingProgression = ORDER_STATUS_PROGRESSION[status] ?? 0;
+        const isTerminal = TERMINAL_ORDER_STATUSES.includes(prevStatus || '');
+
+        if (isTerminal && status !== prevStatus && !TERMINAL_ORDER_STATUSES.includes(status)) {
+          if (__DEV__) {
+            console.warn(
+              `[RT:TERMINAL_REVERT_BLOCKED] orderId=${orderId} currentStatus=${prevStatus} blockedStatus=${status}`
+            );
+          }
+          return;
+        }
+
+        if (currentProgression >= 4 && incomingProgression > 0 && incomingProgression < 4) {
+          if (__DEV__) {
+            console.warn(
+              `[RT:DOWNGRADE_PREVENTED] orderId=${orderId} currentStatus=${prevStatus} blockedStatus=${status}`
+            );
+          }
+          return;
+        }
+      }
+
       const isStatusChanged = prevStatus !== status;
       orderStatusHistoryRef.current.set(orderId, status);
 
@@ -754,8 +822,14 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
       const myUserId = clientIdRef.current;
       const myProviderId = providerIdRef.current;
-      const isClient = payload.clientId && myUserId ? payload.clientId === myUserId : roleRef.current === 'client';
-      const isProvider = payload.providerId && myProviderId ? payload.providerId === myProviderId : roleRef.current === 'provider';
+      const isClient = Boolean(
+        (payload.clientId && myUserId && payload.clientId === myUserId) ||
+        (!payload.clientId && roleRef.current === 'client')
+      );
+      const isProvider = Boolean(
+        (payload.providerId && myProviderId && payload.providerId === myProviderId) ||
+        (!payload.providerId && roleRef.current === 'provider')
+      );
 
       if (isStatusChanged) {
         if (status === 'ARRIVED') {
@@ -763,41 +837,77 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
             notifyRef.current({
               id: `clientOrder:${orderId}:ARRIVED`,
               title: 'Proveedor ha llegado',
-              message: 'El profesional se encuentra en tu ubicación.',
+              message: 'El profesional ha confirmado su llegada a tu ubicación. Ya puedes iniciar el servicio.',
               type: 'success',
             });
           } else if (isProvider) {
             notifyRef.current({
               id: `providerOrder:${orderId}:ARRIVED`,
-              title: 'Llegada a Destino',
-              message: 'Has llegado a la ubicación del cliente.',
+              title: 'Llegada Confirmada',
+              message: 'Has confirmado tu llegada al domicilio. Esperando que el cliente inicie el servicio.',
               type: 'success',
             });
           }
         } else if (status === 'COMPLETED') {
           approachingNotifiedRef.current.delete(orderId);
-          notifyRef.current({
-            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:COMPLETED`,
-            title: 'Servicio Finalizado',
-            message: 'El servicio ha sido completado exitosamente.',
-            type: 'success',
-          });
+          distanceMilestonesNotifiedRef.current.delete(orderId);
+          lastQuoteNotifiedRef.current.delete(orderId);
+          lastCounterOfferNotifiedRef.current.delete(orderId);
+          if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:COMPLETED`,
+              title: 'Trabajo Completado',
+              message: 'Has finalizado el servicio.',
+              type: 'success',
+            });
+          } else if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:COMPLETED`,
+              title: 'Servicio Finalizado',
+              message: 'El servicio ha sido completado exitosamente.',
+              type: 'success',
+            });
+          }
         } else if (status === 'CANCELLED') {
           approachingNotifiedRef.current.delete(orderId);
-          notifyRef.current({
-            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:CANCELLED`,
-            title: 'Servicio Cancelado',
-            message: isProvider ? 'El cliente ha cancelado la orden.' : 'El servicio ha sido cancelado.',
-            type: 'error',
-          });
+          distanceMilestonesNotifiedRef.current.delete(orderId);
+          lastQuoteNotifiedRef.current.delete(orderId);
+          lastCounterOfferNotifiedRef.current.delete(orderId);
+          if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:CANCELLED`,
+              title: 'Servicio Cancelado',
+              message: 'El cliente ha cancelado la orden.',
+              type: 'error',
+            });
+          } else if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:CANCELLED`,
+              title: 'Servicio Cancelado',
+              message: 'El servicio ha sido cancelado.',
+              type: 'error',
+            });
+          }
         } else if (status === 'REJECTED') {
           approachingNotifiedRef.current.delete(orderId);
-          notifyRef.current({
-            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:REJECTED`,
-            title: 'Solicitud Rechazada',
-            message: isClient ? 'El profesional ha rechazado tu solicitud.' : 'Has rechazado la solicitud.',
-            type: 'error',
-          });
+          distanceMilestonesNotifiedRef.current.delete(orderId);
+          lastQuoteNotifiedRef.current.delete(orderId);
+          lastCounterOfferNotifiedRef.current.delete(orderId);
+          if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:REJECTED`,
+              title: 'Solicitud Rechazada',
+              message: 'El profesional ha rechazado tu solicitud.',
+              type: 'error',
+            });
+          } else if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:REJECTED`,
+              title: 'Solicitud Rechazada',
+              message: 'Has rechazado la solicitud.',
+              type: 'error',
+            });
+          }
         } else if (status === 'ACCEPTED') {
           if (isProvider) {
             notifyRef.current({
@@ -806,7 +916,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
               message: 'El cliente ha procesado el pago. Inicia tu ruta.',
               type: 'success',
             });
-          } else {
+          } else if (isClient) {
             notifyRef.current({
               id: `clientOrder:${orderId}:ACCEPTED`,
               title: '¡Pago Confirmado!',
@@ -822,7 +932,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
               message: 'El cliente está procesando el pago del servicio.',
               type: 'info',
             });
-          } else {
+          } else if (isClient) {
             notifyRef.current({
               id: `clientOrder:${orderId}:PAYMENT_PENDING`,
               title: 'Pago en Proceso',
@@ -838,7 +948,7 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
               message: 'El profesional ha iniciado el trabajo.',
               type: 'info',
             });
-          } else {
+          } else if (isProvider) {
             notifyRef.current({
               id: `providerOrder:${orderId}:IN_PROGRESS`,
               title: 'Servicio en Curso',
@@ -848,30 +958,50 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           }
         } else if (status === 'EXPIRED') {
           approachingNotifiedRef.current.delete(orderId);
-          notifyRef.current({
-            id: `${isProvider ? 'provider' : 'client'}Order:${orderId}:EXPIRED`,
-            title: 'Solicitud Expirada',
-            message: isProvider ? 'El tiempo límite de la orden ha concluido.' : 'La solicitud ha expirado.',
-            type: 'error',
-          });
+          distanceMilestonesNotifiedRef.current.delete(orderId);
+          lastQuoteNotifiedRef.current.delete(orderId);
+          lastCounterOfferNotifiedRef.current.delete(orderId);
+          if (isProvider) {
+            notifyRef.current({
+              id: `providerOrder:${orderId}:EXPIRED`,
+              title: 'Solicitud Expirada',
+              message: 'El tiempo límite de la orden ha concluido.',
+              type: 'error',
+            });
+          } else if (isClient) {
+            notifyRef.current({
+              id: `clientOrder:${orderId}:EXPIRED`,
+              title: 'Solicitud Expirada',
+              message: 'La solicitud ha expirado.',
+              type: 'error',
+            });
+          }
         }
       }
 
       if (status === 'QUOTED') {
         if (payload.counterOfferPrice != null && isProvider) {
-          notifyRef.current({
-            id: `counterOffer:${orderId}:${payload.counterOfferPrice}`,
-            title: 'Contraoferta Recibida',
-            message: 'El cliente ha enviado una contraoferta.',
-            type: 'info',
-          });
-        } else if (!payload.counterOfferPrice && isClient && (isStatusChanged || payload.quotedPrice !== undefined)) {
-          notifyRef.current({
-            id: `quote:${orderId}:${payload.quotedPrice}`,
-            title: 'Oferta Recibida',
-            message: 'El profesional ha enviado una oferta.',
-            type: 'info',
-          });
+          const prevNotified = lastCounterOfferNotifiedRef.current.get(orderId);
+          if (prevNotified !== payload.counterOfferPrice) {
+            lastCounterOfferNotifiedRef.current.set(orderId, payload.counterOfferPrice);
+            notifyRef.current({
+              id: `counterOffer:${orderId}:${payload.counterOfferPrice}`,
+              title: 'Contraoferta Recibida',
+              message: 'El cliente ha enviado una contraoferta.',
+              type: 'info',
+            });
+          }
+        } else if (!payload.counterOfferPrice && isClient && payload.quotedPrice != null) {
+          const prevQuote = lastQuoteNotifiedRef.current.get(orderId);
+          if (isStatusChanged || prevQuote !== payload.quotedPrice) {
+            lastQuoteNotifiedRef.current.set(orderId, payload.quotedPrice);
+            notifyRef.current({
+              id: `quote:${orderId}:${payload.quotedPrice}`,
+              title: 'Oferta Recibida',
+              message: 'El profesional ha enviado una oferta.',
+              type: 'info',
+            });
+          }
         }
       }
 
@@ -1013,13 +1143,12 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         });
       } catch {}
 
-      // Fallback local de proximidad (<= 400m) en modo cliente cuando la orden está ACCEPTED
+      // Evaluación escalonada de proximidad (1km, 500m, 200m, 5m) en modo cliente cuando la orden está ACCEPTED
       const currentActive = activeOrderRef.current;
       if (
         roleRef.current === 'client' &&
         currentActive?.id === payload.orderRealtimeId &&
         currentActive?.status === 'ACCEPTED' &&
-        !approachingNotifiedRef.current.has(payload.orderRealtimeId) &&
         isValidCoord(payload.clientLat) &&
         isValidCoord(payload.clientLng) &&
         isValidCoord(payload.providerLat) &&
@@ -1031,13 +1160,64 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           payload.clientLat,
           payload.clientLng,
         );
-        if (distM <= 400) {
+
+        if (!distanceMilestonesNotifiedRef.current.has(payload.orderRealtimeId)) {
+          distanceMilestonesNotifiedRef.current.set(payload.orderRealtimeId, new Set<string>());
+        }
+        const milestones = distanceMilestonesNotifiedRef.current.get(payload.orderRealtimeId)!;
+
+        // Hito 4: 5 metros (llegada inminente / en puerta)
+        if (distM <= 10 && !milestones.has('5M')) {
+          milestones.add('5M');
+          milestones.add('200M');
+          milestones.add('500M');
+          milestones.add('1000M');
           approachingNotifiedRef.current.add(payload.orderRealtimeId);
           if (notifyRef.current) {
             notifyRef.current({
-              id: `clientOrder:${payload.orderRealtimeId}:APPROACHING`,
+              id: `clientOrder:${payload.orderRealtimeId}:DIST_5M`,
               title: 'Profesional por llegar',
-              message: `El profesional está a menos de ${Math.max(50, Math.round(distM))}m de tu ubicación.`,
+              message: 'El profesional está en tu puerta (a 5 metros de tu ubicación).',
+              type: 'info',
+            });
+          }
+        }
+        // Hito 3: 200 metros
+        else if (distM <= 200 && !milestones.has('200M')) {
+          milestones.add('200M');
+          milestones.add('500M');
+          milestones.add('1000M');
+          approachingNotifiedRef.current.add(payload.orderRealtimeId);
+          if (notifyRef.current) {
+            notifyRef.current({
+              id: `clientOrder:${payload.orderRealtimeId}:DIST_200M`,
+              title: 'Profesional a 200 m',
+              message: 'El profesional está muy cerca (a 200 metros).',
+              type: 'info',
+            });
+          }
+        }
+        // Hito 2: 500 metros
+        else if (distM <= 500 && !milestones.has('500M')) {
+          milestones.add('500M');
+          milestones.add('1000M');
+          if (notifyRef.current) {
+            notifyRef.current({
+              id: `clientOrder:${payload.orderRealtimeId}:DIST_500M`,
+              title: 'Profesional a 500 m',
+              message: 'El profesional está a 500 metros de tu ubicación.',
+              type: 'info',
+            });
+          }
+        }
+        // Hito 1: 1 km (1.000 metros)
+        else if (distM <= 1000 && !milestones.has('1000M')) {
+          milestones.add('1000M');
+          if (notifyRef.current) {
+            notifyRef.current({
+              id: `clientOrder:${payload.orderRealtimeId}:DIST_1000M`,
+              title: 'Profesional a 1 km',
+              message: 'El profesional se encuentra a aproximadamente 1 km de tu ubicación.',
               type: 'info',
             });
           }
@@ -1047,18 +1227,74 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       dispatch('order-realtime:location-updated', payload);
     });
 
-    socket.on('order-realtime:approaching', (payload: { orderRealtimeId: number; distanceMeters?: number }) => {
+    socket.on('order-realtime:approaching', (payload: { orderRealtimeId: number; distanceMeters?: number; tier?: string }) => {
       logSocketIn('order-realtime:approaching', payload);
       if (!payload?.orderRealtimeId) return;
       const orderId = payload.orderRealtimeId;
-      if (!approachingNotifiedRef.current.has(orderId)) {
-        approachingNotifiedRef.current.add(orderId);
-        if (roleRef.current === 'client' && notifyRef.current) {
+      const dist = payload.distanceMeters;
+      const tier = payload.tier;
+
+      if (!distanceMilestonesNotifiedRef.current.has(orderId)) {
+        distanceMilestonesNotifiedRef.current.set(orderId, new Set<string>());
+      }
+      const milestones = distanceMilestonesNotifiedRef.current.get(orderId)!;
+
+      if (roleRef.current === 'client' && notifyRef.current) {
+        if (tier === '5M') {
+          if (!milestones.has('5M')) {
+            milestones.add('5M');
+            milestones.add('200M');
+            milestones.add('500M');
+            milestones.add('1000M');
+            approachingNotifiedRef.current.add(orderId);
+            notifyRef.current({
+              id: `clientOrder:${orderId}:DIST_5M`,
+              title: 'Profesional por llegar',
+              message: 'El profesional está en tu puerta (a 5 metros de tu ubicación).',
+              type: 'info',
+            });
+          }
+        } else if (tier === '200M') {
+          if (!milestones.has('200M')) {
+            milestones.add('200M');
+            milestones.add('500M');
+            milestones.add('1000M');
+            approachingNotifiedRef.current.add(orderId);
+            notifyRef.current({
+              id: `clientOrder:${orderId}:DIST_200M`,
+              title: 'Profesional a 200 m',
+              message: 'El profesional está muy cerca (a 200 metros).',
+              type: 'info',
+            });
+          }
+        } else if (tier === '500M') {
+          if (!milestones.has('500M')) {
+            milestones.add('500M');
+            milestones.add('1000M');
+            notifyRef.current({
+              id: `clientOrder:${orderId}:DIST_500M`,
+              title: 'Profesional a 500 m',
+              message: 'El profesional está a 500 metros de tu ubicación.',
+              type: 'info',
+            });
+          }
+        } else if (tier === '1000M') {
+          if (!milestones.has('1000M')) {
+            milestones.add('1000M');
+            notifyRef.current({
+              id: `clientOrder:${orderId}:DIST_1000M`,
+              title: 'Profesional a 1 km',
+              message: 'El profesional se encuentra a aproximadamente 1 km de tu ubicación.',
+              type: 'info',
+            });
+          }
+        } else if (!approachingNotifiedRef.current.has(orderId)) {
+          approachingNotifiedRef.current.add(orderId);
           notifyRef.current({
             id: `clientOrder:${orderId}:APPROACHING`,
             title: 'Profesional por llegar',
-            message: payload.distanceMeters
-              ? `El profesional está a menos de ${payload.distanceMeters}m de tu ubicación.`
+            message: dist
+              ? `El profesional está a menos de ${dist}m de tu ubicación.`
               : 'El profesional está por llegar a tu ubicación.',
             type: 'info',
           });
@@ -1143,8 +1379,8 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     }) => {
       logSocketIn('review:received', payload);
       if (!payload) return;
-      const isTargetProvider = payload.type === 'PROVIDER_REVIEW' && (roleRef.current === 'provider' || Boolean(providerIdRef.current));
-      const isTargetClient = payload.type === 'CLIENT_REVIEW' && roleRef.current !== 'provider';
+      const isTargetProvider = payload.type === 'PROVIDER_REVIEW' && (roleRef.current === 'provider' || (Boolean(providerIdRef.current) && roleRef.current !== 'client'));
+      const isTargetClient = payload.type === 'CLIENT_REVIEW' && roleRef.current === 'client';
       if (notifyRef.current && (isTargetProvider || isTargetClient)) {
         const rawRating = Number(payload?.rating);
         const safeRating = Number.isFinite(rawRating) ? Math.max(1, Math.min(5, Math.floor(rawRating))) : 5;
@@ -1418,6 +1654,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const confirmArrival = useCallback(
     async (orderRealtimeId: number, lat?: number, lng?: number) => {
       const nowIso = new Date().toISOString();
+      const prevClient = localActiveOrderRef.current?.id === orderRealtimeId
+        ? localActiveOrderRef.current
+        : (activeOrderRef.current?.id === orderRealtimeId ? activeOrderRef.current : null);
+      const prevProvider = localProviderActiveOrderRef.current?.id === orderRealtimeId
+        ? localProviderActiveOrderRef.current
+        : (providerActiveOrderRef.current?.id === orderRealtimeId ? providerActiveOrderRef.current : null);
+
       _setLocalActiveOrder((prev: any) =>
         prev?.id === orderRealtimeId ? { ...prev, status: 'ARRIVED', arrivedAt: prev.arrivedAt || nowIso } : prev
       );
@@ -1436,6 +1679,14 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
           );
         }
         return arrived;
+      } catch (err) {
+        if (prevClient) {
+          _setLocalActiveOrder((curr: any) => (curr?.id === orderRealtimeId ? prevClient : curr));
+        }
+        if (prevProvider) {
+          _setLocalProviderActiveOrder((curr: any) => (curr?.id === orderRealtimeId ? prevProvider : curr));
+        }
+        throw err;
       } finally {
         refetch();
         refetchClientOrders();
@@ -1447,6 +1698,13 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const startOrder = useCallback(
     async (orderRealtimeId: number) => {
       const nowIso = new Date().toISOString();
+      const prevClient = localActiveOrderRef.current?.id === orderRealtimeId
+        ? localActiveOrderRef.current
+        : (activeOrderRef.current?.id === orderRealtimeId ? activeOrderRef.current : null);
+      const prevProvider = localProviderActiveOrderRef.current?.id === orderRealtimeId
+        ? localProviderActiveOrderRef.current
+        : (providerActiveOrderRef.current?.id === orderRealtimeId ? providerActiveOrderRef.current : null);
+
       _setLocalActiveOrder((prev: any) =>
         prev?.id === orderRealtimeId ? { ...prev, status: 'IN_PROGRESS', startedAt: prev.startedAt || nowIso } : prev
       );
@@ -1464,6 +1722,15 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
             prev?.id === orderRealtimeId ? { ...prev, status: started.status || 'IN_PROGRESS', startedAt: started.startedAt } : prev
           );
         }
+        return started;
+      } catch (err) {
+        if (prevClient) {
+          _setLocalActiveOrder((curr: any) => (curr?.id === orderRealtimeId ? prevClient : curr));
+        }
+        if (prevProvider) {
+          _setLocalProviderActiveOrder((curr: any) => (curr?.id === orderRealtimeId ? prevProvider : curr));
+        }
+        throw err;
       } finally {
         refetch();
         refetchClientOrders();

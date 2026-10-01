@@ -228,7 +228,6 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
 
   const renderSearchHeader = () => (
     <View style={styles.searchStickyHeader}>
-     {/*
       <SheetHeader
         title={isLoading ? 'Buscando...' : `${visibleNodes.length} resultado${visibleNodes.length !== 1 ? 's' : ''}`}
         subtitle={searchQuery ? `Servicios para "${searchQuery}"` : undefined}
@@ -253,7 +252,6 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
           </TouchableOpacity>
         }
       />
-     */}
     </View>
   );
 
@@ -485,7 +483,6 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: TOKENS.colors.surface200,
-    paddingBottom:40,
     zIndex: 10,
   },
   searchList: {

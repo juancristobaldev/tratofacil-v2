@@ -24,14 +24,22 @@ export interface NotificationOptions {
   onPress?: () => void;
 }
 
+export interface NotificationHistoryItem extends NotificationOptions {
+  receivedAt: number;
+}
+
 interface NotificationContextProps {
   showNotification: (options: NotificationOptions) => void;
   clearNotification: () => void;
+  history: NotificationHistoryItem[];
+  clearHistory: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextProps>({
   showNotification: () => {},
   clearNotification: () => {},
+  history: [],
+  clearHistory: () => {},
 });
 
 export const useNotification = () => useContext(NotificationContext);
@@ -50,10 +58,15 @@ const triggerHaptic = (type?: NotificationType) => {
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notification, setNotification] = useState<NotificationOptions | null>(null);
+  const [queuedNext, setQueuedNext] = useState<NotificationOptions | null>(null);
+  const [queueCount, setQueueCount] = useState<number>(0);
+  const [history, setHistory] = useState<NotificationHistoryItem[]>([]);
+
   const notificationRef = useRef<NotificationOptions | null>(null);
   const isShowingRef = useRef(false);
   const queueRef = useRef<NotificationOptions[]>([]);
   const recentIdsRef = useRef<Map<string, number>>(new Map());
+  const lifetimeMilestonesRef = useRef<Set<string>>(new Set());
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -75,6 +88,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const displayNotification = useCallback((opts: NotificationOptions) => {
     notificationRef.current = opts;
     setNotification(opts);
+    setQueuedNext(queueRef.current[0] || null);
+    setQueueCount(queueRef.current.length);
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -89,7 +104,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     translateY.value = withSpring(0, { damping: 15, stiffness: 150, mass: 0.8 });
     opacity.value = withTiming(1, { duration: 200 });
 
-    const duration = opts.duration || 4000;
+    const duration = opts.duration || (queueRef.current.length > 0 ? 2200 : 4000);
     progress.value = withTiming(0, { duration, easing: Easing?.linear });
 
     timeoutRef.current = setTimeout(() => {
@@ -107,11 +122,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
+      setQueuedNext(queueRef.current[0] || null);
+      setQueueCount(queueRef.current.length);
       displayNotification(next);
     } else {
       isShowingRef.current = false;
       notificationRef.current = null;
       setNotification(null);
+      setQueuedNext(null);
+      setQueueCount(0);
     }
   }, [displayNotification]);
 
@@ -149,11 +168,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     if (queueRef.current.length > 0) {
       const next = queueRef.current.shift()!;
+      setQueuedNext(queueRef.current[0] || null);
+      setQueueCount(queueRef.current.length);
       displayNotification(next);
     } else {
       isShowingRef.current = false;
       notificationRef.current = null;
       setNotification(null);
+      setQueuedNext(null);
+      setQueueCount(0);
     }
   }, [opacity, progress, translateY, displayNotification]);
 
@@ -161,30 +184,39 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const dedupeKey = options.id || `${options.type || 'info'}:${options.title}:${options.message}`;
     const now = Date.now();
 
-    // Clean up expired keys (> 10s)
+    // Clean up expired keys (> 15s)
     for (const [key, timestamp] of recentIdsRef.current.entries()) {
-      if (now - timestamp > 10000) {
+      if (now - timestamp > 15000) {
         recentIdsRef.current.delete(key);
       }
     }
 
-    // Cooldown check (2000ms for exact duplicate)
+    // Cooldown check (3000ms para absorber ráfagas de red/reconexión)
     const lastTimestamp = recentIdsRef.current.get(dedupeKey);
-    if (lastTimestamp && (now - lastTimestamp) < 2000) {
+    if (lastTimestamp && (now - lastTimestamp) < 3000) {
       return;
     }
     recentIdsRef.current.set(dedupeKey, now);
 
+    // Persistir en historial en memoria (máximo 20)
+    setHistory((prev) => [
+      { ...options, receivedAt: now },
+      ...prev.slice(0, 19),
+    ]);
+
     if (isShowingRef.current) {
       const alreadyInQueue = queueRef.current.some(
-        item => (item.id && item.id === options.id) || (item.type === options.type && item.title === options.title && item.message === options.message),
+        item => (item.id && options.id && item.id === options.id) ||
+                (item.title === options.title && item.message === options.message),
       );
       const isCurrentlyShowing = notificationRef.current && (
-        (options.id && notificationRef.current.id === options.id) ||
-        (notificationRef.current.type === options.type && notificationRef.current.title === options.title && notificationRef.current.message === options.message)
+        (notificationRef.current.id && options.id && notificationRef.current.id === options.id) ||
+        (notificationRef.current.title === options.title && notificationRef.current.message === options.message)
       );
       if (!alreadyInQueue && !isCurrentlyShowing) {
         queueRef.current.push(options);
+        setQueuedNext(queueRef.current[0] || null);
+        setQueueCount(queueRef.current.length);
       }
       return;
     }
@@ -192,6 +224,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     isShowingRef.current = true;
     displayNotification(options);
   }, [displayNotification]);
+
+  const clearHistory = useCallback(() => {
+    setHistory([]);
+  }, []);
 
   const handlePress = useCallback(() => {
     const current = notificationRef.current;
@@ -203,10 +239,20 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     clearNotification();
   }, [clearNotification]);
 
-  const value = useMemo(() => ({ showNotification, clearNotification }), [showNotification, clearNotification]);
+  const value = useMemo(
+    () => ({ showNotification, clearNotification, history, clearHistory }),
+    [showNotification, clearNotification, history, clearHistory]
+  );
 
   const panGesture = Gesture.Pan()
     .activeOffsetY([-10, 10])
+    .onBegin(() => {
+      // Hold/Drag to pause: pausa el timeout mientras el usuario interactúa
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    })
     .onUpdate((e) => {
       if (e.translationY < 0) {
         translateY.value = e.translationY;
@@ -220,6 +266,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         runOnJS(hideNotification)();
       } else {
         translateY.value = withSpring(0, { damping: 15, stiffness: 150 });
+        // Reanudar el temporizador para cerrar en 2500ms tras soltar
+        timeoutRef.current = setTimeout(() => {
+          hideNotification();
+        }, 2500);
       }
     });
 
@@ -246,43 +296,57 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       {notification && (
         <View style={styles.container} pointerEvents="box-none">
           <SafeAreaView pointerEvents="box-none">
-            <GestureDetector gesture={composedGesture}>
-              <Animated.View style={[styles.notificationPill, animatedStyle]}>
-                <View style={styles.contentRow}>
-                  <View style={[
-                    styles.iconBox,
-                    notification.type === 'error' && styles.iconBoxError,
-                    notification.type === 'success' && styles.iconBoxSuccess,
-                    notification.type === 'info' && styles.iconBoxInfo,
-                  ]}>
-                    <Icon 
-                      name={
-                        notification.type === 'error' ? 'AlertCircle' :
-                        notification.type === 'success' ? 'CheckCircle' :
-                        'Info'
-                      } 
-                      size={20} 
-                      color={TOKENS.colors.white} 
-                    />
+            <View style={styles.cardsWrapper} pointerEvents="box-none">
+              {/* Tarjeta de fondo apilada (preview visual de cola) */}
+              {queuedNext && (
+                <View style={styles.stackedCard} pointerEvents="none" />
+              )}
+
+              <GestureDetector gesture={composedGesture}>
+                <Animated.View style={[styles.notificationPill, animatedStyle]}>
+                  {/* Badge contador si hay más en cola */}
+                  {queueCount > 0 && (
+                    <View style={styles.badgePill} pointerEvents="none">
+                      <Text style={styles.badgeText}>+{queueCount}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.contentRow}>
+                    <View style={[
+                      styles.iconBox,
+                      notification.type === 'error' && styles.iconBoxError,
+                      notification.type === 'success' && styles.iconBoxSuccess,
+                      notification.type === 'info' && styles.iconBoxInfo,
+                    ]}>
+                      <Icon 
+                        name={
+                          notification.type === 'error' ? 'AlertCircle' :
+                          notification.type === 'success' ? 'CheckCircle' :
+                          'Info'
+                        } 
+                        size={20} 
+                        color={TOKENS.colors.white} 
+                      />
+                    </View>
+                    <View style={styles.textContent}>
+                      <Text style={styles.title}>{notification.title}</Text>
+                      <Text style={styles.message} numberOfLines={2}>{notification.message}</Text>
+                    </View>
                   </View>
-                  <View style={styles.textContent}>
-                    <Text style={styles.title}>{notification.title}</Text>
-                    <Text style={styles.message} numberOfLines={2}>{notification.message}</Text>
+                  
+                  {/* Progress bar */}
+                  <View style={styles.progressBarContainer}>
+                    <Animated.View style={[
+                      styles.progressBar,
+                      notification.type === 'error' && styles.progressBarError,
+                      notification.type === 'success' && styles.progressBarSuccess,
+                      notification.type === 'info' && styles.progressBarInfo,
+                      progressStyle
+                    ]} />
                   </View>
-                </View>
-                
-                {/* Progress bar */}
-                <View style={styles.progressBarContainer}>
-                  <Animated.View style={[
-                    styles.progressBar,
-                    notification.type === 'error' && styles.progressBarError,
-                    notification.type === 'success' && styles.progressBarSuccess,
-                    notification.type === 'info' && styles.progressBarInfo,
-                    progressStyle
-                  ]} />
-                </View>
-              </Animated.View>
-            </GestureDetector>
+                </Animated.View>
+              </GestureDetector>
+            </View>
           </SafeAreaView>
         </View>
       )}
@@ -300,12 +364,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.md,
     paddingTop: TOKENS.spacing.md,
   },
+  cardsWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  stackedCard: {
+    position: 'absolute',
+    left: TOKENS.spacing.md,
+    right: TOKENS.spacing.md,
+    top: 8,
+    height: 64,
+    backgroundColor: TOKENS.colors.surface200,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface300,
+    transform: [{ scale: 0.94 }],
+    opacity: 0.8,
+    zIndex: 1,
+    ...TOKENS.shadows.soft,
+  },
   notificationPill: {
     backgroundColor: TOKENS.colors.white,
     borderRadius: 20,
     overflow: 'hidden',
     ...TOKENS.shadows.floating,
     marginHorizontal: TOKENS.spacing.sm,
+    zIndex: 2,
+  },
+  badgePill: {
+    position: 'absolute',
+    top: 10,
+    right: 12,
+    backgroundColor: TOKENS.colors.brand500,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  badgeText: {
+    color: TOKENS.colors.white,
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.extrabold,
   },
   contentRow: {
     flexDirection: 'row',
@@ -332,6 +433,7 @@ const styles = StyleSheet.create({
   },
   textContent: {
     flex: 1,
+    paddingRight: TOKENS.spacing.sm,
   },
   title: {
     fontSize: TOKENS.typography.sizes.sm,

@@ -3,14 +3,14 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
-import { BottomSheetScrollView, BottomSheetView } from '../../bottom-sheet/primitives';
+import { BottomSheetScrollView, BottomSheetView, TouchableOpacity } from '../../bottom-sheet/primitives';
 import { useBottomNavHeight } from '../layout/bottomNavMetrics';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Button, Badge, Rating, WorkTimer } from '../ui';
 import { useNotification } from '../../context/NotificationContext';
+import { useLocation } from '../../context/LocationContext';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { usePanelState } from '../../bottom-sheet/core/useBottomSheet';
 import { bottomSheetDebug, nextBottomSheetActionId } from '../../bottom-sheet/core/bottomSheet.debug';
@@ -48,6 +48,9 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
   const { height: winH } = useWindowDimensions();
   const navHeight = useBottomNavHeight();
   const session = useFocusSession('provider');
+  const locContext = useLocation();
+  const gpsSpeed = locContext?.location?.coords?.speed;
+
   const {
     activeOrder,
     orderState,
@@ -61,6 +64,22 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     handleFinish,
     realtime,
   } = session;
+
+  // Auto-colapsar el panel a index 0 (156px) al entrar en EN_CAMINO para garantizar máxima visibilidad del mapa
+  const prevOrderStateRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (orderState === 'EN_CAMINO' && prevOrderStateRef.current !== 'EN_CAMINO') {
+      setIndex?.(0);
+    }
+    prevOrderStateRef.current = orderState;
+  }, [orderState, setIndex]);
+
+  // Si el profesional se desplaza en vehículo (velocidad > 0.8 m/s ~ 3 km/h) en EN_CAMINO, replegar a index 0
+  useEffect(() => {
+    if (orderState === 'EN_CAMINO' && !isCollapsed && typeof gpsSpeed === 'number' && gpsSpeed > 0.8) {
+      setIndex?.(0);
+    }
+  }, [orderState, isCollapsed, gpsSpeed, setIndex]);
 
   const [isConfirmingArrival, setIsConfirmingArrival] = useState(false);
 
@@ -269,7 +288,6 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     setIsCancelling(true);
     try {
       await realtime.cancelOrder(order.id);
-      showNotification({ title: 'Orden cancelada', message: 'Has cancelado la orden de servicio.', type: 'info' });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
     } finally {
@@ -318,7 +336,6 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     try {
       await realtime.finishOrder(order.id);
       setOrderState('COMPLETED');
-      handleFinish('COMPLETED');
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo completar el trabajo.', type: 'error' });
     }
@@ -491,17 +508,17 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             {/* Header unificado del cliente y problema */}
             <View style={styles.clientCompactCard}>
               <View style={styles.clientCardHeader}>
-                <Avatar uri={null} name={clientName} size={42} />
+                <Avatar uri={null} name={clientName} size={36} />
                 <View style={styles.clientCardInfo}>
-                  <Text style={styles.clientName}>{clientName}</Text>
-                  <View style={styles.ratingRow}>
-                    <Rating rating={clientAvgRating} size={12} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
+                  <View style={styles.clientMetaRow}>
+                    <Text style={styles.clientName} numberOfLines={1}>{clientName}</Text>
+                    <Rating rating={clientAvgRating} size={11} showText textSuffix="Cliente" reviewsCount={clientReviewCount} />
                   </View>
                 </View>
               </View>
               <View style={styles.problemSnippet}>
                 <Text style={styles.problemSnippetLabel}>Detalles del problema</Text>
-                <Text style={styles.detailText} numberOfLines={3}>
+                <Text style={styles.detailText} numberOfLines={2}>
                   {clientDescription || 'Sin descripción adicional'}
                 </Text>
               </View>
@@ -546,55 +563,49 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                       <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
                     </View>
                   </View>
-                  <View style={styles.quoteRowsContainer}>
-                    <View style={styles.quoteRowItem}>
-                      <View style={styles.quoteFieldInfo}>
-                        <Text style={styles.quoteFieldTitle}>Horas de servicio</Text>
-                        <Text style={styles.quoteFieldSub}>Tiempo estimado de trabajo</Text>
-                      </View>
+                  <View style={styles.quoteGridContainer}>
+                    <View style={styles.quoteGridCol}>
+                      <Text style={styles.quoteFieldTitle} numberOfLines={1}>Horas de servicio</Text>
                       <View style={styles.priceAdjusterRow}>
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
-                          style={styles.adjusterBtnSmall}
+                          style={styles.adjusterBtnCompact}
                           accessibilityLabel="Disminuir horas de oferta"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                          <Icon name="Minus" size={14} color={TOKENS.colors.white} />
                         </TouchableOpacity>
-                        <Text style={styles.quoteFieldValue}>{quoteHours}h</Text>
+                        <Text style={styles.quoteFieldValueCompact}>{quoteHours}h</Text>
                         <TouchableOpacity
                           onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
-                          style={styles.adjusterBtnSmall}
+                          style={styles.adjusterBtnCompact}
                           accessibilityLabel="Aumentar horas de oferta"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                          <Icon name="Plus" size={14} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                       </View>
                     </View>
 
-                    <View style={styles.quoteRowItem}>
-                      <View style={styles.quoteFieldInfo}>
-                        <Text style={styles.quoteFieldTitle}>Km de transporte</Text>
-                        <Text style={styles.quoteFieldSub}>Traslado al domicilio</Text>
-                      </View>
+                    <View style={styles.quoteGridCol}>
+                      <Text style={styles.quoteFieldTitle} numberOfLines={1}>Km de transporte</Text>
                       <View style={styles.priceAdjusterRow}>
                         <TouchableOpacity
                           onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
-                          style={styles.adjusterBtnSmall}
+                          style={styles.adjusterBtnCompact}
                           accessibilityLabel="Disminuir transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                          <Icon name="Minus" size={14} color={TOKENS.colors.white} />
                         </TouchableOpacity>
-                        <Text style={styles.quoteFieldValue}>{quoteTransport}km</Text>
+                        <Text style={styles.quoteFieldValueCompact}>{quoteTransport}km</Text>
                         <TouchableOpacity
                           onPress={() => setQuoteTransport((t) => t + 1)}
-                          style={styles.adjusterBtnSmall}
+                          style={styles.adjusterBtnCompact}
                           accessibilityLabel="Aumentar transporte en kilómetros"
                           accessibilityRole="button"
                         >
-                          <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                          <Icon name="Plus" size={14} color={TOKENS.colors.white} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -604,7 +615,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                 <View
                   ref={primaryActionRef}
                   collapsable={false}
-                  style={styles.primaryActionStack}
+                  style={styles.primaryActionRow}
                   onLayout={() => {
                     if (!__DEV__) return;
                     primaryActionRef.current?.measureInWindow((x, y, w, h) => {
@@ -612,7 +623,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                       console.log('[BS:ACTION_GEOMETRY]', {
                         key: 'focus_provider',
                         action: 'PRIMARY_ACTION_STACK',
-                        description: 'SEND_QUOTE(above) + REJECT(below)',
+                        description: 'REJECT(left) + SEND_QUOTE(right)',
                         stackTop: y,
                         stackBottom: y + h,
                         navTop,
@@ -622,18 +633,27 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                     });
                   }}
                 >
-                  <Button
-                    title="Enviar oferta"
-                    onPress={handleSendQuote}
-                    style={styles.actionBtn}
-                  />
-                  <Button
-                    title="Rechazar solicitud"
-                    variant="subtle"
-                    size="md"
-                    onPress={handleReject}
-                    style={{ marginTop: 8 }}
-                  />
+                  <View style={styles.actionBtnSecondaryCol}>
+                    <Button
+                      title="Rechazar solicitud"
+                      variant="subtle"
+                      size="md"
+                      fullWidth
+                      onPress={handleReject}
+                      style={styles.actionBtnSecondary}
+                      textStyle={styles.actionBtnSecondaryText}
+                    />
+                  </View>
+                  <View style={styles.actionBtnPrimaryCol}>
+                    <Button
+                      title="Enviar oferta"
+                      size="md"
+                      fullWidth
+                      onPress={handleSendQuote}
+                      style={styles.actionBtnPrimary}
+                      textStyle={styles.actionBtnPrimaryText}
+                    />
+                  </View>
                 </View>
               </>
             )}
@@ -688,76 +708,81 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
                     <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>
                   </View>
                 </View>
-                <View style={styles.quoteRowsContainer}>
-                  <View style={styles.quoteRowItem}>
-                    <View style={styles.quoteFieldInfo}>
-                      <Text style={styles.quoteFieldTitle}>Horas de servicio</Text>
-                      <Text style={styles.quoteFieldSub}>Tiempo estimado de trabajo</Text>
-                    </View>
+                <View style={styles.quoteGridContainer}>
+                  <View style={styles.quoteGridCol}>
+                    <Text style={styles.quoteFieldTitle} numberOfLines={1}>Horas de servicio</Text>
                     <View style={styles.priceAdjusterRow}>
                       <TouchableOpacity
                         onPress={() => setQuoteHours((h) => Math.max(1, h - 1))}
-                        style={styles.adjusterBtnSmall}
+                        style={styles.adjusterBtnCompact}
                         accessibilityLabel="Disminuir horas de oferta"
                         accessibilityRole="button"
                       >
-                        <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                        <Icon name="Minus" size={14} color={TOKENS.colors.white} />
                       </TouchableOpacity>
-                      <Text style={styles.quoteFieldValue}>{quoteHours}h</Text>
+                      <Text style={styles.quoteFieldValueCompact}>{quoteHours}h</Text>
                       <TouchableOpacity
                         onPress={() => setQuoteHours((h) => Math.min(6, h + 1))}
-                        style={styles.adjusterBtnSmall}
+                        style={styles.adjusterBtnCompact}
                         accessibilityLabel="Aumentar horas de oferta"
                         accessibilityRole="button"
                       >
-                        <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                        <Icon name="Plus" size={14} color={TOKENS.colors.white} />
                       </TouchableOpacity>
                     </View>
                   </View>
 
-                  <View style={styles.quoteRowItem}>
-                    <View style={styles.quoteFieldInfo}>
-                      <Text style={styles.quoteFieldTitle}>Km de transporte</Text>
-                      <Text style={styles.quoteFieldSub}>Traslado al domicilio</Text>
-                    </View>
+                  <View style={styles.quoteGridCol}>
+                    <Text style={styles.quoteFieldTitle} numberOfLines={1}>Km de transporte</Text>
                     <View style={styles.priceAdjusterRow}>
                       <TouchableOpacity
                         onPress={() => setQuoteTransport((t) => Math.max(0, t - 1))}
-                        style={styles.adjusterBtnSmall}
+                        style={styles.adjusterBtnCompact}
                         accessibilityLabel="Disminuir transporte en kilómetros"
                         accessibilityRole="button"
                       >
-                        <Icon name="Minus" size={16} color={TOKENS.colors.white} />
+                        <Icon name="Minus" size={14} color={TOKENS.colors.white} />
                       </TouchableOpacity>
-                      <Text style={styles.quoteFieldValue}>{quoteTransport}km</Text>
+                      <Text style={styles.quoteFieldValueCompact}>{quoteTransport}km</Text>
                       <TouchableOpacity
                         onPress={() => setQuoteTransport((t) => t + 1)}
-                        style={styles.adjusterBtnSmall}
+                        style={styles.adjusterBtnCompact}
                         accessibilityLabel="Aumentar transporte en kilómetros"
                         accessibilityRole="button"
                       >
-                        <Icon name="Plus" size={16} color={TOKENS.colors.white} />
+                        <Icon name="Plus" size={14} color={TOKENS.colors.white} />
                       </TouchableOpacity>
                     </View>
                   </View>
                 </View>
 
-                <Button
-                  title="Confirmar nueva oferta"
-                  variant="primary"
-                  onPress={handleUpdateQuote}
-                  loading={isSubmitting}
-                  disabled={isSubmitting || isCancelling}
-                  style={[styles.actionBtn, { marginTop: 12 }]}
-                />
-                <Button
-                  title="Descartar cambios"
-                  variant="ghost"
-                  size="md"
-                  onPress={() => setIsEditingQuote(false)}
-                  disabled={isSubmitting || isCancelling}
-                  style={{ marginTop: 6 }}
-                />
+                <View style={[styles.primaryActionRow, { marginTop: 10 }]}>
+                  <View style={styles.actionBtnSecondaryCol}>
+                    <Button
+                      title="Descartar cambios"
+                      variant="ghost"
+                      size="md"
+                      fullWidth
+                      onPress={() => setIsEditingQuote(false)}
+                      disabled={isSubmitting || isCancelling}
+                      style={styles.actionBtnSecondary}
+                      textStyle={styles.actionBtnSecondaryText}
+                    />
+                  </View>
+                  <View style={styles.actionBtnPrimaryCol}>
+                    <Button
+                      title="Confirmar nueva oferta"
+                      variant="primary"
+                      size="md"
+                      fullWidth
+                      onPress={handleUpdateQuote}
+                      loading={isSubmitting}
+                      disabled={isSubmitting || isCancelling}
+                      style={styles.actionBtnPrimary}
+                      textStyle={styles.actionBtnPrimaryText}
+                    />
+                  </View>
+                </View>
               </View>
             ) : (
               <>
@@ -948,7 +973,7 @@ const styles = StyleSheet.create({
   sheetBody: {
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
-    paddingBottom: 28,
+    paddingBottom: 16,
   },
   stateHeader: {
     flexDirection: 'row',
@@ -1063,12 +1088,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   viewRequestContainer: {
-    gap: TOKENS.spacing.md,
+    gap: 8,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
+  },
+  clientMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   detailSection: {
     backgroundColor: TOKENS.colors.surface50,
@@ -1084,9 +1115,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   detailText: {
-    fontSize: TOKENS.typography.sizes.sm,
+    fontSize: TOKENS.typography.sizes.xs,
     color: TOKENS.colors.textSubtle,
-    lineHeight: 20,
+    lineHeight: 16,
   },
   priceAdjusterContainer: {
     alignItems: 'center',
@@ -1101,7 +1132,15 @@ const styles = StyleSheet.create({
   priceAdjusterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+  },
+  adjusterBtnCompact: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#262936',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   adjusterBtnSmall: {
     width: 44,
@@ -1126,6 +1165,22 @@ const styles = StyleSheet.create({
     minWidth: 140,
     textAlign: 'center',
   },
+  quoteGridContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    width: '100%',
+  },
+  quoteGridCol: {
+    flex: 1,
+    backgroundColor: '#16181F',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2A2D38',
+    alignItems: 'center',
+    gap: 6,
+  },
   quoteRowsContainer: {
     gap: 12,
     marginBottom: TOKENS.spacing.sm,
@@ -1145,7 +1200,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   quoteFieldTitle: {
-    fontSize: TOKENS.typography.sizes.sm,
+    fontSize: TOKENS.typography.sizes.xs,
     fontWeight: TOKENS.typography.weights.bold,
     color: '#FFFFFF',
   },
@@ -1159,6 +1214,13 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.black,
     color: '#FFFFFF',
     minWidth: 44,
+    textAlign: 'center',
+  },
+  quoteFieldValueCompact: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.black,
+    color: '#FFFFFF',
+    minWidth: 36,
     textAlign: 'center',
   },
   totalRow: {
@@ -1185,18 +1247,20 @@ const styles = StyleSheet.create({
     backgroundColor: TOKENS.colors.surface50,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    borderRadius: 16,
-    padding: 12,
-    gap: 8,
+    borderRadius: 14,
+    padding: 10,
+    gap: 6,
   },
   clientCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
   problemSnippet: {
     backgroundColor: TOKENS.colors.white,
-    padding: 10,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface100,
   },
@@ -1210,11 +1274,11 @@ const styles = StyleSheet.create({
   },
   quoteCard: {
     backgroundColor: '#000000',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#262936',
-    padding: 12,
-    gap: 10,
+    padding: 10,
+    gap: 8,
   },
   quoteCardHeader: {
     flexDirection: 'row',
@@ -1245,6 +1309,31 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 8,
     width: '100%',
+  },
+  primaryActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 6,
+    width: '100%',
+    alignItems: 'center',
+  },
+  actionBtnSecondaryCol: {
+    flex: 3.5,
+  },
+  actionBtnSecondary: {
+    paddingHorizontal: 4,
+  },
+  actionBtnSecondaryText: {
+    fontSize: 12,
+  },
+  actionBtnPrimaryCol: {
+    flex: 6.5,
+  },
+  actionBtnPrimary: {
+    paddingHorizontal: 8,
+  },
+  actionBtnPrimaryText: {
+    fontSize: 14,
   },
   counterOfferActionStack: {
     gap: 8,

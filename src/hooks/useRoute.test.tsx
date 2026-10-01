@@ -336,6 +336,60 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     expect(getDirectionsSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('should refresh route during continuous movement every ~1.5s throttle window without waiting to stop', async () => {
+    const startOrigin = { latitude: -33.4489, longitude: -70.6693 };
+    const dest = { latitude: -33.4520, longitude: -70.6710 };
+
+    getDirectionsSpy.mockImplementation((orig) =>
+      Promise.resolve({
+        coordinates: [orig, dest],
+        distanceMeters: 1000,
+        durationSeconds: 120,
+        distance: 1000,
+        duration: 120,
+        provider: 'google',
+        origin: orig,
+        destination: dest,
+        calculatedAt: Date.now(),
+      }),
+    );
+
+    let renderer: ReactTestRenderer.ReactTestRenderer;
+    await act(async () => {
+      renderer = ReactTestRenderer.create(
+        <TestComponent origin={startOrigin} dest={dest} active={true} />,
+      );
+    });
+
+    expect(getDirectionsSpy).toHaveBeenCalledTimes(1);
+
+    // Mover 100m tras 1600ms (cooldown cumplido): debe refrescar de inmediato
+    const movedOrigin1 = { latitude: -33.4500, longitude: -70.6700 };
+    await act(async () => {
+      jest.advanceTimersByTime(1600);
+      renderer.update(<TestComponent origin={movedOrigin1} dest={dest} active={true} />);
+    });
+
+    expect(getDirectionsSpy).toHaveBeenCalledTimes(2);
+
+    // Mover 100m más rápido (500ms tras el último fetch): debe entrar en throttle y ejecutar al vencer 1500ms
+    const movedOrigin2 = { latitude: -33.4510, longitude: -70.6705 };
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+      renderer.update(<TestComponent origin={movedOrigin2} dest={dest} active={true} />);
+    });
+    // Aún en cooldown (500ms < 1500ms): todavía 2 llamadas
+    expect(getDirectionsSpy).toHaveBeenCalledTimes(2);
+
+    // Avanzar los 1000ms restantes del cooldown: se dispara la 3ra llamada automáticamente
+    await act(async () => {
+      jest.advanceTimersByTime(1050);
+      await Promise.resolve();
+    });
+    expect(getDirectionsSpy).toHaveBeenCalledTimes(3);
+    expect(hookValue.routeCoords[0]).toEqual(movedOrigin2);
+  });
+
   it('should clean up and clear route when active becomes false', async () => {
     const origin = { latitude: -33.4489, longitude: -70.6693 };
     const dest = { latitude: -33.4520, longitude: -70.6710 };

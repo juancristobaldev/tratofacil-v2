@@ -150,4 +150,85 @@ describe('SmartNavigationEngine Comprehensive Test Suite', () => {
     expect(write2.shouldWrite).toBe(false); // Skipped via deadband
     expect(write2.reason).toBe('DEADBAND_SKIP');
   });
+
+  it('stabilizes turn detection and prevents single-frame flickers via turn latching', () => {
+    // 1. Vehicle approaching a 90° right turn
+    const s1: NavigationMotionSample = {
+      coordinate: { latitude: -38.735, longitude: -72.5805 }, // ~40m from corner
+      timestamp: 1000,
+      speed: 8,
+      heading: 90,
+      accuracy: 5,
+      source: 'LOCAL_GPS',
+    };
+    const t1 = engine.processMotionSample(s1, route);
+    expect(t1?.turn?.turnDetected).toBe(true);
+    expect(t1?.turn?.turnType).toBe('SHARP_TURN');
+
+    // 2. Next sample with noisy GPS/speed fluctuation that momentarily would not detect turn directly
+    // The engine's latching must hold the turn active for up to 2 dropped frames to prevent UI flickering
+    const s2: NavigationMotionSample = {
+      coordinate: { latitude: -38.735, longitude: -72.5804 },
+      timestamp: 1500,
+      speed: 8,
+      heading: 90,
+      accuracy: 5,
+      source: 'LOCAL_GPS',
+    };
+    const t2 = engine.processMotionSample(s2, route);
+    expect(t2?.turn?.turnDetected).toBe(true);
+  });
+
+  it('detects upcoming turns at distances up to 500m (expanded horizon)', () => {
+    const longRoute: RouteCoordinate[] = [
+      { latitude: -38.735, longitude: -72.590 },
+      { latitude: -38.735, longitude: -72.586 }, // ~350m East
+      { latitude: -38.740, longitude: -72.586 }, // 90° Right Turn South
+    ];
+
+    const sample: NavigationMotionSample = {
+      coordinate: { latitude: -38.735, longitude: -72.590 },
+      timestamp: 1000,
+      speed: 12,
+      heading: 90,
+      accuracy: 5,
+      source: 'LOCAL_GPS',
+    };
+
+    const target = engine.processMotionSample(sample, longRoute);
+    expect(target?.turn?.turnDetected).toBe(true);
+    expect(target?.turn?.distanceToTurn).toBeGreaterThan(250);
+  });
+
+  it('resets segment tracking when route geometry updates to prevent segment jump desync', () => {
+    const s1: NavigationMotionSample = {
+      coordinate: baseCoord,
+      timestamp: 1000,
+      speed: 10,
+      heading: 90,
+      accuracy: 5,
+      source: 'LOCAL_GPS',
+    };
+    engine.processMotionSample(s1, route);
+
+    // New route geometry from recalculated origin
+    const newRoute: RouteCoordinate[] = [
+      { latitude: -38.734, longitude: -72.589 },
+      { latitude: -38.734, longitude: -72.580 },
+      { latitude: -38.739, longitude: -72.580 },
+    ];
+
+    const s2: NavigationMotionSample = {
+      coordinate: { latitude: -38.734, longitude: -72.589 },
+      timestamp: 2000,
+      speed: 10,
+      heading: 90,
+      accuracy: 5,
+      source: 'LOCAL_GPS',
+    };
+
+    const target2 = engine.processMotionSample(s2, newRoute);
+    expect(target2).not.toBeNull();
+    expect(target2?.routeProgress?.currentSegmentIndex).toBe(0);
+  });
 });

@@ -3,6 +3,7 @@ import type {
   MotionEstimate,
   SmartCameraTarget,
   NavigationEngineMetrics,
+  TurnAnalysis,
 } from './types';
 import { SMART_NAV_CONSTANTS } from './types';
 import { filterGpsPosition } from './gpsQualityFilter';
@@ -20,6 +21,10 @@ export class SmartNavigationEngine {
   private lastRouteAnalysis: RouteAnalysisResult | null = null;
   private lastTarget: SmartCameraTarget | null = null;
   private coalescer: CameraCoalescer = new CameraCoalescer();
+  private lastRoutePointsLength: number = 0;
+  private lastRouteStartCoord: RouteCoordinate | null = null;
+  private latchedTurn: TurnAnalysis | null = null;
+  private consecutiveNoTurnCount: number = 0;
 
   private metrics: NavigationEngineMetrics = {
     samplesReceived: 0,
@@ -69,7 +74,24 @@ export class SmartNavigationEngine {
       );
     }
 
-    // 2. Análisis de ruta y detección de curvas/giros
+    // 2. Detección de cambio de geometría de ruta y reseteo de índice
+    if (routeCoords && routeCoords.length >= 2) {
+      const isRouteGeometryChanged =
+        routeCoords.length !== this.lastRoutePointsLength ||
+        !this.lastRouteStartCoord ||
+        Math.abs(routeCoords[0].latitude - this.lastRouteStartCoord.latitude) > 0.00015 ||
+        Math.abs(routeCoords[0].longitude - this.lastRouteStartCoord.longitude) > 0.00015;
+
+      if (isRouteGeometryChanged) {
+        this.lastRouteAnalysis = null;
+        this.latchedTurn = null;
+        this.consecutiveNoTurnCount = 0;
+        this.lastRoutePointsLength = routeCoords.length;
+        this.lastRouteStartCoord = { latitude: routeCoords[0].latitude, longitude: routeCoords[0].longitude };
+      }
+    }
+
+    // Análisis de ruta y detección de curvas/giros
     const routeAnalysis = analyzeRouteProgress(
       estimate.coordinate,
       routeCoords,
@@ -77,6 +99,21 @@ export class SmartNavigationEngine {
       this.lastRouteAnalysis?.progress.currentSegmentIndex ?? 0,
     );
     this.lastRouteAnalysis = routeAnalysis;
+
+    // Estabilización temporal anti-parpadeo del giro (Latching & Hysteresis)
+    let effectiveTurn = routeAnalysis?.turn ?? null;
+    if (effectiveTurn?.turnDetected) {
+      this.latchedTurn = effectiveTurn;
+      this.consecutiveNoTurnCount = 0;
+    } else if (this.latchedTurn) {
+      this.consecutiveNoTurnCount++;
+      const isStillOnRoute = routeAnalysis && !routeAnalysis.progress.isOffRoute;
+      if (this.consecutiveNoTurnCount < 3 && isStillOnRoute && this.latchedTurn.distanceToTurn > 0) {
+        effectiveTurn = this.latchedTurn;
+      } else {
+        this.latchedTurn = null;
+      }
+    }
 
     const snappedPosition =
       routeAnalysis &&
@@ -88,7 +125,7 @@ export class SmartNavigationEngine {
 
     if (__DEV__ && routeAnalysis) {
       console.log(
-        `[NAV:ROUTE_MATCH] segment=${routeAnalysis.progress.currentSegmentIndex} distanceFromRoute=${routeAnalysis.progress.distanceFromRoute.toFixed(1)} routeBearing=${routeAnalysis.progress.routeBearing.toFixed(1)} lookAheadBearing=${routeAnalysis.progress.lookAheadBearing.toFixed(1)} distanceToTurn=${Number.isFinite(routeAnalysis.turn.distanceToTurn) ? routeAnalysis.turn.distanceToTurn.toFixed(1) : 'inf'} turnType=${routeAnalysis.turn.turnType} isOffRoute=${routeAnalysis.progress.isOffRoute}`,
+        `[NAV:ROUTE_MATCH] segment=${routeAnalysis.progress.currentSegmentIndex} distanceFromRoute=${routeAnalysis.progress.distanceFromRoute.toFixed(1)} routeBearing=${routeAnalysis.progress.routeBearing.toFixed(1)} lookAheadBearing=${routeAnalysis.progress.lookAheadBearing.toFixed(1)} distanceToTurn=${effectiveTurn && Number.isFinite(effectiveTurn.distanceToTurn) ? effectiveTurn.distanceToTurn.toFixed(1) : 'inf'} turnType=${effectiveTurn?.turnType ?? 'STRAIGHT'} isOffRoute=${routeAnalysis.progress.isOffRoute}`,
       );
     }
 
@@ -115,7 +152,7 @@ export class SmartNavigationEngine {
       headingFusion.targetHeading,
       estimate.speedMps,
       routeAnalysis?.progress ?? null,
-      routeAnalysis?.turn ?? null,
+      effectiveTurn,
       routeCoords,
     );
 
@@ -123,7 +160,7 @@ export class SmartNavigationEngine {
     const lastZoom = this.lastTarget?.zoom ?? SMART_NAV_CONSTANTS.BASE_ZOOM;
     const targetZoom = calculateAdaptiveZoom(
       estimate.speedMps,
-      routeAnalysis?.turn ?? null,
+      effectiveTurn,
       lastZoom,
     );
 
@@ -140,13 +177,13 @@ export class SmartNavigationEngine {
       snappedPosition,
       navigationPosition,
       routeProgress: routeAnalysis?.progress ?? null,
-      turn: routeAnalysis?.turn ?? null,
+      turn: effectiveTurn,
     };
 
     navigationTelemetry.recordFilteredSample(
       estimate,
       routeAnalysis?.progress ?? null,
-      routeAnalysis?.turn ?? null,
+      effectiveTurn,
       lookAhead.lookAheadDistanceMeters,
     );
     navigationTelemetry.recordCameraTarget(target);
@@ -194,6 +231,10 @@ export class SmartNavigationEngine {
     this.lastEstimate = null;
     this.lastRouteAnalysis = null;
     this.lastTarget = null;
+    this.latchedTurn = null;
+    this.consecutiveNoTurnCount = 0;
+    this.lastRoutePointsLength = 0;
+    this.lastRouteStartCoord = null;
     this.coalescer.reset();
   }
 }

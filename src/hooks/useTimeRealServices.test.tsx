@@ -1053,6 +1053,85 @@ describe('useTimeRealServices Hook (Flujos 17, 18, 28, 29)', () => {
     });
     view.unmount();
   });
+
+  it('START_ORDER: mutación exitosa actualiza el estado a IN_PROGRESS', async () => {
+    mockQueryData = {
+      me: {
+        id: 42,
+        activeRealtimeOrder: null,
+        provider: null,
+      },
+      myRealtimeOrdersAsClient: [],
+    };
+
+    let hookMethods: any = null;
+    const Consumer: React.FC = () => {
+      hookMethods = useTimeRealServices();
+      return <Text testID="order-status">{hookMethods.localActiveOrder?.status || 'NONE'}</Text>;
+    };
+
+    const view = await render(<Consumer />);
+    await act(async () => {
+      hookMethods.setLocalActiveOrder({ id: 501, status: 'ARRIVED' });
+    });
+
+    const startOrderMock = mockMutationMap['StartRealtimeOrder'];
+    startOrderMock.mockResolvedValueOnce({
+      data: {
+        startRealtimeOrder: {
+          id: 501,
+          status: 'IN_PROGRESS',
+          startedAt: '2026-09-24T00:00:00.000Z',
+          arrivedAt: '2026-09-23T23:55:00.000Z',
+        },
+      },
+    });
+
+    await act(async () => {
+      await hookMethods.startOrder(501);
+    });
+
+    expect(startOrderMock).toHaveBeenCalledWith({
+      variables: { orderRealtimeId: 501 },
+    });
+    expect(hookMethods.localActiveOrder?.status).toBe('IN_PROGRESS');
+    view.unmount();
+  });
+
+  it('START_ORDER: mutación rechazada restaura el estado previo (rollback) y relanza el error', async () => {
+    mockQueryData = {
+      me: {
+        id: 42,
+        activeRealtimeOrder: null,
+        provider: null,
+      },
+      myRealtimeOrdersAsClient: [],
+    };
+
+    let hookMethods: any = null;
+    const Consumer: React.FC = () => {
+      hookMethods = useTimeRealServices();
+      return <Text testID="order-status">{hookMethods.localActiveOrder?.status || 'NONE'}</Text>;
+    };
+
+    const view = await render(<Consumer />);
+    await act(async () => {
+      hookMethods.setLocalActiveOrder({ id: 502, status: 'ARRIVED' });
+    });
+
+    const startOrderMock = mockMutationMap['StartRealtimeOrder'];
+    startOrderMock.mockRejectedValueOnce(new Error('Geofence validation failed'));
+
+    await act(async () => {
+      await expect(hookMethods.startOrder(502)).rejects.toThrow('Geofence validation failed');
+    });
+
+    expect(startOrderMock).toHaveBeenCalledWith({
+      variables: { orderRealtimeId: 502 },
+    });
+    expect(hookMethods.localActiveOrder?.status).toBe('ARRIVED');
+    view.unmount();
+  });
 });
 
 

@@ -258,4 +258,212 @@ describe('FocusSessionProvider geographic truth', () => {
     expect(captured.serviceDestinationCoords).toEqual({ latitude: -33.450, longitude: -70.660 });
     expect(captured.clientUserCoords).toEqual({ latitude: -33.420, longitude: -70.600 });
   });
+
+  describe('Tiered proximity notifications (1km, 500m, 200m, 5m)', () => {
+    it('notifies sequentially as provider approaches: 1km -> 500m -> 200m -> 5m', () => {
+      const mockShowNotification = jest.fn();
+      jest.spyOn(require('../../context/NotificationContext'), 'useNotification').mockReturnValue({
+        showNotification: mockShowNotification,
+      });
+
+      // Meeting point at (-33.450, -70.660)
+      // Step 1: Provider at ~900m (delta Lat ~0.008)
+      mockRealtime.activeOrder = {
+        id: 101,
+        status: 'ACCEPTED',
+        clientLat: -33.450,
+        clientLng: -70.660,
+        providerLat: -33.458,
+        providerLng: -70.660,
+      };
+
+      let renderer: any;
+      act(() => {
+        renderer = ReactTestRenderer.create(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      // Debe disparar hito 1 km
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'clientOrder:101:DIST_1000M',
+          title: 'Profesional a 1 km',
+          type: 'info',
+        }),
+      );
+
+      // Step 2: Provider avanza a ~450m (delta Lat ~0.004)
+      act(() => {
+        mockRealtime.activeOrder = {
+          ...mockRealtime.activeOrder,
+          providerLat: -33.454,
+          providerLng: -70.660,
+        };
+        renderer.update(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      // Debe disparar hito 500 m
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'clientOrder:101:DIST_500M',
+          title: 'Profesional a 500 m',
+          type: 'info',
+        }),
+      );
+
+      // Step 3: Provider avanza a ~150m (delta Lat ~0.0013)
+      act(() => {
+        mockRealtime.activeOrder = {
+          ...mockRealtime.activeOrder,
+          providerLat: -33.4513,
+          providerLng: -70.660,
+        };
+        renderer.update(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      // Debe disparar hito 200 m
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'clientOrder:101:DIST_200M',
+          title: 'Profesional a 200 m',
+          type: 'info',
+        }),
+      );
+
+      // Step 4: Provider avanza a ~5m (delta Lat ~0.00004)
+      act(() => {
+        mockRealtime.activeOrder = {
+          ...mockRealtime.activeOrder,
+          providerLat: -33.45004,
+          providerLng: -70.660,
+        };
+        renderer.update(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      // Debe disparar hito 5 m
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'clientOrder:101:DIST_5M',
+          title: 'Profesional por llegar',
+          message: 'El profesional está en tu puerta (a 5 metros de tu ubicación).',
+          type: 'info',
+        }),
+      );
+    });
+
+    it('prevents GPS jitter from firing duplicate notifications for the same milestone', () => {
+      const mockShowNotification = jest.fn();
+      jest.spyOn(require('../../context/NotificationContext'), 'useNotification').mockReturnValue({
+        showNotification: mockShowNotification,
+      });
+
+      // Provider entra a ~480m (dentro de 500m)
+      mockRealtime.activeOrder = {
+        id: 102,
+        status: 'ACCEPTED',
+        clientLat: -33.450,
+        clientLng: -70.660,
+        providerLat: -33.4543,
+        providerLng: -70.660,
+      };
+
+      let renderer: any;
+      act(() => {
+        renderer = ReactTestRenderer.create(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      const calls500mFirst = mockShowNotification.mock.calls.filter(
+        (c: any) => c[0]?.id === 'clientOrder:102:DIST_500M',
+      ).length;
+      expect(calls500mFirst).toBe(1);
+
+      // Jitter: sube a 520m y vuelve a 480m
+      act(() => {
+        mockRealtime.activeOrder = {
+          ...mockRealtime.activeOrder,
+          providerLat: -33.4547, // ~520m
+        };
+        renderer.update(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      act(() => {
+        mockRealtime.activeOrder = {
+          ...mockRealtime.activeOrder,
+          providerLat: -33.4542, // ~470m
+        };
+        renderer.update(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      const calls500mSecond = mockShowNotification.mock.calls.filter(
+        (c: any) => c[0]?.id === 'clientOrder:102:DIST_500M',
+      ).length;
+      expect(calls500mSecond).toBe(1); // Se mantiene en 1 disparo
+    });
+
+    it('suppresses upper cascade milestones when provider suddenly appears at a closer distance', () => {
+      const mockShowNotification = jest.fn();
+      jest.spyOn(require('../../context/NotificationContext'), 'useNotification').mockReturnValue({
+        showNotification: mockShowNotification,
+      });
+
+      // Provider aparece directamente a ~150m (dentro de 200m)
+      mockRealtime.activeOrder = {
+        id: 103,
+        status: 'ACCEPTED',
+        clientLat: -33.450,
+        clientLng: -70.660,
+        providerLat: -33.4513,
+        providerLng: -70.660,
+      };
+
+      act(() => {
+        ReactTestRenderer.create(
+          <FocusSessionProvider>
+            <CaptureClientSession onValue={() => {}} />
+          </FocusSessionProvider>,
+        );
+      });
+
+      // Debe disparar el hito de 200m
+      expect(mockShowNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'clientOrder:103:DIST_200M',
+          title: 'Profesional a 200 m',
+        }),
+      );
+
+      // Y NO debe disparar los hitos lejanos (1000M y 500M)
+      const distantCalls = mockShowNotification.mock.calls.filter(
+        (c: any) => c[0]?.id === 'clientOrder:103:DIST_1000M' || c[0]?.id === 'clientOrder:103:DIST_500M',
+      );
+      expect(distantCalls.length).toBe(0);
+    });
+  });
 });

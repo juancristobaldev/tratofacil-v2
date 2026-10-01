@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { FocusModeProviderScreen } from './provider/FocusModeProviderScreen';
 import { FocusModeClientScreen } from './client/FocusModeClientScreen';
@@ -139,44 +140,50 @@ describe('Focus Screens Navigation Control Integration', () => {
   });
 
   it.each(['PENDING', 'QUOTED', 'PAYMENT_PENDING', 'ACCEPTED', 'ARRIVED', 'IN_PROGRESS'])(
-    'FocusModeProviderScreen renders enabled navigation controls for non-terminal status %s',
+    'FocusModeProviderScreen enables automatic navigation for non-terminal status %s without manual toggle button',
     async (status) => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       mockProviderSession.activeOrder = { id: 1, status, client: { name: 'Cliente Test' } };
+      mockProviderSession.orderState = status;
       const view = await render(<FocusModeProviderScreen />);
 
-      const navBtn = view.getByTestId('btn-toggle-navigation-mode');
-      expect(navBtn).toBeTruthy();
-      expect(navBtn.props.accessibilityState.selected).toBe(true);
-      expect(navBtn.props.accessibilityState.disabled).toBe(false);
+      // No existe botón manual para apagar la navegación (permanece encendida automáticamente)
+      expect(view.queryByTestId('btn-toggle-navigation-mode')).toBeNull();
+      // Smart framing retirado en proveedor
+      expect(view.queryByTestId('btn-smart-framing')).toBeNull();
 
-      await fireEvent.press(navBtn);
-      expect(navBtn.props.accessibilityState.selected).toBe(false);
+      // Verifica que la cámara se posicionó en modo navegación automáticamente
+      const navigationWriteLogs = logSpy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((message) => message.includes('[NAV:CAMERA_WRITE]') || message.includes('[MAP:NAVIGATION_WRITE]'));
+      expect(navigationWriteLogs.some((message) => message.includes('pitch='))).toBe(true);
 
-      await fireEvent.press(navBtn);
-      expect(navBtn.props.accessibilityState.selected).toBe(true);
+      logSpy.mockRestore();
     },
   );
 
   it('FocusModeProviderScreen disables navigation when provider GPS is unavailable without falling back to client coordinates', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     mockLocation = { coords: null };
     mockProviderSession.providerCoords = null;
     mockProviderSession.clientCoords = { latitude: -38.750, longitude: -72.600 };
 
     const view = await render(<FocusModeProviderScreen />);
 
-    const navBtn = view.getByTestId('btn-toggle-navigation-mode');
-    expect(navBtn.props.accessibilityState.disabled).toBe(true);
+    expect(view.queryByTestId('btn-toggle-navigation-mode')).toBeNull();
 
-    await fireEvent.press(navBtn);
-    expect(navBtn.props.accessibilityState.selected).toBe(false);
+    const navigationWriteLogs = logSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((message) => message.includes('[NAV:CAMERA_WRITE]') || message.includes('[MAP:NAVIGATION_WRITE]'));
+    expect(navigationWriteLogs.length).toBe(0);
+
+    logSpy.mockRestore();
   });
 
   it('FocusModeProviderScreen navigation uses HomePage camera timing instead of provider-specific override', async () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
-    const view = await render(<FocusModeProviderScreen />);
-
-    await fireEvent.press(view.getByTestId('btn-toggle-navigation-mode'));
+    await render(<FocusModeProviderScreen />);
 
     const navigationWriteLogs = logSpy.mock.calls
       .map((call) => String(call[0]))
@@ -188,20 +195,36 @@ describe('Focus Screens Navigation Control Integration', () => {
     logSpy.mockRestore();
   });
 
-  it('FocusModeProviderScreen smart framing recenters on route and provider', async () => {
-    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  it('FocusModeProviderScreen renders DrivingNavigationHUD when orderState is EN_CAMINO and keeps it mounted on panDrag', async () => {
+    mockProviderSession.activeOrder = {
+      id: 1,
+      status: 'ACCEPTED',
+      clientAddress: 'Av. Alemania 0123',
+      client: { displayName: 'Juan Pérez' },
+    };
+    mockProviderSession.orderState = 'EN_CAMINO';
+    mockProviderSession.distanceLabel = '1.8 km';
+    mockProviderSession.etaLabel = '6 min';
+
     const view = await render(<FocusModeProviderScreen />);
 
-    const smartFramingBtn = view.getByTestId('btn-smart-framing');
-    expect(smartFramingBtn).toBeTruthy();
+    expect(view.getByTestId('driving-navigation-hud')).toBeTruthy();
+    expect(view.getByText('6 min')).toBeTruthy();
+    expect(view.getByText('1.8 km')).toBeTruthy();
 
-    await fireEvent.press(smartFramingBtn);
+    // Trigger pan drag on MapView (user moves the map)
+    const mapView = view.getByTestId('provider-map-view');
+    fireEvent(mapView, 'panDrag');
 
-    const logs = logSpy.mock.calls.map((call) => String(call[0]));
-    expect(logs.some((message) => message.includes('[MAP:FIT_ROUTE] reason=smart_framing_realtime_order'))).toBe(true);
-    expect(logs.some((message) => message.includes('[MAP:RECENTER]'))).toBe(false);
+    // HUD MUST REMAIN MOUNTED AND PERSISTENT
+    expect(view.getByTestId('driving-navigation-hud')).toBeTruthy();
+    expect(view.getByText('6 min')).toBeTruthy();
+    expect(view.getByText('1.8 km')).toBeTruthy();
+  });
 
-    logSpy.mockRestore();
+  it('FocusModeProviderScreen does not render smart framing button', async () => {
+    const view = await render(<FocusModeProviderScreen />);
+    expect(view.queryByTestId('btn-smart-framing')).toBeNull();
   });
 
   it('FocusModeClientScreen renders smart framing but not navigation when status is ACCEPTED', async () => {
@@ -210,5 +233,43 @@ describe('Focus Screens Navigation Control Integration', () => {
 
     expect(view.queryByTestId('btn-toggle-navigation-mode')).toBeNull();
     expect(view.getByTestId('btn-smart-framing')).toBeTruthy();
+  });
+
+  it('FocusModeClientScreen renders ClientArrivalHUD at top: 25 and smart framing at top: 109 below the HUD', async () => {
+    mockClientSession.activeOrder = { id: 1, status: 'ACCEPTED' };
+    mockClientSession.provider = { name: 'Carlos Electricista', avatar: null, rating: 4.8 };
+    mockClientSession.etaLabel = '7 min';
+    mockClientSession.distanceLabel = '2.1 km';
+
+    const view = await render(<FocusModeClientScreen />);
+
+    const clientHud = view.getByTestId('client-arrival-hud');
+    expect(clientHud).toBeTruthy();
+    expect(view.getByText('Carlos Electricista')).toBeTruthy();
+    expect(view.getByText('~7 min')).toBeTruthy();
+    expect(view.getByText('2.1 km')).toBeTruthy();
+
+    // Verify HUD is positioned at top: 25 (matching Driving HUD)
+    const hudStyle = StyleSheet.flatten(clientHud.props.style);
+    expect(hudStyle.top).toBe(25);
+    expect(hudStyle.position).toBe('absolute');
+
+    // Verify MapFloatingNavigationControls is positioned below the HUD at top: 109
+    const floatingControls = view.getByTestId('map-floating-navigation-controls');
+    const controlsStyle = StyleSheet.flatten(floatingControls.props.style);
+    expect(controlsStyle.top).toBe(109);
+  });
+
+  it('FocusModeClientScreen hides ClientArrivalHUD and restores smart framing position when status is ARRIVED', async () => {
+    mockClientSession.activeOrder = { id: 1, status: 'ARRIVED' };
+    const view = await render(<FocusModeClientScreen />);
+
+    expect(view.queryByTestId('client-arrival-hud')).toBeNull();
+
+    // Verify MapFloatingNavigationControls reverts to insets top
+    const floatingControls = view.getByTestId('map-floating-navigation-controls');
+    const controlsStyle = StyleSheet.flatten(floatingControls.props.style);
+    // insets.top is 44, so top is 44 + 8 = 52
+    expect(controlsStyle.top).toBe(52);
   });
 });

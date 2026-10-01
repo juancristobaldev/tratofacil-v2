@@ -3,7 +3,7 @@ import { StyleSheet, View, TouchableOpacity, Text, Dimensions } from 'react-nati
 import MapView, { type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from '../../theme';
-import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline, MapFloatingNavigationControls } from '../../components/ui';
+import { Icon, AnimatedUserMarker, HousePin, AnimatedPolyline, MapFloatingNavigationControls, DrivingNavigationHUD } from '../../components/ui';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
@@ -14,6 +14,8 @@ import type { RouteCoordinate } from '../../utils/directions';
 import { useLocation } from '../../context/LocationContext';
 import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
 import { canUseProviderNavigation } from '../../utils/orderStatus';
+import { useProviderAutoNavigation } from '../../hooks/useProviderAutoNavigation';
+import { analyzeRouteProgress } from '../../navigation-engine/routeAnalyzer';
 import { DevJoystickOverlay } from '../../dev/joystick';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -25,7 +27,18 @@ export const FocusModeProviderScreen: React.FC = () => {
   const bottomNavHeight = useBottomNavHeight();
   const { sheetMetrics, setIndex, active } = useBottomSheet();
   const session = useFocusSession('provider');
-  const { activeOrder, orderState, providerCoords, clientCoords, routeCoords, showChat, setShowChat, realtime } = session;
+  const {
+    activeOrder,
+    orderState,
+    providerCoords,
+    clientCoords,
+    routeCoords,
+    showChat,
+    setShowChat,
+    realtime,
+    distanceLabel,
+    etaLabel,
+  } = session;
 
   const canUseNavigation = useMemo(() => {
     return canUseProviderNavigation({
@@ -59,7 +72,10 @@ export const FocusModeProviderScreen: React.FC = () => {
     isFollowing,
     isNavigating,
     navigationPosition,
+    activeNavigationTarget,
     isUserExploring,
+    navigateToCoordinate,
+    exitNavigationMode,
     toggleNavigationMode,
     restoreNavigationCamera,
     fitToDefaultRegion,
@@ -91,9 +107,22 @@ export const FocusModeProviderScreen: React.FC = () => {
 
   const navigationSubjectCoordinate = localGpsCoords || providerCoords || null;
 
-  // Enrutamiento y encuadre inicial cuando no está en navegación activa
+  const fallbackTurn = useMemo(() => {
+    if (activeNavigationTarget?.turn) return activeNavigationTarget.turn;
+    if (navigationSubjectCoordinate && routeCoords.length >= 2) {
+      const res = analyzeRouteProgress(
+        navigationSubjectCoordinate,
+        routeCoords,
+        location?.coords?.speed ?? 10,
+      );
+      return res?.turn ?? null;
+    }
+    return null;
+  }, [activeNavigationTarget?.turn, navigationSubjectCoordinate, routeCoords, location?.coords?.speed]);
+
+  // Enrutamiento y encuadre inicial cuando no está en navegación activa ni disponible
   useEffect(() => {
-    if (isNavigating) return;
+    if (canUseNavigation || isNavigating) return;
 
     if (routeCoords.length >= 2) {
       const points: RouteCoordinate[] = [
@@ -124,6 +153,7 @@ export const FocusModeProviderScreen: React.FC = () => {
       if (timer) clearTimeout(timer);
     };
   }, [
+    canUseNavigation,
     isNavigating,
     orderState,
     routeCoords,
@@ -177,106 +207,76 @@ export const FocusModeProviderScreen: React.FC = () => {
       if (__DEV__) {
         console.log('[NAV:TERMINAL_EXIT] Order transitioned to terminal or inactive state; stopping 3D navigation');
       }
-      toggleNavigationMode(localGpsCoords || providerCoords, { animated: true });
+      exitNavigationMode(localGpsCoords || providerCoords, true);
     }
-  }, [canUseNavigation, isNavigating, localGpsCoords, providerCoords, toggleNavigationMode]);
+  }, [canUseNavigation, isNavigating, localGpsCoords, providerCoords, exitNavigationMode]);
 
-  // Al haber una orden realtime no terminal para el proveedor con trazado de ruta activo (polyline),
-  // activar y mantener activo de forma continua el modo navegación 3D a menos que el usuario esté en exploración gestual libre.
-  const userManuallyExitedNavOrderRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!canUseNavigation) {
-      userManuallyExitedNavOrderRef.current = null;
-      return;
-    }
-
-    if (!activeOrder?.id) return;
-
-    if (
-      !isNavigating &&
-      !isUserExploring &&
-      userManuallyExitedNavOrderRef.current !== activeOrder.id &&
-      routeCoords.length >= 2
-    ) {
-      const targetCoord = localGpsCoords || providerCoords;
-      if (targetCoord) {
-        if (__DEV__) {
-          console.log(`[NAV:CONTINUOUS_ACTIVATE] Provider order ${activeOrder.id} active with polyline; activating 3D navigation mode`);
-        }
-        toggleNavigationMode(targetCoord, {
-          heading:
-            location?.coords?.heading != null &&
-            Number.isFinite(location.coords.heading) &&
-            location.coords.heading >= 0
-              ? location.coords.heading
-              : undefined,
-          speed: location?.coords?.speed ?? undefined,
-          accuracy: location?.coords?.accuracy ?? undefined,
-          timestamp: location?.timestamp,
-          routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
-          pitch: 65,
-          animated: true,
-        });
-      }
-    }
-  }, [
-    canUseNavigation,
+  // Coordinador de navegación automática para el proveedor:
+  // - Se activa solo sin ningún botón en estados disponibles
+  // - Al arrastrar se desactiva
+  // - Tras 15 seg o si el proveedor se mueve se activa automáticamente
+  const {
+    handlePanDrag: onAutoNavPanDrag,
+    notifyUserGesture,
+    handleRecenter: onAutoNavRecenter,
+  } = useProviderAutoNavigation({
+    enabled: canUseNavigation,
+    providerCoord: navigationSubjectCoordinate,
+    routeCoords,
+    heading: location?.coords?.heading,
+    speed: location?.coords?.speed,
+    accuracy: location?.coords?.accuracy,
+    timestamp: location?.timestamp,
     isNavigating,
     isUserExploring,
-    activeOrder?.id,
-    localGpsCoords,
-    providerCoords,
     toggleNavigationMode,
-    location?.coords,
-    location?.timestamp,
-    routeCoords,
-  ]);
+    navigateToCoordinate,
+    exitNavigationMode,
+  });
 
   // Limpieza al desmontar FocusModeProviderScreen: destruir sesión de navegación
   useEffect(() => {
     return () => {
       if (isNavigating) {
-        toggleNavigationMode(null, { animated: false });
+        exitNavigationMode(null, false);
       }
     };
-  }, [isNavigating, toggleNavigationMode]);
+  }, [isNavigating, exitNavigationMode]);
 
-  const handleToggleNavigation = useCallback(
-    (coord?: RouteCoordinate | null, options?: { heading?: number; pitch?: number; animated?: boolean; force?: boolean; duration?: number }) => {
-      if (!canUseNavigation) return;
+  const handleSmartFraming = useCallback(() => {
+    if (routeCoords.length >= 2) {
+      const points: RouteCoordinate[] = [
+        providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
+        clientCoords ? { latitude: clientCoords.latitude, longitude: clientCoords.longitude } : null,
+        ...routeCoords,
+      ].filter(Boolean) as RouteCoordinate[];
+      fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_realtime_order' });
+      onAutoNavPanDrag();
+      return;
+    }
+    if (providerCoords && clientCoords) {
+      fitToRoute(
+        [
+          { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
+          { latitude: clientCoords.latitude, longitude: clientCoords.longitude },
+        ],
+        { force: true, animated: true, reason: 'smart_framing_realtime_order' },
+      );
+      onAutoNavPanDrag();
+      return;
+    }
+    if (canUseNavigation) {
+      onAutoNavRecenter();
+    } else {
+      fitToDefaultRegion(DEFAULT_TEMUCO_PLC_REGION, true);
+    }
+  }, [routeCoords, providerCoords, clientCoords, fitToRoute, onAutoNavPanDrag, canUseNavigation, onAutoNavRecenter, fitToDefaultRegion]);
 
-      if (isNavigating) {
-        userManuallyExitedNavOrderRef.current = activeOrder?.id ?? null;
-      } else {
-        userManuallyExitedNavOrderRef.current = null;
-      }
-
-      const subjectCoord = coord || localGpsCoords || providerCoords || null;
-      if (!subjectCoord) return;
-
-      const heading =
-        options?.heading ??
-        (location?.coords?.heading != null &&
-        Number.isFinite(location.coords.heading) &&
-        location.coords.heading >= 0
-          ? location.coords.heading
-          : undefined);
-
-      toggleNavigationMode(subjectCoord, {
-        heading,
-        speed: location?.coords?.speed ?? undefined,
-        accuracy: location?.coords?.accuracy ?? undefined,
-        timestamp: location?.timestamp,
-        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
-        pitch: options?.pitch ?? 65,
-        animated: options?.animated ?? true,
-      });
-    },
-    [canUseNavigation, isNavigating, activeOrder?.id, location?.coords, location?.timestamp, localGpsCoords, providerCoords, routeCoords, toggleNavigationMode],
-  );
-
-  const handleFollow = () => {
-    userManuallyExitedNavOrderRef.current = null;
+  const handleFollow = useCallback(() => {
+    if (canUseNavigation) {
+      onAutoNavRecenter();
+      return;
+    }
     if (routeCoords.length >= 2) {
       const points: RouteCoordinate[] = [
         providerCoords ? { latitude: providerCoords.latitude, longitude: providerCoords.longitude } : null,
@@ -286,26 +286,7 @@ export const FocusModeProviderScreen: React.FC = () => {
       fitToRoute(points, { force: true, animated: true, reason: 'smart_framing_realtime_order' });
       return;
     }
-
-    if (isNavigating && (localGpsCoords || providerCoords)) {
-      const targetCoord = localGpsCoords || providerCoords;
-      restoreNavigationCamera(targetCoord, {
-        heading:
-          location?.coords?.heading != null &&
-          Number.isFinite(location.coords.heading) &&
-          location.coords.heading >= 0
-            ? location.coords.heading
-            : undefined,
-        speed: location?.coords?.speed ?? undefined,
-        accuracy: location?.coords?.accuracy ?? undefined,
-        timestamp: location?.timestamp,
-        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
-        pitch: 65,
-        animated: true,
-        reason: 'smart_framing_navigation_restore',
-      });
-      return;
-    } else if (providerCoords && clientCoords) {
+    if (providerCoords && clientCoords) {
       fitToRoute(
         [
           { latitude: providerCoords.latitude, longitude: providerCoords.longitude },
@@ -331,7 +312,17 @@ export const FocusModeProviderScreen: React.FC = () => {
     } else {
       fitToDefaultRegion(DEFAULT_TEMUCO_PLC_REGION, true);
     }
-  };
+  }, [
+    canUseNavigation,
+    onAutoNavRecenter,
+    routeCoords,
+    providerCoords,
+    clientCoords,
+    fitToRoute,
+    localGpsCoords,
+    followCoordinate,
+    fitToDefaultRegion,
+  ]);
 
   const [mapLatitudeDelta, setMapLatitudeDelta] = useState<number>(0.003);
 
@@ -340,15 +331,20 @@ export const FocusModeProviderScreen: React.FC = () => {
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
+          testID="provider-map-view"
           style={styles.map}
           initialRegion={initialCenterRegion}
           onPanDrag={() => {
             handlePanDrag();
+            onAutoNavPanDrag();
             onSheetAutoCollapsePanDrag();
           }}
           onRegionChangeComplete={(r, d) => {
             handleRegionChangeComplete(r, d);
             onSheetAutoCollapseRegionComplete();
+            if (d?.isGesture) {
+              notifyUserGesture();
+            }
             if (r?.latitudeDelta && Number.isFinite(r.latitudeDelta) && r.latitudeDelta > 0) {
               setMapLatitudeDelta(r.latitudeDelta);
             }
@@ -366,17 +362,10 @@ export const FocusModeProviderScreen: React.FC = () => {
           {(localGpsCoords || providerCoords) && Math.abs((localGpsCoords || providerCoords)!.latitude) > 1e-4 && (
             <AnimatedUserMarker
               coordinate={(localGpsCoords || providerCoords)!}
+              heading={(isNavigating && activeNavigationTarget?.heading != null) ? activeNavigationTarget.heading : location?.coords?.heading}
               onPress={() => {
                 if (canUseNavigation) {
-                  handleToggleNavigation(providerCoords, {
-                    heading:
-                      location?.coords?.heading != null &&
-                      Number.isFinite(location.coords.heading) &&
-                      location.coords.heading >= 0
-                        ? location.coords.heading
-                        : 0,
-                    animated: true,
-                  });
+                  onAutoNavRecenter();
                 } else {
                   handleFollow();
                 }
@@ -387,11 +376,30 @@ export const FocusModeProviderScreen: React.FC = () => {
           {orderState === 'EN_CAMINO' && polylineCoords.length >= 2 && (
             <AnimatedPolyline
               coordinates={polylineCoords}
+              currentPosition={localGpsCoords || providerCoords}
               strokeColor={TOKENS.colors.brand500}
               latitudeDelta={mapLatitudeDelta}
             />
           )}
         </MapView>
+
+        {/* Driving Navigation HUD for Provider: 25px bajo el header (Persistente en EN_CAMINO) */}
+        {canUseNavigation && orderState === 'EN_CAMINO' && (
+          <DrivingNavigationHUD
+            turn={activeNavigationTarget?.turn ?? fallbackTurn}
+            etaLabel={etaLabel}
+            distanceLabel={distanceLabel}
+            destinationAddress={activeOrder?.clientAddress}
+            clientName={activeOrder?.client?.displayName}
+            style={{
+              position: 'absolute',
+              top: 25,
+              left: 0,
+              right: 0,
+              zIndex: 60,
+            }}
+          />
+        )}
 
         {/* Top Floating Controls */}
         <MapFloatingNavigationControls
@@ -400,10 +408,9 @@ export const FocusModeProviderScreen: React.FC = () => {
           destinationCoordinate={clientCoords}
           targetCoordinate={navigationSubjectCoordinate}
           heading={location?.coords?.heading}
-          onToggleNavigation={canUseNavigation ? handleToggleNavigation : undefined}
-          onSmartFraming={handleFollow}
-          showSmartFraming={true}
-          showNavigation={canUseNavigation}
+          onSmartFraming={handleSmartFraming}
+          showSmartFraming={false}
+          showNavigation={false}
           style={[
             styles.floatingControls,
             { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },

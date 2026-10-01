@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import Supercluster from 'supercluster';
 import { TOKENS, DARK_VISIBLE_MAP_STYLE, MAP_BACKGROUND_COLOR } from '../../theme';
-import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, AnimatedProviderMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin, MapFloatingNavigationControls } from '../ui';
+import { Icon, Avatar, Rating, Badge, ProviderPin, ClusterPin, AnimatedUserMarker, AnimatedProviderMarker, LoadingScreen, ErrorState, AnimatedPolyline, HousePin, MapFloatingNavigationControls, DrivingNavigationHUD, ClientArrivalHUD } from '../ui';
 import { useBottomSheet } from '../../bottom-sheet/core/useBottomSheet';
 import { useMapSheetCollapse } from '../../bottom-sheet/core/useMapSheetCollapse';
 import { bottomSheetDebug, nextBottomSheetTransitionId } from '../../bottom-sheet/core/bottomSheet.debug';
@@ -21,6 +21,7 @@ import { useCategories } from '../../context/CategoriesContext';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 import { FocusChatOverlay } from '../../screens/client/components/FocusChatOverlay';
 import { canUseProviderNavigation } from '../../utils/orderStatus';
+import { useProviderAutoNavigation } from '../../hooks/useProviderAutoNavigation';
 import { ENDPOINT } from '../../config/endpoints';
 import { getImageUrl } from '../../utils/imageUrl';
 import { geocodeCity, getCachedCoords } from '../../utils/geocode';
@@ -109,6 +110,7 @@ export const HomePage: React.FC = () => {
     isFollowing,
     isNavigating,
     navigationPosition,
+    activeNavigationTarget,
     isUserExploring,
   } = useMapCamera({
     mapRef,
@@ -348,6 +350,14 @@ export const HomePage: React.FC = () => {
     return null;
   }, [role, hasActiveRealtimeOrder, clientActiveOrder, realtime.providerActiveOrder, selectedProvider]);
 
+  const isRealtimeOrderActive = Boolean(
+    hasActiveRealtimeOrder && (role === 'provider' || clientOrderStatus === 'ACCEPTED')
+  );
+
+  const activeOrderRouteCoords = role === 'provider'
+    ? providerSession.routeCoords
+    : clientSession.routeCoords;
+
   const isRouteActive = Boolean(
     activeRouteOrigin &&
     activeRouteDestination &&
@@ -355,11 +365,15 @@ export const HomePage: React.FC = () => {
     (hasActiveRealtimeOrder ? (role === 'provider' || clientOrderStatus === 'ACCEPTED') : Boolean(selectedProvider))
   );
 
-  const { routeCoords } = useRoutePolyline(
+  const { routeCoords: exploreRouteCoords } = useRoutePolyline(
     activeRouteOrigin,
     activeRouteDestination,
-    isRouteActive,
+    isRouteActive && !isRealtimeOrderActive,
   );
+
+  const routeCoords = isRealtimeOrderActive && activeOrderRouteCoords && activeOrderRouteCoords.length >= 2
+    ? activeOrderRouteCoords
+    : exploreRouteCoords;
 
   const canUseNavigation = useMemo(() => {
     return canUseProviderNavigation({
@@ -370,100 +384,42 @@ export const HomePage: React.FC = () => {
     });
   }, [role, hasActiveRealtimeOrder, realtime.providerActiveOrder, providerSession.orderState]);
 
-  const userManuallyExitedNavOrderRef = useRef<number | null>(null);
-
-  const handleToggleNavigation = useCallback(
-    (coord?: RouteCoordinate | null, options?: { heading?: number; pitch?: number; animated?: boolean; force?: boolean; duration?: number }) => {
-      if (!canUseNavigation) return;
-
-      if (isNavigating) {
-        userManuallyExitedNavOrderRef.current = realtime.providerActiveOrder?.id ?? null;
-      } else {
-        userManuallyExitedNavOrderRef.current = null;
-      }
-
-      // Invariante Fase 1: El sujeto de navegación es SIEMPRE y exclusivamente el GPS local del vehículo.
-      // Jamás debe usarse la coordenada de destino como sujeto móvil.
-      const subjectCoord = coord || activeUserCoords || null;
-      if (!subjectCoord) return;
-
-      const heading =
-        options?.heading ??
-        (location?.coords?.heading != null &&
-        Number.isFinite(location.coords.heading) &&
-        location.coords.heading >= 0
-          ? location.coords.heading
-          : undefined);
-
-      toggleNavigationMode(subjectCoord, {
-        heading,
-        speed: location?.coords?.speed ?? undefined,
-        accuracy: location?.coords?.accuracy ?? undefined,
-        timestamp: location?.timestamp,
-        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
-        pitch: options?.pitch ?? 65,
-        animated: options?.animated ?? true,
-      });
-    },
-    [canUseNavigation, isNavigating, activeUserCoords, location?.coords?.heading, location?.coords?.speed, location?.coords?.accuracy, location?.timestamp, routeCoords, toggleNavigationMode, realtime.providerActiveOrder?.id],
-  );
+  // Coordinador de navegación automática para el proveedor:
+  // - Se activa solo sin ningún botón en estados disponibles
+  // - Al arrastrar se desactiva
+  // - Tras 15 seg o si el proveedor se mueve se activa automáticamente
+  const {
+    handlePanDrag: onAutoNavPanDrag,
+    notifyUserGesture,
+    handleRecenter: onAutoNavRecenter,
+  } = useProviderAutoNavigation({
+    enabled: canUseNavigation,
+    providerCoord: activeUserCoords,
+    routeCoords,
+    heading: location?.coords?.heading,
+    speed: location?.coords?.speed,
+    accuracy: location?.coords?.accuracy,
+    timestamp: location?.timestamp,
+    isNavigating,
+    isUserExploring,
+    toggleNavigationMode,
+    navigateToCoordinate,
+    exitNavigationMode,
+  });
 
   useEffect(() => {
     if (!canUseNavigation && isNavigating) {
-      toggleNavigationMode(activeUserCoords, { animated: true });
+      exitNavigationMode(activeUserCoords, true);
     }
-  }, [canUseNavigation, isNavigating, activeUserCoords, toggleNavigationMode]);
+  }, [canUseNavigation, isNavigating, activeUserCoords, exitNavigationMode]);
 
   useEffect(() => {
     return () => {
       if (isNavigating) {
-        toggleNavigationMode(null, { animated: false });
+        exitNavigationMode(null, false);
       }
     };
-  }, [isNavigating, toggleNavigationMode]);
-
-  // Al haber una orden realtime no terminal para el proveedor con trazado de ruta activo (polyline),
-  // activar y mantener activo de forma continua el modo navegación 3D a menos que el usuario esté en exploración gestual libre.
-  useEffect(() => {
-    if (!canUseNavigation) {
-      userManuallyExitedNavOrderRef.current = null;
-      return;
-    }
-
-    const pOrder = realtime.providerActiveOrder;
-    if (!pOrder?.id) return;
-
-    if (
-      !isNavigating &&
-      !isUserExploring &&
-      userManuallyExitedNavOrderRef.current !== pOrder.id &&
-      routeCoords.length >= 2 &&
-      activeUserCoords
-    ) {
-      if (__DEV__) {
-        console.log(`[NAV:CONTINUOUS_ACTIVATE] Provider order ${pOrder.id} active with polyline; activating 3D navigation mode`);
-      }
-      handleToggleNavigation(activeUserCoords, {
-        heading:
-          location?.coords?.heading != null &&
-          Number.isFinite(location.coords.heading) &&
-          location.coords.heading >= 0
-            ? location.coords.heading
-            : undefined,
-        pitch: 65,
-        animated: true,
-      });
-    }
-  }, [
-    canUseNavigation,
-    isNavigating,
-    isUserExploring,
-    realtime.providerActiveOrder,
-    routeCoords,
-    activeUserCoords,
-    location?.coords?.heading,
-    handleToggleNavigation,
-  ]);
+  }, [isNavigating, exitNavigationMode]);
 
   // Radar Animation for Client PENDING state
   const pingScale = useRef(new Animated.Value(1)).current;
@@ -594,7 +550,6 @@ export const HomePage: React.FC = () => {
     if (!hasActiveRealtimeOrder && wasActiveRealtimeOrderRef.current) {
       setSelectedProvider(null);
       hasNavigatedToRatingRef.current = null;
-      userManuallyExitedNavOrderRef.current = null;
     }
     wasActiveRealtimeOrderRef.current = hasActiveRealtimeOrder;
   }, [hasActiveRealtimeOrder]);
@@ -666,18 +621,20 @@ export const HomePage: React.FC = () => {
     updateClusters(newRegion);
     if (mapPanActiveRef.current) {
       mapPanActiveRef.current = false;
+      notifyUserGesture();
       console.log('[MAP:GESTURE] PAN_END');
     }
-  }, [updateClusters, onCameraRegionChangeComplete, onSheetAutoCollapseRegionComplete]);
+  }, [updateClusters, onCameraRegionChangeComplete, onSheetAutoCollapseRegionComplete, notifyUserGesture]);
 
   const handleMapPanDrag = useCallback(() => {
     Keyboard.dismiss();
     onCameraPanDrag();
+    onAutoNavPanDrag();
     onSheetAutoCollapsePanDrag();
     if (mapPanActiveRef.current) return;
     mapPanActiveRef.current = true;
     console.log('[MAP:GESTURE] PAN_START');
-  }, [onCameraPanDrag, onSheetAutoCollapsePanDrag]);
+  }, [onCameraPanDrag, onAutoNavPanDrag, onSheetAutoCollapsePanDrag]);
 
   const initialGpsCenteredRef = useRef(false);
 
@@ -1570,24 +1527,9 @@ export const HomePage: React.FC = () => {
   const handleRecenter = (source: 'recenter_button' | 'user_marker' = 'recenter_button') => {
     console.log(`[MAP:INTERACTION] type=RECENTER_PRESS source=${source}`);
     recoverSheetIfDismissed();
-    userManuallyExitedNavOrderRef.current = null;
+    onAutoNavRecenter();
 
     if (canUseNavigation && activeUserCoords) {
-      restoreNavigationCamera(activeUserCoords, {
-        heading:
-          location?.coords?.heading != null &&
-          Number.isFinite(location.coords.heading) &&
-          location.coords.heading >= 0
-            ? location.coords.heading
-            : undefined,
-        speed: location?.coords?.speed ?? undefined,
-        accuracy: location?.coords?.accuracy ?? undefined,
-        timestamp: location?.timestamp,
-        routeCoords: routeCoords.length >= 2 ? routeCoords : undefined,
-        pitch: 65,
-        animated: true,
-        reason: 'provider_navigation_recenter',
-      });
       return;
     }
 
@@ -1725,18 +1667,11 @@ export const HomePage: React.FC = () => {
               latitude: location.coords.latitude, 
               longitude: location.coords.longitude 
             }} 
+            heading={(isNavigating && activeNavigationTarget?.heading != null) ? activeNavigationTarget.heading : location?.coords?.heading}
             isMapManipulating={isMapManipulating || mapPanActiveRef.current}
             onPress={() => {
               if (canUseNavigation) {
-                handleToggleNavigation(activeUserCoords, {
-                  heading:
-                    location?.coords?.heading != null &&
-                    Number.isFinite(location.coords.heading) &&
-                    location.coords.heading >= 0
-                      ? location.coords.heading
-                      : 0,
-                  animated: true,
-                });
+                onAutoNavRecenter();
               } else {
                 handleRecenter('user_marker');
               }
@@ -1866,6 +1801,7 @@ export const HomePage: React.FC = () => {
         {routeCoords.length >= 2 && (
           <AnimatedPolyline
             coordinates={routeCoords}
+            currentPosition={activeRouteOrigin}
             strokeColor={TOKENS.colors.brand500}
             latitudeDelta={isNavigating ? 0.0025 : region?.latitudeDelta}
           />
@@ -1873,11 +1809,56 @@ export const HomePage: React.FC = () => {
       </MapView>
       )}
 
+      {/* HUD Superior de Conducción (Proveedor en EN_CAMINO): 25px bajo el header (Persistente) */}
+      {role === 'provider' && canUseNavigation && providerSession.orderState === 'EN_CAMINO' && (
+        <DrivingNavigationHUD
+          turn={activeNavigationTarget?.turn}
+          etaLabel={providerSession.etaLabel}
+          distanceLabel={providerSession.distanceLabel}
+          destinationAddress={realtime.providerActiveOrder?.clientAddress}
+          clientName={realtime.providerActiveOrder?.client?.displayName}
+          style={{
+            position: 'absolute',
+            top: 25,
+            left: 0,
+            right: 0,
+            zIndex: 60,
+          }}
+        />
+      )}
+
+      {/* Client Arrival HUD (Cliente en orden aceptada / en camino): Misma posición canónica a 25px */}
+      {role !== 'provider' && clientOrderStatus === 'ACCEPTED' && (
+        <ClientArrivalHUD
+          providerName={clientSession.provider?.name || clientActiveOrder?.provider?.name || 'Profesional'}
+          providerAvatar={getImageUrl(clientSession.provider?.avatar || clientActiveOrder?.provider?.logoImage?.cdnUrl || null)}
+          providerRating={clientSession.provider?.rating}
+          vehicleInfo={clientSession.provider?.serviceName}
+          etaMinutes={clientSession.etaLabel}
+          distanceRemaining={clientSession.distanceLabel}
+          style={{
+            position: 'absolute',
+            top: 25,
+            left: 0,
+            right: 0,
+            zIndex: 60,
+          }}
+        />
+      )}
+
       {/* Top Floating Controls */}
       <View
         style={[
           styles.topFloatingControls,
-          { top: insets.top > 0 ? insets.top + 8 : TOKENS.spacing.md },
+          {
+            top:
+              (role === 'provider' && canUseNavigation && providerSession.orderState === 'EN_CAMINO') ||
+              (role !== 'provider' && clientOrderStatus === 'ACCEPTED')
+                ? 109
+                : insets.top > 0
+                  ? insets.top + 8
+                  : TOKENS.spacing.md,
+          },
         ]}
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
@@ -1927,10 +1908,9 @@ export const HomePage: React.FC = () => {
             targetCoordinate={activeUserCoords}
             destinationCoordinate={activeDestinationCoords}
             heading={location?.coords?.heading}
-            onToggleNavigation={canUseNavigation ? handleToggleNavigation : undefined}
             onSmartFraming={handleSmartFraming}
-            showNavigation={canUseNavigation}
-            showSmartFraming={true}
+            showNavigation={false}
+            showSmartFraming={role !== 'provider'}
           />
         )}
       </View>

@@ -3,12 +3,12 @@ import {
   StyleSheet,
   View,
   Text,
-  TouchableOpacity,
+  Alert,
   Linking,
   AppState,
   ActivityIndicator,
 } from 'react-native';
-import { BottomSheetScrollView, BottomSheetView } from '../../bottom-sheet/primitives';
+import { BottomSheetScrollView, BottomSheetView, TouchableOpacity } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards, formatTimer, calculateElapsedSeconds } from '../ui';
 import type { PaymentMethod } from '../ui';
@@ -152,7 +152,13 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
       if (result?.url) {
         await Linking.openURL(result.url);
       }
-    } catch {}
+    } catch (err: any) {
+      console.error('[FocusClientPanelContent] handlePay error:', err);
+      Alert.alert(
+        'Error de Pago',
+        err?.message || 'No fue posible conectar con la pasarela de pagos. Por favor intenta nuevamente.'
+      );
+    }
   };
 
   const handlePaySavedCard = async () => {
@@ -212,7 +218,6 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'CANCEL_ORDER', result: 'cancel_order' });
     try {
       await realtime.cancelOrder(activeOrder.id);
-      showNotification({ title: 'Orden cancelada', message: 'Has cancelado la solicitud.', type: 'info' });
     } catch {
       showNotification({ title: 'Error', message: 'No se pudo cancelar la orden.', type: 'error' });
     }
@@ -243,11 +248,6 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     setIsStartingOrder(true);
     try {
       await realtime.startOrder(activeOrder.id);
-      showNotification({
-        title: 'Servicio iniciado',
-        message: 'Has iniciado el servicio con el profesional.',
-        type: 'success',
-      });
     } catch (err: any) {
       showNotification({
         title: 'No se pudo iniciar el servicio',
@@ -315,7 +315,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                 : isAcceptedPhase
                   ? canStartOrder
                     ? 'Llegó al domicilio • Listo'
-                    : `En camino • ${etaRemaining}`
+                    : 'Profesional en camino'
                   : isInProgressPhase
                     ? `En curso • ${serviceElapsed}`
                     : 'Seguimiento de orden'}
@@ -626,7 +626,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
       {/* ACCEPTED — En camino / Listo para iniciar */}
       {isAcceptedPhase && (
-        <View style={styles.sheetBody}>
+        <View style={styles.phaseContainer}>
           {canStartOrder ? (
             <View style={styles.arrivalCard}>
               <Badge label="LLEGÓ AL DOMICILIO" tone="success" />
@@ -654,37 +654,33 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
             </View>
           ) : (
             <>
-              <View style={styles.etaHighlightCard}>
-                <Text style={styles.etaLabelSmall}>Llegada estimada</Text>
-                <Text style={styles.etaValBig}>{etaRemaining || '...'}</Text>
-                <Text style={styles.etaSubText}>
-                  {distanceToProvider !== null
-                    ? `A ${(distanceToProvider * 1000).toFixed(0)}m de tu ubicación`
-                    : 'Acercándose a tu domicilio'}
-                </Text>
-              </View>
-              
-              <View style={styles.providerCardHeader}>
-                <Avatar uri={provider.avatar} name={provider.name} size={48} />
-                <View style={styles.sheetHeaderText}>
-                  <Text style={styles.sheetTitle} numberOfLines={1}>{provider.name}</Text>
-                  <View style={styles.ratingRow}>
-                    <Rating rating={provider.rating ?? 0} size={13} showText reviewsCount={provider.reviewsCount} />
+              {/* Tarjeta de Resumen Operativo del Servicio (Sin telemetría duplicada del HUD) */}
+              <View style={styles.transitOrderCard}>
+                <View style={styles.transitStatusRow}>
+                  <View style={styles.transitStatusBadge}>
+                    <View style={styles.transitStatusDot} />
+                    <Text style={styles.transitStatusText}>Servicio en camino</Text>
                   </View>
+                  <Text style={styles.transitPriceValue}>
+                    ${(activeOrder?.quotedPrice || negotiatedPrice).toLocaleString('es-CL')}
+                  </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => {
-                    const actionId = nextBottomSheetActionId();
-                    bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
-                    bottomSheetDebug('FLOW_INTENT', { actionId, key: 'focus_client', action: 'OPEN_CHAT', target: 'chat_overlay' });
-                    setShowChat(true);
-                  }}
-                  style={styles.chatIconBtnSmall}
-                >
-                  <Icon name="MessageSquare" size={18} color={TOKENS.colors.brand700} />
-                </TouchableOpacity>
+
+                <Text style={styles.transitServiceName} numberOfLines={1}>
+                  {activeOrder?.serviceProvider?.service?.name || provider?.serviceName || 'Servicio contratado'}
+                </Text>
+
+                {Boolean(activeOrder?.clientAddress) && (
+                  <View style={styles.transitAddressRow}>
+                    <Icon name="MapPin" size={14} color={TOKENS.colors.textSubtle} />
+                    <Text style={styles.transitAddressText} numberOfLines={1}>
+                      {activeOrder?.clientAddress}
+                    </Text>
+                  </View>
+                )}
               </View>
 
+              {/* Botón único de contacto */}
               <Button
                 title="Abrir Chat"
                 variant="secondary"
@@ -695,8 +691,16 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
                   bottomSheetDebug('ACTION', { actionId, key: 'focus_client', action: 'OPEN_CHAT', origin: 'FOCUS_CLIENT' });
                   setShowChat(true);
                 }}
-                style={{ marginTop: 8, width: '100%' }}
+                style={styles.transitChatBtn}
               />
+
+              {/* Distintivo de Seguridad y Verificación */}
+              <View style={styles.transitTrustRow}>
+                <Icon name="Shield" size={14} color={TOKENS.colors.brand600} />
+                <Text style={styles.transitTrustText}>
+                  Profesional verificado y asegurado por TratoFácil
+                </Text>
+              </View>
             </>
           )}
         </View>
@@ -704,7 +708,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
 
       {/* IN_PROGRESS — Servicio en curso */}
       {isInProgressPhase && (
-        <View style={styles.sheetBody}>
+        <View style={styles.phaseContainer}>
           <View style={styles.timerHeader}>
             <Text style={styles.timerLabel}>Tiempo de servicio</Text>
             <Text style={styles.timerVal}>{serviceElapsed}</Text>
@@ -738,6 +742,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: TOKENS.spacing.lg,
     paddingTop: TOKENS.spacing.xs,
     paddingBottom: 28,
+  },
+  phaseContainer: {
+    gap: 12,
   },
   providerCardHeader: {
     flexDirection: 'row',
@@ -924,33 +931,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: TOKENS.typography.weights.medium,
   },
-  etaHighlightCard: {
+  transitOrderCard: {
     backgroundColor: TOKENS.colors.surface50,
     borderWidth: 1,
     borderColor: TOKENS.colors.surface200,
-    borderRadius: 20,
-    padding: 18,
-    alignItems: 'center',
-    marginBottom: TOKENS.spacing.md,
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
   },
-  etaLabelSmall: {
-    fontSize: 11,
+  transitStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  transitStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  transitStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: TOKENS.colors.brand500,
+  },
+  transitStatusText: {
+    fontSize: TOKENS.typography.sizes.xs,
     fontWeight: TOKENS.typography.weights.bold,
-    color: TOKENS.colors.textSubtle,
+    color: TOKENS.colors.brand600,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 4,
   },
-  etaValBig: {
-    fontSize: 32,
-    fontWeight: TOKENS.typography.weights.black,
-    color: TOKENS.colors.brand500,
-    letterSpacing: -0.5,
+  transitPriceValue: {
+    fontSize: TOKENS.typography.sizes.md,
+    fontWeight: TOKENS.typography.weights.extrabold,
+    color: TOKENS.colors.dark900,
   },
-  etaSubText: {
+  transitServiceName: {
+    fontSize: TOKENS.typography.sizes.sm,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.dark900,
+  },
+  transitAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  transitAddressText: {
     fontSize: TOKENS.typography.sizes.xs,
     color: TOKENS.colors.textSubtle,
+    flex: 1,
+  },
+  transitChatBtn: {
+    width: '100%',
     marginTop: 4,
+  },
+  transitTrustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  transitTrustText: {
+    fontSize: 11,
+    color: TOKENS.colors.textSubtle,
     fontWeight: TOKENS.typography.weights.medium,
   },
   arrivalCard: {

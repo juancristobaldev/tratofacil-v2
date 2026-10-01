@@ -45,10 +45,11 @@ jest.mock('../../features/focus-session/useFocusSession', () => ({
 }));
 
 jest.mock('../../bottom-sheet/primitives', () => {
-  const { View } = require('react-native');
+  const { View, TouchableOpacity } = require('react-native');
   return {
     BottomSheetScrollView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
     BottomSheetView: ({ children, ...props }: any) => <View {...props}>{children}</View>,
+    TouchableOpacity,
   };
 });
 
@@ -310,7 +311,7 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
     });
   });
 
-  it('IN_PROGRESS: al presionar Completar Trabajo finaliza la orden y llama handleFinish para calificar', async () => {
+  it('IN_PROGRESS: al presionar Completar Trabajo finaliza la orden y transiciona a COMPLETED', async () => {
     mockSessionValue.orderState = 'IN_PROGRESS';
     mockSessionValue.activeOrder.status = 'IN_PROGRESS';
 
@@ -322,7 +323,31 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
 
     await waitFor(() => {
       expect(mockFinishOrder).toHaveBeenCalledWith(201);
-      expect(mockHandleFinish).toHaveBeenCalled();
+      expect(mockSetOrderState).toHaveBeenCalledWith('COMPLETED');
     });
+  });
+
+  it('COMPLETED: muestra tarjeta de resumen de ganancias y botón para volver al panel / calificar', async () => {
+    mockSessionValue.orderState = 'COMPLETED';
+    mockSessionValue.activeOrder.status = 'COMPLETED';
+    mockSessionValue.activeOrder.quotedPrice = 25000;
+
+    const view = await render(<FocusProviderPanelContent {...mockSheetProps} />);
+
+    expect(view.getByText('¡Servicio Completado!')).toBeTruthy();
+    expect(view.getByText('Has ganado $25.000')).toBeTruthy();
+    const returnBtn = view.getByText('Volver al Panel');
+    fireEvent.press(returnBtn);
+
+    expect(mockHandleFinish).toHaveBeenCalledWith('COMPLETED');
+  });
+
+  it('EN_CAMINO: auto-colapsa el panel a index 0 para mantener visión despejada del mapa y navegación', async () => {
+    mockSessionValue.orderState = 'EN_CAMINO';
+    const mockSetIndex = jest.fn();
+
+    await render(<FocusProviderPanelContent {...mockSheetProps} setIndex={mockSetIndex} />);
+
+    expect(mockSetIndex).toHaveBeenCalledWith(0);
   });
 });
