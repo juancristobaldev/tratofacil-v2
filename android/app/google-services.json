@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "784434934206",
-    "project_id": "tratofacil-d0027",
-    "storage_bucket": "tratofacil-d0027.firebasestorage.app"
+    "project_number": "643411773065",
+    "project_id": "tratofacil-4a052",
+    "storage_bucket": "tratofacil-4a052.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:784434934206:android:0375acebe8e0516df089ef",
+        "mobilesdk_app_id": "1:643411773065:android:ed579f1dbab577578ce858",
         "android_client_info": {
           "package_name": "com.tratofacilv2"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBWkfK8IdUjwhel6C2wiO10rSrp5bCmIvA"
+          "current_key": "AIzaSyChw_qXreSb7r7zHrWtmKCgYT6Iqz52hUI"
         }
       ],
       "services": {

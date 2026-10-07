@@ -36,6 +36,8 @@ export interface ButtonProps {
   textStyle?: StyleProp<TextStyle>;
   testID?: string;
   debugId?: string;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -56,6 +58,8 @@ export const Button: React.FC<ButtonProps> = ({
   textStyle,
   testID,
   debugId,
+  adjustsFontSizeToFit = false,
+  minimumFontScale = 0.8,
 }) => {
   const effectiveIconLeft = iconLeft || icon;
 
@@ -257,7 +261,8 @@ export const Button: React.FC<ButtonProps> = ({
                 textStyle,
               ]}
               numberOfLines={1}
-              adjustsFontSizeToFit
+              ellipsizeMode="tail"
+              {...(adjustsFontSizeToFit ? { adjustsFontSizeToFit: true, minimumFontScale } : {})}
             >
               {title}
             </Text>
@@ -407,6 +412,7 @@ const styles = StyleSheet.create({
   // TEXT STYLES
   baseText: {
     textAlign: 'center',
+    flexShrink: 1,
   },
   primaryText: {
     color: TOKENS.colors.white,

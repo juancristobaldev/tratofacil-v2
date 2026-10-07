@@ -62,6 +62,35 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     return RCTLinkingManager.application(app, open: url, options: options)
   }
 
+  // MARK: - Remote Notification in Background
+
+  func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    let orderId: Int
+    if let idInt = userInfo["orderId"] as? Int {
+      orderId = idInt
+    } else if let idStr = userInfo["orderId"] as? String, let parsed = Int(idStr) {
+      orderId = parsed
+    } else {
+      orderId = 0
+    }
+
+    let payload: [String: Any] = [
+      "type": userInfo["type"] as? String ?? "",
+      "orderId": orderId,
+    ]
+
+    NotificationCenter.default.post(name: NSNotification.Name("PushActionReceived"), object: [
+      "action": "BACKGROUND",
+      "data": payload,
+    ])
+
+    completionHandler(.newData)
+  }
+
   // MARK: - UNUserNotificationCenterDelegate
 
   func userNotificationCenter(
@@ -70,9 +99,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     let userInfo = notification.request.content.userInfo
+    let orderId: Int
+    if let idInt = userInfo["orderId"] as? Int {
+      orderId = idInt
+    } else if let idStr = userInfo["orderId"] as? String, let parsed = Int(idStr) {
+      orderId = parsed
+    } else {
+      orderId = 0
+    }
+
     let payload: [String: Any] = [
       "type": userInfo["type"] as? String ?? "",
-      "orderId": userInfo["orderId"] as? Int ?? 0,
+      "orderId": orderId,
       "title": notification.request.content.title,
       "body": notification.request.content.body,
     ]
@@ -90,27 +128,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
   ) {
     let userInfo = response.notification.request.content.userInfo
     let actionId = response.actionIdentifier
+    let orderId: Int
+    if let idInt = userInfo["orderId"] as? Int {
+      orderId = idInt
+    } else if let idStr = userInfo["orderId"] as? String, let parsed = Int(idStr) {
+      orderId = parsed
+    } else {
+      orderId = 0
+    }
 
-    if actionId != UNNotificationDefaultActionIdentifier && actionId != UNNotificationDismissActionIdentifier {
+    let resolvedAction = (actionId == UNNotificationDefaultActionIdentifier) ? "OPEN" : actionId
+
+    if actionId != UNNotificationDismissActionIdentifier {
       let payload: [String: Any] = [
         "type": userInfo["type"] as? String ?? "",
-        "orderId": userInfo["orderId"] as? Int ?? 0,
+        "orderId": orderId,
         "title": response.notification.request.content.title,
         "body": response.notification.request.content.body,
       ]
-      NotificationCenter.default.post(name: NSNotification.Name("PushActionReceived"), object: [
-        "action": actionId,
-        "data": payload,
-      ])
-    } else if actionId == UNNotificationDefaultActionIdentifier {
-      let payload: [String: Any] = [
-        "type": userInfo["type"] as? String ?? "",
-        "orderId": userInfo["orderId"] as? Int ?? 0,
-      ]
       let actionDict: [String: Any] = [
-        "action": "OPEN",
+        "action": resolvedAction,
         "data": payload,
       ]
+
+      NotificationCenter.default.post(name: NSNotification.Name("PushActionReceived"), object: actionDict)
+
+      // Guardar también en UserDefaults para cuando la app arranca desde estado cerrado (cold-start)
       if let jsonData = try? JSONSerialization.data(withJSONObject: actionDict),
          let jsonString = String(data: jsonData, encoding: .utf8) {
         UserDefaults.standard.set(jsonString, forKey: "pending_push_action")
@@ -134,6 +177,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     let startAction = UNNotificationAction(identifier: "START_SERVICE", title: "Iniciar servicio", options: .foreground)
     let rateAction = UNNotificationAction(identifier: "RATE", title: "Calificar", options: .foreground)
     let replyAction = UNNotificationAction(identifier: "OPEN_CHAT", title: "Responder", options: .foreground)
+    let reviewsAction = UNNotificationAction(identifier: "REVIEWS", title: "Ver mis reseñas", options: .foreground)
+    let walletAction = UNNotificationAction(identifier: "WALLET", title: "Ver billetera", options: .foreground)
+    let contactAction = UNNotificationAction(identifier: "OPEN", title: "Ver solicitud", options: .foreground)
 
     let categories: Set<UNNotificationCategory> = [
       UNNotificationCategory(identifier: "TRATO_DIRECTO_CREATED", actions: [acceptAction, rejectAction], intentIdentifiers: [], options: []),
@@ -143,8 +189,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
       UNNotificationCategory(identifier: "PROVIDER_EN_CAMINO", actions: [navigateAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "PROVEEDOR_POR_LLEGAR", actions: [navigateAction, chatAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "PROVEEDOR_LLEGO", actions: [startAction], intentIdentifiers: [], options: []),
-      UNNotificationCategory(identifier: "SERVICIO_COMPLETADO", actions: [rateAction], intentIdentifiers: [], options: []),
+      UNNotificationCategory(identifier: "SERVICIO_INICIADO", actions: [chatAction], intentIdentifiers: [], options: []),
+      UNNotificationCategory(identifier: "SERVICIO_COMPLETADO", actions: [rateAction, walletAction], intentIdentifiers: [], options: []),
       UNNotificationCategory(identifier: "NUEVO_MENSAJE", actions: [replyAction], intentIdentifiers: [], options: []),
+      UNNotificationCategory(identifier: "NUEVA_VALORACION", actions: [reviewsAction], intentIdentifiers: [], options: []),
+      UNNotificationCategory(identifier: "SOLICITUD_CONTACTO", actions: [contactAction], intentIdentifiers: [], options: []),
     ]
 
     UNUserNotificationCenter.current().setNotificationCategories(categories)

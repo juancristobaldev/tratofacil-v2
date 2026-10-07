@@ -30,7 +30,16 @@ import { useRoutePolyline } from '../../hooks/useRoute';
 import { resolveCategorySlugs } from '../../utils/categoryTree';
 import { summarizeForRole } from '../../utils/ratings';
 import { EMPTY_ARRAY } from '../../utils/emptyArray';
-import { DEFAULT_TEMUCO_PLC_REGION } from '../../utils/mapGeometry';
+import {
+  DEFAULT_TEMUCO_PLC_REGION,
+  PIN_SELECTION_MIN_LATITUDE_DELTA,
+  PIN_SELECTION_MIN_LONGITUDE_DELTA,
+  PIN_SELECTION_HORIZONTAL_CLEARANCE,
+  PIN_SELECTION_TOP_CLEARANCE,
+  PIN_SELECTION_BOTTOM_CLEARANCE,
+  PIN_SELECTION_ZOOM_SCALE,
+  PIN_SELECTION_SINGLE_LAT_DELTA,
+} from '../../utils/mapGeometry';
 import { DevJoystickOverlay } from '../../dev/joystick';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -622,7 +631,7 @@ export const HomePage: React.FC = () => {
     if (mapPanActiveRef.current) {
       mapPanActiveRef.current = false;
       notifyUserGesture();
-      console.log('[MAP:GESTURE] PAN_END');
+      if (__DEV__) console.log('[MAP:GESTURE] PAN_END');
     }
   }, [updateClusters, onCameraRegionChangeComplete, onSheetAutoCollapseRegionComplete, notifyUserGesture]);
 
@@ -633,7 +642,7 @@ export const HomePage: React.FC = () => {
     onSheetAutoCollapsePanDrag();
     if (mapPanActiveRef.current) return;
     mapPanActiveRef.current = true;
-    console.log('[MAP:GESTURE] PAN_START');
+    if (__DEV__) console.log('[MAP:GESTURE] PAN_START');
   }, [onCameraPanDrag, onAutoNavPanDrag, onSheetAutoCollapsePanDrag]);
 
   const initialGpsCenteredRef = useRef(false);
@@ -1106,7 +1115,20 @@ export const HomePage: React.FC = () => {
           activeDestinationCoords,
           ...routeCoords,
         ],
-        { reason: 'provider_route_ready' },
+        {
+          reason: 'provider_route_ready',
+          minDelta: {
+            latitudeDelta: PIN_SELECTION_MIN_LATITUDE_DELTA,
+            longitudeDelta: PIN_SELECTION_MIN_LONGITUDE_DELTA,
+          },
+          edgePaddingOverride: {
+            left: PIN_SELECTION_HORIZONTAL_CLEARANCE,
+            right: PIN_SELECTION_HORIZONTAL_CLEARANCE,
+            top: PIN_SELECTION_TOP_CLEARANCE,
+            bottom: PIN_SELECTION_BOTTOM_CLEARANCE,
+          },
+          zoomScale: PIN_SELECTION_ZOOM_SCALE,
+        },
       );
     }
   }, [selectedProvider, activeDestinationCoords, activeUserCoords, routeCoords, fitToRoute]);
@@ -1126,12 +1148,32 @@ export const HomePage: React.FC = () => {
             { latitude: user.latitude, longitude: user.longitude },
             { latitude: pLat, longitude: pLng },
           ],
-          { force: true, reason: 'carousel_provider_select_ab' },
+          {
+            force: true,
+            reason: 'carousel_provider_select_ab',
+            minDelta: {
+              latitudeDelta: PIN_SELECTION_MIN_LATITUDE_DELTA,
+              longitudeDelta: PIN_SELECTION_MIN_LONGITUDE_DELTA,
+            },
+            edgePaddingOverride: {
+              left: PIN_SELECTION_HORIZONTAL_CLEARANCE,
+              right: PIN_SELECTION_HORIZONTAL_CLEARANCE,
+              top: PIN_SELECTION_TOP_CLEARANCE,
+              bottom: PIN_SELECTION_BOTTOM_CLEARANCE,
+            },
+            zoomScale: PIN_SELECTION_ZOOM_SCALE,
+          },
         );
       } else {
         followCoordinate(
           { latitude: pLat, longitude: pLng },
-          { force: true, animated: true, reason: 'carousel_provider_select' },
+          {
+            force: true,
+            animated: true,
+            reason: 'carousel_provider_select',
+            latitudeDelta: PIN_SELECTION_SINGLE_LAT_DELTA,
+            longitudeDelta: PIN_SELECTION_SINGLE_LAT_DELTA,
+          },
         );
       }
     },
@@ -1525,7 +1567,7 @@ export const HomePage: React.FC = () => {
   }, [active, clientOrderStatus, desiredMapSurface, present, presentCategories, realtime.activeOrder, realtime.localActiveOrder, realtime.providerActiveOrder, role, showChat]);
 
   const handleRecenter = (source: 'recenter_button' | 'user_marker' = 'recenter_button') => {
-    console.log(`[MAP:INTERACTION] type=RECENTER_PRESS source=${source}`);
+    if (__DEV__) console.log(`[MAP:INTERACTION] type=RECENTER_PRESS source=${source}`);
     recoverSheetIfDismissed();
     onAutoNavRecenter();
 
@@ -1549,7 +1591,7 @@ export const HomePage: React.FC = () => {
   };
 
   const handleSmartFraming = () => {
-    console.log('[MAP:INTERACTION] type=SMART_FRAMING_PRESS');
+    if (__DEV__) console.log('[MAP:INTERACTION] type=SMART_FRAMING_PRESS');
     recoverSheetIfDismissed();
     
     // 1. Si existe orden realtime activa no terminal
@@ -1639,7 +1681,7 @@ export const HomePage: React.FC = () => {
 
   const handleMapPress = () => {
     Keyboard.dismiss();
-    console.log('[MAP:INTERACTION] type=BACKGROUND_PRESS');
+    if (__DEV__) console.log('[MAP:INTERACTION] type=BACKGROUND_PRESS');
     recoverSheetIfDismissed();
   };
 
@@ -1708,7 +1750,7 @@ export const HomePage: React.FC = () => {
               onPress={() => {
                 cancelSheetAutoRestore();
                 clearFocusTerminationGraceTimeout();
-                console.log(`[MAP:INTERACTION] type=SELECTED_PROVIDER_PRESS providerId=${selectedProvider.id}`);
+                if (__DEV__) console.log(`[MAP:INTERACTION] type=SELECTED_PROVIDER_PRESS providerId=${selectedProvider.id}`);
                 const idx = orderedFilteredProviders.findIndex(
                   (p: any) => String(p.id) === String(selectedProvider.id),
                 );
@@ -1752,7 +1794,7 @@ export const HomePage: React.FC = () => {
                       longitudeDelta: nextLongitudeDelta,
                     }, 350);
                   } catch (err) {
-                    console.log('[MAP:CLUSTER_ZOOM_ERR]', err);
+                    if (__DEV__) console.log('[MAP:CLUSTER_ZOOM_ERR]', err);
                   }
                 }}
               />
@@ -1775,7 +1817,7 @@ export const HomePage: React.FC = () => {
               onPress={() => {
                 cancelSheetAutoRestore();
                 clearFocusTerminationGraceTimeout();
-                console.log(`[MAP:INTERACTION] type=PROVIDER_PRESS providerId=${provider.id}`);
+                if (__DEV__) console.log(`[MAP:INTERACTION] type=PROVIDER_PRESS providerId=${provider.id}`);
                 bottomSheetDebug('ACTION', { key: 'provider_preview', action: 'PROVIDER_PRESS', origin: 'MAP_PROVIDER_PIN' });
                 bottomSheetDebug('FLOW_INTENT', { key: 'provider_preview', action: 'PROVIDER_PRESS', target: 'provider_preview' });
                 const idx = orderedFilteredProviders.findIndex(
@@ -1981,6 +2023,7 @@ export const HomePage: React.FC = () => {
       {/* Dev Street Navigation Joystick */}
       <DevJoystickOverlay
         onFollowCoordinate={followCoordinate}
+        routeCoords={routeCoords}
         bottomOffset={
           active && sheetMetrics?.sheetHeight
             ? bottomNavHeight + sheetMetrics.sheetHeight + 12

@@ -8,6 +8,11 @@ import type {
 import { SMART_NAV_CONSTANTS } from './types';
 import { filterGpsPosition } from './gpsQualityFilter';
 import { analyzeRouteProgress, type RouteAnalysisResult } from './routeAnalyzer';
+import {
+  buildRouteNavigationPlan,
+  type RouteNavigationPlan,
+} from './routeManeuverGraph';
+import { ManeuverGuidanceStateMachine } from './maneuverGuidanceStateMachine';
 import { fuseNavigationHeading } from './headingEngine';
 import { calculateCameraLookAhead } from './lookAheadEngine';
 import { calculateAdaptiveZoom } from './adaptiveZoomEngine';
@@ -23,8 +28,10 @@ export class SmartNavigationEngine {
   private coalescer: CameraCoalescer = new CameraCoalescer();
   private lastRoutePointsLength: number = 0;
   private lastRouteStartCoord: RouteCoordinate | null = null;
-  private latchedTurn: TurnAnalysis | null = null;
-  private consecutiveNoTurnCount: number = 0;
+
+  // Grafo de maniobras pre-indexado y máquina de estados con retención de intersección
+  private navigationPlan: RouteNavigationPlan | null = null;
+  private guidanceStateMachine: ManeuverGuidanceStateMachine = new ManeuverGuidanceStateMachine();
 
   private metrics: NavigationEngineMetrics = {
     samplesReceived: 0,
@@ -37,6 +44,48 @@ export class SmartNavigationEngine {
     lastQuality: 'GOOD',
     lastReason: 'INIT',
   };
+
+  /**
+   * Registra y pre-indexa de forma atómica la polyline de navegación.
+   * La sesión de ruta queda retenida en el motor; las muestras de movimiento subsiguientes
+   * que omitan routeCoords seguirán operando sobre este plan sin resetearse.
+   */
+  public setRoute(routeCoords: RouteCoordinate[] | null | undefined): void {
+    if (!routeCoords || routeCoords.length < 2) {
+      this.navigationPlan = null;
+      this.guidanceStateMachine.reset();
+      this.lastRouteAnalysis = null;
+      this.lastRoutePointsLength = 0;
+      this.lastRouteStartCoord = null;
+      return;
+    }
+
+    const isRouteGeometryChanged =
+      routeCoords.length !== this.lastRoutePointsLength ||
+      !this.lastRouteStartCoord ||
+      Math.abs(routeCoords[0].latitude - this.lastRouteStartCoord.latitude) > 0.00015 ||
+      Math.abs(routeCoords[0].longitude - this.lastRouteStartCoord.longitude) > 0.00015;
+
+    if (isRouteGeometryChanged) {
+      this.navigationPlan = buildRouteNavigationPlan(routeCoords);
+      this.guidanceStateMachine.reset();
+      this.lastRouteAnalysis = null;
+      this.lastRoutePointsLength = routeCoords.length;
+      this.lastRouteStartCoord = { latitude: routeCoords[0].latitude, longitude: routeCoords[0].longitude };
+      if (__DEV__) {
+        console.log(
+          `[NAV:ROUTE_SET] Maneuvers pre-indexed: count=${this.navigationPlan?.maneuvers.length ?? 0} totalDist=${this.navigationPlan?.totalDistanceMeters.toFixed(1) ?? 0}m points=${routeCoords.length}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Retorna el plan de navegación pre-indexado actual.
+   */
+  public getNavigationPlan(): RouteNavigationPlan | null {
+    return this.navigationPlan;
+  }
 
   /**
    * Procesa una muestra de movimiento (GPS local o tracking remoto)
@@ -74,46 +123,30 @@ export class SmartNavigationEngine {
       );
     }
 
-    // 2. Detección de cambio de geometría de ruta y reseteo de índice
-    if (routeCoords && routeCoords.length >= 2) {
-      const isRouteGeometryChanged =
-        routeCoords.length !== this.lastRoutePointsLength ||
-        !this.lastRouteStartCoord ||
-        Math.abs(routeCoords[0].latitude - this.lastRouteStartCoord.latitude) > 0.00015 ||
-        Math.abs(routeCoords[0].longitude - this.lastRouteStartCoord.longitude) > 0.00015;
-
-      if (isRouteGeometryChanged) {
-        this.lastRouteAnalysis = null;
-        this.latchedTurn = null;
-        this.consecutiveNoTurnCount = 0;
-        this.lastRoutePointsLength = routeCoords.length;
-        this.lastRouteStartCoord = { latitude: routeCoords[0].latitude, longitude: routeCoords[0].longitude };
+    // 2. Gestión atómica de ruta: si routeCoords es provisto explícitamente, actualizar plan.
+    // Si routeCoords es undefined, el motor conserva fielmente su navegación activa sin destruir la ruta.
+    if (routeCoords !== undefined) {
+      if (routeCoords && routeCoords.length >= 2) {
+        this.setRoute(routeCoords);
+      } else if (routeCoords === null) {
+        this.setRoute(null);
       }
     }
 
-    // Análisis de ruta y detección de curvas/giros
+    const activeRouteCoords = this.navigationPlan?.routeCoords ?? null;
+
+    // 3. Análisis de ruta y progresión de maniobras respaldado por la máquina de estados
     const routeAnalysis = analyzeRouteProgress(
       estimate.coordinate,
-      routeCoords,
+      activeRouteCoords,
       estimate.speedMps,
       this.lastRouteAnalysis?.progress.currentSegmentIndex ?? 0,
+      this.navigationPlan,
+      this.guidanceStateMachine,
     );
     this.lastRouteAnalysis = routeAnalysis;
 
-    // Estabilización temporal anti-parpadeo del giro (Latching & Hysteresis)
-    let effectiveTurn = routeAnalysis?.turn ?? null;
-    if (effectiveTurn?.turnDetected) {
-      this.latchedTurn = effectiveTurn;
-      this.consecutiveNoTurnCount = 0;
-    } else if (this.latchedTurn) {
-      this.consecutiveNoTurnCount++;
-      const isStillOnRoute = routeAnalysis && !routeAnalysis.progress.isOffRoute;
-      if (this.consecutiveNoTurnCount < 3 && isStillOnRoute && this.latchedTurn.distanceToTurn > 0) {
-        effectiveTurn = this.latchedTurn;
-      } else {
-        this.latchedTurn = null;
-      }
-    }
+    const effectiveTurn = routeAnalysis?.turn ?? null;
 
     const snappedPosition =
       routeAnalysis &&
@@ -129,7 +162,7 @@ export class SmartNavigationEngine {
       );
     }
 
-    // 3. Fusión adaptativa de rumbo
+    // 4. Fusión adaptativa de rumbo
     const lastHeading = this.lastTarget?.heading ?? estimate.heading;
     const headingFusion = fuseNavigationHeading(
       sample,
@@ -146,17 +179,17 @@ export class SmartNavigationEngine {
       );
     }
 
-    // 4. Proyección Look-Ahead hacia adelante
+    // 5. Proyección Look-Ahead hacia adelante
     const lookAhead = calculateCameraLookAhead(
       estimate.coordinate,
       headingFusion.targetHeading,
       estimate.speedMps,
       routeAnalysis?.progress ?? null,
       effectiveTurn,
-      routeCoords,
+      activeRouteCoords,
     );
 
-    // 5. Zoom adaptativo según velocidad y maniobra
+    // 6. Zoom adaptativo según velocidad y maniobra
     const lastZoom = this.lastTarget?.zoom ?? SMART_NAV_CONSTANTS.BASE_ZOOM;
     const targetZoom = calculateAdaptiveZoom(
       estimate.speedMps,
@@ -167,7 +200,7 @@ export class SmartNavigationEngine {
     const target: SmartCameraTarget = {
       center: lookAhead.cameraCenter,
       heading: headingFusion.targetHeading,
-      pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH, // 40° canónico
+      pitch: SMART_NAV_CONSTANTS.CANONICAL_PITCH, // 65° canónico
       zoom: targetZoom,
       altitude: SMART_NAV_CONSTANTS.DEFAULT_ALTITUDE,
       duration: SMART_NAV_CONSTANTS.DEFAULT_ANIM_DURATION_MS,
@@ -231,8 +264,8 @@ export class SmartNavigationEngine {
     this.lastEstimate = null;
     this.lastRouteAnalysis = null;
     this.lastTarget = null;
-    this.latchedTurn = null;
-    this.consecutiveNoTurnCount = 0;
+    this.navigationPlan = null;
+    this.guidanceStateMachine.reset();
     this.lastRoutePointsLength = 0;
     this.lastRouteStartCoord = null;
     this.coalescer.reset();

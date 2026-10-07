@@ -17,6 +17,7 @@ import { initializeDeepLinks } from './src/utils/deepLinks';
 import { PaymentReturnGate } from './src/payments/PaymentReturnGate';
 // Removed BottomSheetProvider
 import { FocusSessionProvider } from './src/features/focus-session/FocusSessionProvider';
+import { CustomAlertHost } from './src/components/ui/CustomAlert';
 
 function DeepLinkSetup() {
   useEffect(() => {
@@ -41,23 +42,24 @@ function App() {
         <ErrorBoundary>
           <ApolloProvider client={client}>
             <AuthProvider>
-              <PushProvider>
-                <LocationProvider>
-                  <NotificationProvider>
-                  <DeepLinkSetup />
-                  <RealtimeProvider>
-                  <PaymentReturnGate />
-                  <CategoriesProvider>
-                  <RefreshProvider>
-                    <FocusSessionProvider>
-                      <AppNavigator />
-                    </FocusSessionProvider>
-                  </RefreshProvider>
-                  </CategoriesProvider>
-                  </RealtimeProvider>
-                  </NotificationProvider>
-                </LocationProvider>
-              </PushProvider>
+              <NotificationProvider>
+                <PushProvider>
+                  <LocationProvider>
+                    <DeepLinkSetup />
+                    <RealtimeProvider>
+                    <PaymentReturnGate />
+                    <CategoriesProvider>
+                    <RefreshProvider>
+                      <FocusSessionProvider>
+                        <AppNavigator />
+                        <CustomAlertHost />
+                      </FocusSessionProvider>
+                    </RefreshProvider>
+                    </CategoriesProvider>
+                    </RealtimeProvider>
+                  </LocationProvider>
+                </PushProvider>
+              </NotificationProvider>
             </AuthProvider>
           </ApolloProvider>
         </ErrorBoundary>

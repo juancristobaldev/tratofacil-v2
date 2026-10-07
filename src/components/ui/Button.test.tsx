@@ -123,4 +123,30 @@ describe('Button component', () => {
     await fireEvent.press(btn);
     expect(onPress).not.toHaveBeenCalled();
   });
+
+  it('renders text with safe font scaling properties (adjustsFontSizeToFit defaults to false)', async () => {
+    const view = await render(
+      <Button title="Confirmar inicio de servicio" onPress={() => {}} />
+    );
+    const textNode = view.getByText('Confirmar inicio de servicio');
+    expect(textNode).toBeTruthy();
+    expect(textNode.props.adjustsFontSizeToFit).toBeUndefined();
+    expect(textNode.props.ellipsizeMode).toBe('tail');
+    expect(textNode.props.numberOfLines).toBe(1);
+  });
+
+  it('supports explicit adjustsFontSizeToFit with minimumFontScale', async () => {
+    const view = await render(
+      <Button
+        title="Confirmar llegada"
+        adjustsFontSizeToFit={true}
+        minimumFontScale={0.75}
+        onPress={() => {}}
+      />
+    );
+    const textNode = view.getByText('Confirmar llegada');
+    expect(textNode).toBeTruthy();
+    expect(textNode.props.adjustsFontSizeToFit).toBe(true);
+    expect(textNode.props.minimumFontScale).toBe(0.75);
+  });
 });

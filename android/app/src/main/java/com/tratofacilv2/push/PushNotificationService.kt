@@ -83,15 +83,30 @@ class PushNotificationService : FirebaseMessagingService() {
     } else if (type == "CONTRAOFERTA_RECIBIDA") {
       builder.addAction(makeAction("ACCEPT_COUNTER", "Aceptar", jsonData, orderId, 5))
       builder.addAction(makeAction("REJECT_COUNTER", "Rechazar", jsonData, orderId, 6))
+    } else if (type == "CONTRAOFERTA_ACEPTADA" || type == "CONTRAOFERTA_RECHAZADA") {
+      builder.addAction(makeAction("OPEN", "Ver orden", jsonData, orderId, 7))
     } else if (type == "PAGO_CONFIRMADO" || type == "PROVIDER_EN_CAMINO" || type == "PROVEEDOR_POR_LLEGAR") {
-      builder.addAction(makeAction("NAVIGATE", "Ver ruta", jsonData, orderId, 7))
-      builder.addAction(makeAction("CHAT", "Abrir chat", jsonData, orderId, 8))
+      builder.addAction(makeAction("NAVIGATE", "Ver ruta", jsonData, orderId, 8))
+      builder.addAction(makeAction("CHAT", "Abrir chat", jsonData, orderId, 9))
     } else if (type == "PROVEEDOR_LLEGO") {
-      builder.addAction(makeAction("START_SERVICE", "Iniciar servicio", jsonData, orderId, 9))
+      builder.addAction(makeAction("START_SERVICE", "Iniciar servicio", jsonData, orderId, 10))
+      builder.addAction(makeAction("CHAT", "Abrir chat", jsonData, orderId, 11))
+    } else if (type == "SERVICIO_INICIADO") {
+      builder.addAction(makeAction("OPEN", "Ver servicio", jsonData, orderId, 12))
+      builder.addAction(makeAction("CHAT", "Abrir chat", jsonData, orderId, 13))
     } else if (type == "SERVICIO_COMPLETADO") {
-      builder.addAction(makeAction("RATE", "Calificar", jsonData, orderId, 10))
+      val action = data["action"] ?: "RATE"
+      if (action == "WALLET") {
+        builder.addAction(makeAction("WALLET", "Ver billetera", jsonData, orderId, 14))
+      } else {
+        builder.addAction(makeAction("RATE", "Calificar", jsonData, orderId, 14))
+      }
     } else if (type == "NUEVO_MENSAJE") {
-      builder.addAction(makeAction("OPEN_CHAT", "Responder", jsonData, orderId, 11))
+      builder.addAction(makeAction("OPEN_CHAT", "Responder", jsonData, orderId, 15))
+    } else if (type == "NUEVA_VALORACION") {
+      builder.addAction(makeAction("REVIEWS", "Ver mis reseñas", jsonData, orderId, 16))
+    } else if (type == "SOLICITUD_CONTACTO") {
+      builder.addAction(makeAction("OPEN", "Ver contacto", jsonData, orderId, 17))
     }
 
     try {
@@ -122,23 +137,54 @@ class PushNotificationService : FirebaseMessagingService() {
     ).build()
   }
 
+  private data class ChannelConfig(
+    val id: String,
+    val name: String,
+    val desc: String,
+    val importance: Int,
+  )
+
   private fun ensureChannel(type: String): String {
-    val (channelId, channelName, importance) = when (type) {
-      "NUEVO_MENSAJE" -> Triple("chat_channel", "Mensajes y Chat", NotificationManager.IMPORTANCE_HIGH)
-      "PAGO_CONFIRMADO", "COTIZACION_RECIBIDA", "CONTRAOFERTA_RECIBIDA" ->
-        Triple("payments_channel", "Pagos y Cotizaciones", NotificationManager.IMPORTANCE_DEFAULT)
-      else ->
-        Triple("orders_channel", "Tratos y Servicios", NotificationManager.IMPORTANCE_HIGH)
+    val config = when (type) {
+      "NUEVO_MENSAJE" -> ChannelConfig(
+        "chat_channel",
+        "Mensajes y Chat",
+        "Notificaciones de nuevos mensajes en el chat de servicios",
+        NotificationManager.IMPORTANCE_HIGH
+      )
+      "PAGO_CONFIRMADO", "COTIZACION_RECIBIDA", "CONTRAOFERTA_RECIBIDA", "CONTRAOFERTA_ACEPTADA", "CONTRAOFERTA_RECHAZADA" -> ChannelConfig(
+        "payments_channel",
+        "Pagos y Cotizaciones",
+        "Alertas de cotizaciones, contraofertas y confirmaciones de pago",
+        NotificationManager.IMPORTANCE_HIGH
+      )
+      "NUEVA_VALORACION" -> ChannelConfig(
+        "reviews_channel",
+        "Calificaciones y Reseñas",
+        "Notificaciones de calificaciones y comentarios recibidos",
+        NotificationManager.IMPORTANCE_DEFAULT
+      )
+      else -> ChannelConfig(
+        "orders_channel",
+        "Tratos y Servicios",
+        "Actualizaciones de estado de solicitudes, llegada y ejecución de servicios",
+        NotificationManager.IMPORTANCE_HIGH
+      )
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      if (mgr.getNotificationChannel(channelId) == null) {
-        val channel = NotificationChannel(channelId, channelName, importance)
+      if (mgr.getNotificationChannel(config.id) == null) {
+        val channel = NotificationChannel(config.id, config.name, config.importance).apply {
+          description = config.desc
+          enableLights(true)
+          enableVibration(true)
+          setShowBadge(true)
+        }
         mgr.createNotificationChannel(channel)
       }
     }
-    return channelId
+    return config.id
   }
 
   private fun getReactContext(): com.facebook.react.bridge.ReactContext? {

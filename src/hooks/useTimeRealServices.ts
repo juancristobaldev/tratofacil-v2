@@ -330,6 +330,21 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const localProviderActiveOrderRef = useRef<OrderRealTime | null>(localProviderActiveOrder);
   localProviderActiveOrderRef.current = localProviderActiveOrder;
 
+  // Pre-seed orderStatusHistoryRef with existing orders to prevent duplicate alerts on reconnect or initial load
+  useEffect(() => {
+    const o = localActiveOrder || activeOrder;
+    if (o?.id && o?.status && !orderStatusHistoryRef.current.has(o.id)) {
+      orderStatusHistoryRef.current.set(o.id, o.status);
+    }
+  }, [localActiveOrder?.id, localActiveOrder?.status, activeOrder?.id, activeOrder?.status]);
+
+  useEffect(() => {
+    const po = localProviderActiveOrder || (providerState?.activeRealtimeOrder as OrderRealTime | null);
+    if (po?.id && po?.status && !orderStatusHistoryRef.current.has(po.id)) {
+      orderStatusHistoryRef.current.set(po.id, po.status);
+    }
+  }, [localProviderActiveOrder?.id, localProviderActiveOrder?.status, providerState?.activeRealtimeOrder]);
+
   // Auto-switch de modo: si llega una orden realtime activa como provider y estamos
   // en modo cliente, pasamos a modo proveedor.
   // Al terminar la orden: si el proveedor sigue activo en tiempo real (isRealtimeActive === true),
@@ -1143,87 +1158,6 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         });
       } catch {}
 
-      // Evaluación escalonada de proximidad (1km, 500m, 200m, 5m) en modo cliente cuando la orden está ACCEPTED
-      const currentActive = activeOrderRef.current;
-      if (
-        roleRef.current === 'client' &&
-        currentActive?.id === payload.orderRealtimeId &&
-        currentActive?.status === 'ACCEPTED' &&
-        isValidCoord(payload.clientLat) &&
-        isValidCoord(payload.clientLng) &&
-        isValidCoord(payload.providerLat) &&
-        isValidCoord(payload.providerLng)
-      ) {
-        const distM = getDistanceMeters(
-          payload.providerLat!,
-          payload.providerLng!,
-          payload.clientLat,
-          payload.clientLng,
-        );
-
-        if (!distanceMilestonesNotifiedRef.current.has(payload.orderRealtimeId)) {
-          distanceMilestonesNotifiedRef.current.set(payload.orderRealtimeId, new Set<string>());
-        }
-        const milestones = distanceMilestonesNotifiedRef.current.get(payload.orderRealtimeId)!;
-
-        // Hito 4: 5 metros (llegada inminente / en puerta)
-        if (distM <= 10 && !milestones.has('5M')) {
-          milestones.add('5M');
-          milestones.add('200M');
-          milestones.add('500M');
-          milestones.add('1000M');
-          approachingNotifiedRef.current.add(payload.orderRealtimeId);
-          if (notifyRef.current) {
-            notifyRef.current({
-              id: `clientOrder:${payload.orderRealtimeId}:DIST_5M`,
-              title: 'Profesional por llegar',
-              message: 'El profesional está en tu puerta (a 5 metros de tu ubicación).',
-              type: 'info',
-            });
-          }
-        }
-        // Hito 3: 200 metros
-        else if (distM <= 200 && !milestones.has('200M')) {
-          milestones.add('200M');
-          milestones.add('500M');
-          milestones.add('1000M');
-          approachingNotifiedRef.current.add(payload.orderRealtimeId);
-          if (notifyRef.current) {
-            notifyRef.current({
-              id: `clientOrder:${payload.orderRealtimeId}:DIST_200M`,
-              title: 'Profesional a 200 m',
-              message: 'El profesional está muy cerca (a 200 metros).',
-              type: 'info',
-            });
-          }
-        }
-        // Hito 2: 500 metros
-        else if (distM <= 500 && !milestones.has('500M')) {
-          milestones.add('500M');
-          milestones.add('1000M');
-          if (notifyRef.current) {
-            notifyRef.current({
-              id: `clientOrder:${payload.orderRealtimeId}:DIST_500M`,
-              title: 'Profesional a 500 m',
-              message: 'El profesional está a 500 metros de tu ubicación.',
-              type: 'info',
-            });
-          }
-        }
-        // Hito 1: 1 km (1.000 metros)
-        else if (distM <= 1000 && !milestones.has('1000M')) {
-          milestones.add('1000M');
-          if (notifyRef.current) {
-            notifyRef.current({
-              id: `clientOrder:${payload.orderRealtimeId}:DIST_1000M`,
-              title: 'Profesional a 1 km',
-              message: 'El profesional se encuentra a aproximadamente 1 km de tu ubicación.',
-              type: 'info',
-            });
-          }
-        }
-      }
-
       dispatch('order-realtime:location-updated', payload);
     });
 
@@ -1402,9 +1336,20 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     });
 
     const appStateHandler = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active' && socketRef.current) {
-        logSocketOut('reconnect_manual', { reason: 'app_foreground' });
-        socketRef.current.connect();
+      if (nextAppState === 'active') {
+        if (socketRef.current) {
+          logSocketOut('reconnect_manual', { reason: 'app_foreground' });
+          socketRef.current.connect();
+        }
+        // Al regresar a primer plano, resincronizar inmediatamente el estado con el servidor
+        refetchRef.current?.();
+        refetchClientOrdersRef.current?.();
+        refetchProviderOrdersRef.current?.();
+        try {
+          apolloClientRef.current?.refetchQueries({
+            include: ['Me', 'GetMyRealtimeOrdersAsClient', 'GetMyRealtimeOrdersAsProvider'],
+          });
+        } catch {}
       }
     };
     const appStateSub = AppState.addEventListener('change', appStateHandler);

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePushNavigation } from '../push/usePushNavigation';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import { CustomAlert as Alert } from '../components/ui/CustomAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer, DrawerActions, DefaultTheme } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';

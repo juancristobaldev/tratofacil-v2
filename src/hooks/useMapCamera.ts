@@ -75,6 +75,7 @@ export interface FitRouteOptions {
   minDelta?: { latitudeDelta?: number; longitudeDelta?: number };
   force?: boolean;
   reason?: string;
+  zoomScale?: number;
 }
 
 export interface FollowCoordinateOptions {
@@ -262,8 +263,9 @@ export function useMapCamera(options: UseMapCameraOptions) {
       isProgrammaticMovementRef.current = true;
       updateCameraMode('AUTO_FIT_ROUTE');
 
-      const targetLatDelta = bbox.latitudeDelta * ROUTE_FIT_ZOOM_SCALE;
-      const targetLngDelta = bbox.longitudeDelta * ROUTE_FIT_ZOOM_SCALE;
+      const zoomScale = fitOpts?.zoomScale ?? ROUTE_FIT_ZOOM_SCALE;
+      const targetLatDelta = bbox.latitudeDelta * zoomScale;
+      const targetLngDelta = bbox.longitudeDelta * zoomScale;
       const shiftedLat = calculateShiftedLatitude(bbox.centerLatitude, targetLatDelta, padding, windowDimensions.height);
       const targetRegion: Region = {
         latitude: shiftedLat,
@@ -317,6 +319,11 @@ export function useMapCamera(options: UseMapCameraOptions) {
             ? lastNavigationOptionsRef.current.pitch
             : (lastPitchRef.current > 0 ? lastPitchRef.current : INTERACTIVE_NAVIGATION_PITCH);
 
+        const effectiveRouteCoords =
+          followOpts?.routeCoords ??
+          lastNavigationOptionsRef.current?.routeCoords ??
+          undefined;
+
         navigateToCoordinate(coord, {
           heading: followOpts?.heading,
           pitch: effectivePitch,
@@ -324,7 +331,7 @@ export function useMapCamera(options: UseMapCameraOptions) {
           accuracy: followOpts?.accuracy,
           timestamp: followOpts?.timestamp,
           source: followOpts?.source,
-          routeCoords: followOpts?.routeCoords,
+          routeCoords: effectiveRouteCoords,
           animated,
           force,
         });

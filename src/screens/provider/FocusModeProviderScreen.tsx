@@ -440,6 +440,7 @@ export const FocusModeProviderScreen: React.FC = () => {
       {__DEV__ && (
         <DevJoystickOverlay
           onFollowCoordinate={followCoordinate}
+          routeCoords={routeCoords}
           bottomOffset={
             sheetMetrics?.sheetHeight
               ? bottomNavHeight + sheetMetrics.sheetHeight + 12

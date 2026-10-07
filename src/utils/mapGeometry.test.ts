@@ -18,6 +18,13 @@ import {
   ROUTE_FIT_HORIZONTAL_CLEARANCE,
   ROUTE_FIT_TOP_CLEARANCE,
   ROUTE_FIT_ZOOM_SCALE,
+  PIN_SELECTION_MIN_LATITUDE_DELTA,
+  PIN_SELECTION_MIN_LONGITUDE_DELTA,
+  PIN_SELECTION_HORIZONTAL_CLEARANCE,
+  PIN_SELECTION_TOP_CLEARANCE,
+  PIN_SELECTION_BOTTOM_CLEARANCE,
+  PIN_SELECTION_ZOOM_SCALE,
+  PIN_SELECTION_SINGLE_LAT_DELTA,
 } from './mapGeometry';
 import type { RouteCoordinate } from './directions';
 
@@ -61,6 +68,16 @@ describe('mapGeometry - floating element non-occlusion constants', () => {
     expect(ROUTE_FIT_BOTTOM_CLEARANCE).toBeGreaterThanOrEqual(28);
     expect(ROUTE_FIT_ZOOM_SCALE).toBe(1.15);
   });
+
+  it('provides safe clearance and contextual minimum delta for pin selection', () => {
+    expect(PIN_SELECTION_MIN_LATITUDE_DELTA).toBeGreaterThanOrEqual(0.008);
+    expect(PIN_SELECTION_MIN_LONGITUDE_DELTA).toBeGreaterThanOrEqual(0.008);
+    expect(PIN_SELECTION_HORIZONTAL_CLEARANCE).toBeGreaterThanOrEqual(30);
+    expect(PIN_SELECTION_TOP_CLEARANCE).toBeGreaterThanOrEqual(45);
+    expect(PIN_SELECTION_BOTTOM_CLEARANCE).toBeGreaterThanOrEqual(25);
+    expect(PIN_SELECTION_ZOOM_SCALE).toBeGreaterThanOrEqual(1.2);
+    expect(PIN_SELECTION_SINGLE_LAT_DELTA).toBeGreaterThanOrEqual(0.014);
+  });
 });
 
 describe('mapGeometry - calculateBoundingBox', () => {
@@ -90,6 +107,19 @@ describe('mapGeometry - calculateBoundingBox', () => {
     expect(bbox).not.toBeNull();
     expect(bbox!.latitudeDelta).toBeGreaterThanOrEqual(MIN_LATITUDE_DELTA);
     expect(bbox!.longitudeDelta).toBeGreaterThanOrEqual(MIN_LONGITUDE_DELTA);
+  });
+
+  it('applies pin selection minimum delta when provided to avoid close-up rooftop zoom', () => {
+    const origin = { latitude: -33.44890, longitude: -70.66930 };
+    const dest = { latitude: -33.44900, longitude: -70.66940 }; // 15 meters away
+
+    const bbox = calculateBoundingBox([origin, dest], {
+      latitudeDelta: PIN_SELECTION_MIN_LATITUDE_DELTA,
+      longitudeDelta: PIN_SELECTION_MIN_LONGITUDE_DELTA,
+    });
+    expect(bbox).not.toBeNull();
+    expect(bbox!.latitudeDelta).toBeGreaterThanOrEqual(PIN_SELECTION_MIN_LATITUDE_DELTA);
+    expect(bbox!.longitudeDelta).toBeGreaterThanOrEqual(PIN_SELECTION_MIN_LONGITUDE_DELTA);
   });
 
   it('returns null for empty or invalid input', () => {

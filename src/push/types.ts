@@ -8,9 +8,13 @@ export type PushType =
   | 'PROVIDER_EN_CAMINO'
   | 'PROVEEDOR_POR_LLEGAR'
   | 'PROVEEDOR_LLEGO'
+  | 'SERVICIO_INICIADO'
   | 'SERVICIO_COMPLETADO'
   | 'TRATO_CANCELADO'
-  | 'NUEVO_MENSAJE';
+  | 'TRATO_RECHAZADO'
+  | 'NUEVO_MENSAJE'
+  | 'NUEVA_VALORACION'
+  | 'SOLICITUD_CONTACTO';
 
 export interface PushPayload {
   type: PushType;
@@ -18,10 +22,15 @@ export interface PushPayload {
   title: string;
   body: string;
   deepLink?: string;
+  channelId?: string;
   clientName?: string;
   providerName?: string;
   serviceName?: string;
+  senderName?: string;
   amount?: number;
+  rating?: number;
+  distanceMeters?: number;
+  action?: string;
 }
 
 export interface PushAction {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@apollo/client/react';
+import { useAuth } from '../../../context/AuthContext';
 import { TOKENS } from '../../../theme';
 import { Icon, Avatar, IconButton } from '../../../components/ui';
 import { containsContactInfo, maskContactInfo } from '../../../utils/sanitizer';
@@ -26,6 +27,8 @@ interface ChatMessageItem {
 export const CHAT_KEYBOARD_VERTICAL_OFFSET = 0;
 
 export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ chatUser, activeOrder, realtime, role, onClose }) => {
+  const { user } = useAuth();
+  const currentUserId = user?.id ? Number(user.id) : (realtime?.clientId ? Number(realtime.clientId) : null);
   const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
   const [typedMessage, setTypedMessage] = useState('');
   const [contactWarning, setContactWarning] = useState(false);
@@ -46,7 +49,7 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
       setChatMessages((prev) => {
         const serverMsgs: ChatMessageItem[] = rawMsgs.map((msg: any) => ({
           id: msg.id,
-          sender: Number(msg.senderId) === Number(realtime?.clientId) ? role : (role === 'client' ? 'provider' : 'client'),
+          sender: currentUserId != null && Number(msg.senderId) === currentUserId ? role : (role === 'client' ? 'provider' : 'client'),
           text: msg.message || '',
           time: new Date(msg.createdAt || Date.now()).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
           isPending: false,
@@ -63,7 +66,7 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
         return merged;
       });
     }
-  }, [messagesData, realtime?.clientId, role]);
+  }, [messagesData, currentUserId, role]);
 
   useEffect(() => {
     if (!orderId || !realtime?.subscribe) return;
@@ -81,19 +84,23 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
           return prev;
         }
 
-        const isMe = Number(msg.senderId) === Number(realtime?.clientId);
+        const isMe = currentUserId != null && Number(msg.senderId) === currentUserId;
 
-        // 2. If it's my message, find the oldest pending optimistic message and reconcile it
+        // 2. If it's my message, find the matching pending optimistic message and reconcile it
         if (isMe) {
           const pendingIdx = prev.findIndex(
+            (m) => (m.isPending || (typeof m.id === 'string' && m.id.startsWith('temp-'))) &&
+                   (!msg.message || m.text === msg.message)
+          );
+          const fallbackPendingIdx = pendingIdx !== -1 ? pendingIdx : prev.findIndex(
             (m) => m.isPending || (typeof m.id === 'string' && m.id.startsWith('temp-'))
           );
-          if (pendingIdx !== -1) {
+          if (fallbackPendingIdx !== -1) {
             const next = [...prev];
-            next[pendingIdx] = {
+            next[fallbackPendingIdx] = {
               id: msg.id,
               sender: role,
-              text: msg.message || next[pendingIdx].text,
+              text: msg.message || next[fallbackPendingIdx].text,
               time: new Date(msg.createdAt || Date.now()).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }),
               isPending: false,
             };
@@ -158,6 +165,9 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
       const result = await realtime.sendMessage(activeOrder.id, text);
       if (result?.id) {
         setChatMessages((prev) => {
+          if (prev.some((m) => String(m.id) === String(result.id))) {
+            return prev.filter((m) => m.id !== tempId);
+          }
           const pendingIdx = prev.findIndex((m) => m.id === tempId);
           if (pendingIdx !== -1) {
             const next = [...prev];

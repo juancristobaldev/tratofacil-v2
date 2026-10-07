@@ -109,6 +109,15 @@ export const ROUTE_FIT_HORIZONTAL_CLEARANCE = 28;
 export const ROUTE_FIT_ZOOM_SCALE = 1.15;
 export const ROUTE_CHANGE_ENDPOINT_THRESHOLD_METERS = 20;
 
+// Constantes especializadas para selección de pin (evitan over-zoom y pines a ras de pantalla)
+export const PIN_SELECTION_MIN_LATITUDE_DELTA = 0.0085; // ~950m campo visual mínimo contextual
+export const PIN_SELECTION_MIN_LONGITUDE_DELTA = 0.0085;
+export const PIN_SELECTION_HORIZONTAL_CLEARANCE = 32;   // 24 base + 32 = 56px de margen lateral
+export const PIN_SELECTION_TOP_CLEARANCE = 48;          // 16 base + 48 = 64px (libera header y tarjeta 58px)
+export const PIN_SELECTION_BOTTOM_CLEARANCE = 26;       // 16 base + 26 = 42px (libera el BottomSheet)
+export const PIN_SELECTION_ZOOM_SCALE = 1.25;           // 25% de margen de encuadre en cálculos
+export const PIN_SELECTION_SINGLE_LAT_DELTA = 0.015;    // Zoom contextual cuando no hay GPS del usuario
+
 export interface AdaptivePolylineWidth {
   strokeWidth: number;
   glowWidth: number;

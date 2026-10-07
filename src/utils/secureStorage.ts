@@ -18,9 +18,18 @@ async function tryKeychainSet(token: string): Promise<boolean> {
 
 export async function saveToken(token: string): Promise<void> {
   const ok = await tryKeychainSet(token);
-  await AsyncStorage.setItem(FALLBACK_KEY, token);
-  if (!ok && __DEV__) {
-    console.warn('[secureStorage] Keychain falló; token guardado solo en AsyncStorage.');
+  if (!ok) {
+    await AsyncStorage.setItem(FALLBACK_KEY, token);
+    if (__DEV__) {
+      console.warn('[secureStorage] Keychain falló; token guardado solo en AsyncStorage.');
+    }
+  } else {
+    // Si Keychain funcionó correctamente, eliminamos cualquier residuo no cifrado en AsyncStorage
+    try {
+      await AsyncStorage.removeItem(FALLBACK_KEY);
+    } catch {
+      // noop
+    }
   }
 }
 

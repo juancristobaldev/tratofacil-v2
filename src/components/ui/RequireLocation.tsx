@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, Linking } from 'react-native';
+import { CustomAlert as Alert } from './CustomAlert';
 import { TOKENS } from '../../theme';
 import { Button } from './Button';
 import { Icon } from './Icon';

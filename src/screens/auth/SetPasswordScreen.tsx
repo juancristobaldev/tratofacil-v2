@@ -4,12 +4,12 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   ScrollView,
   TextInput,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Input, Button } from '../../components/ui';

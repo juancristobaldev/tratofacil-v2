@@ -282,11 +282,12 @@ describe('FocusClientPanelContent Component (Flujos 6, 7, 30)', () => {
 
     await waitFor(() => {
       expect(mockPayWithSavedCard).toHaveBeenCalledWith(101);
-      expect(mockShowNotification).toHaveBeenCalledWith({
+      expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'clientOrder:101:ACCEPTED',
         title: 'Pago exitoso',
         message: 'Tu pago ha sido procesado con tu tarjeta vinculada.',
         type: 'success',
-      });
+      }));
     });
   });
 

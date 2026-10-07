@@ -5,11 +5,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Linking,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Input, Modal, StatusBanner, SelectPickerTrigger } from '../../components';
@@ -769,7 +769,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepBadgeSuccess: {
-    backgroundColor: '#DCFCE7',
+    backgroundColor: TOKENS.colors.success50,
   },
   stepBadgeBrand: {
     backgroundColor: TOKENS.colors.brand500,
@@ -797,14 +797,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusPending: { backgroundColor: TOKENS.colors.surface100 },
-  statusCompleted: { backgroundColor: '#DCFCE7' },
+  statusCompleted: { backgroundColor: TOKENS.colors.success50 },
   statusBadgeText: {
     fontSize: 10,
     fontWeight: TOKENS.typography.weights.bold,
     letterSpacing: 0.5,
   },
   statusPendingText: { color: TOKENS.colors.textSubtle },
-  statusCompletedText: { color: '#16A34A' },
+  statusCompletedText: { color: TOKENS.colors.success700 },
 
   accordionBody: {
     padding: 16,

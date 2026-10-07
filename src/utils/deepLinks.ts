@@ -24,7 +24,7 @@ export function initializeDeepLinks() {
     }
 
     // Deep link de orden: tratofacilv2://order/:id
-    const orderMatch = url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/order\/(\d+)/);
+    const orderMatch = url.match(/^tratofacilv2:\/\/order\/(\d+)/i);
     if (orderMatch) {
       const orderId = Number(orderMatch[1]);
       if (Number.isFinite(orderId) && orderOpenHandler) {

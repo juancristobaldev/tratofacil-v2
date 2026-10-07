@@ -237,9 +237,10 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
       // 1. Backend fails
       ((globalThis as any).fetch as jest.Mock).mockRejectedValueOnce(new Error('Backend offline'));
 
-      // 2. OSRM first attempt returns NoSegment (coordinate off-road / in building)
+      // 2. OSRM first attempt returns HTTP 400 with NoSegment (coordinate off-road / in building)
       ((globalThis as any).fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
+        ok: false,
+        status: 400,
         json: async () => ({
           code: 'NoSegment',
           message: 'Could not find a matching segment for coordinate',
@@ -347,6 +348,43 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
       expect(isSensibleRoute(mockLoopResult, origin, destNearby)).toBe(false);
     });
 
+    it('should reject absurd medium-range detour loops (e.g. 9.5km for 600m in Huinca Tralcal)', () => {
+      // Huinca Tralcal: ~606m geodesic distance
+      const huincaOrigin = { latitude: -38.7770, longitude: -72.6334 };
+      const huincaDest = { latitude: -38.7718, longitude: -72.6318 };
+      const detourRoute: any = {
+        coordinates: [huincaOrigin, { latitude: -38.750, longitude: -72.650 }, huincaDest],
+        distanceMeters: 9450,
+        durationSeconds: 980,
+      };
+      expect(isSensibleRoute(detourRoute, huincaOrigin, huincaDest)).toBe(false);
+
+      const cleanRoute: any = {
+        coordinates: [huincaOrigin, huincaDest],
+        distanceMeters: 1200,
+        durationSeconds: 120,
+      };
+      expect(isSensibleRoute(cleanRoute, huincaOrigin, huincaDest)).toBe(true);
+    });
+
+    it('should reject absurd regional detour loops (e.g. 13.2km for 2.7km in Reducción Gusaco / Niágara)', () => {
+      const gusacoOrigin = { latitude: -38.7610, longitude: -72.4880 };
+      const juntaVerdeDest = { latitude: -38.7692, longitude: -72.4585 }; // ~2715m geodésica
+      const detourRoute: any = {
+        coordinates: [gusacoOrigin, { latitude: -38.750, longitude: -72.500 }, juntaVerdeDest],
+        distanceMeters: 13213, // 13.2 km para 2.7 km geodésicos (4.866x detour ratio)
+        durationSeconds: 1200,
+      };
+      expect(isSensibleRoute(detourRoute, gusacoOrigin, juntaVerdeDest)).toBe(false);
+
+      const cleanDirectRoute: any = {
+        coordinates: [gusacoOrigin, juntaVerdeDest],
+        distanceMeters: 3139,
+        durationSeconds: 300,
+      };
+      expect(isSensibleRoute(cleanDirectRoute, gusacoOrigin, juntaVerdeDest)).toBe(true);
+    });
+
     it('should accept coherent, realistic driving routes', () => {
       const destFar = { latitude: -33.4589, longitude: -70.6793 }; // ~1.4 km
       const mockGoodResult: any = {
@@ -354,6 +392,49 @@ describe('Directions Subsystem (Mobile Frontend)', () => {
         distanceMeters: 1600,
       };
       expect(isSensibleRoute(mockGoodResult, origin, destFar)).toBe(true);
+    });
+
+    it('should fallback to Client OSRM when Backend Proxy returns an insensible detour route', async () => {
+      clearClientRouteCache();
+      const huincaOrigin = { latitude: -38.7770, longitude: -72.6334 };
+      const huincaDest = { latitude: -38.7718, longitude: -72.6318 };
+
+      // 1. Backend Proxy returns 9.5km detour
+      ((globalThis as any).fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          coordinates: [huincaOrigin, { latitude: -38.750, longitude: -72.650 }, huincaDest],
+          distanceMeters: 9450,
+          durationSeconds: 980,
+          provider: 'google',
+        }),
+      });
+
+      // 2. Client OSRM returns clean 1.2km route
+      ((globalThis as any).fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          code: 'Ok',
+          routes: [
+            {
+              geometry: {
+                coordinates: [
+                  [-72.6334, -38.7770],
+                  [-72.6318, -38.7718],
+                ],
+              },
+              distance: 1200,
+              duration: 120,
+            },
+          ],
+        }),
+      });
+
+      const result = await getDirections(huincaOrigin, huincaDest);
+      expect(result).not.toBeNull();
+      expect(result?.provider).toBe('osrm');
+      expect(result?.distanceMeters).toBe(1200);
+      expect(((globalThis as any).fetch as jest.Mock)).toHaveBeenCalledTimes(2);
     });
   });
 });

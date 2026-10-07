@@ -527,7 +527,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
   }, [liveProviderCoords, providerClientCoords]);
 
-  const isWithinArrivalRadius = Boolean(distanceMeters !== null && distanceMeters <= 100);
+  const isWithinArrivalRadius = Boolean(distanceMeters !== null && distanceMeters <= 50);
 
   // Mapeo de status realtime -> estado de sesión de proveedor.
   useEffect(() => {
@@ -544,7 +544,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const hasNotifiedArrivalRef = useRef<{ orderId: number; notified: boolean } | null>(null);
   const notifiedStatesByOrderRef = useRef<Record<number, Set<string>>>({});
 
-  // Notificación de proximidad al llegar a la zona del cliente (<= 100m) mientras está en camino.
+  // Notificación de proximidad al llegar a la zona del cliente (<= 50m) mientras está en camino.
   useEffect(() => {
     if (role === 'client') return;
     const currentOrderId = providerOrder?.id;
@@ -578,7 +578,7 @@ export const FocusSessionProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (orderState === 'EN_CAMINO' && !orderNotified.has('EN_CAMINO')) {
       orderNotified.add('EN_CAMINO');
       showNotification({
-        id: `providerOrder:${currentOrderId}:EN_CAMINO`,
+        id: `providerOrder:${currentOrderId}:ACCEPTED`,
         title: 'Nueva Orden de Trabajo',
         message: 'Dirígete a la ubicación del cliente para iniciar el servicio.',
         type: 'info',

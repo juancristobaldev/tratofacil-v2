@@ -5,13 +5,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Text,
-  Alert,
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
   Image,
   Modal,
 } from 'react-native';
+import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';

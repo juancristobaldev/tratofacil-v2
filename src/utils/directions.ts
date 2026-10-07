@@ -54,6 +54,11 @@ export const MIN_RENDERABLE_POLYLINE_METERS = 35; // Distancia mínima para que 
 export const SHORT_RANGE_GEODESIC_THRESHOLD_METERS = 100; // Umbral donde se evalúa el ratio de desvío
 export const MAX_SHORT_RANGE_DETOUR_RATIO = 3.5; // Razón máxima (distanciaVial / distanciaGeodésica) en rango corto
 export const MAX_ABSOLUTE_SHORT_RANGE_METERS = 400; // Desvío máximo absoluto cuando están a < 70m en línea recta
+
+export const LOCAL_GRID_GEODESIC_THRESHOLD_METERS = 800; // Cuadrícula urbana densa de un solo sentido (Santiago Centro)
+export const MAX_LOCAL_GRID_DETOUR_RATIO = 4.5;
+export const MAX_REGIONAL_DETOUR_RATIO = 2.8; // Regional, rural y carreteras (> 800m)
+
 export const OSRM_SNAP_RADIUS_METERS = 40; // Radio sugerido de snapping inicial
 export const LAST_MILE_MAX_STITCH_METERS = 350; // Distancia máxima para conectar la última calle con el marcador del cliente
 
@@ -78,7 +83,8 @@ export function computeGeodesicDistance(p1: RouteCoordinate, p2: RouteCoordinate
 
 /**
  * Evalúa si una ruta calculada es cartográfica y físicamente sensata.
- * Descarta rutas en la misma casa, líneas diminutas/puntos y vueltas absurdas a la manzana.
+ * Descarta rutas en la misma casa, líneas diminutas/puntos y vueltas absurdas a la manzana
+ * o loops de desvío kilométricos (ej. 13.2 km para 2.7 km en Camino Niágara / Gusaco).
  */
 export function isSensibleRoute(
   result: RouteResult | null | undefined,
@@ -109,10 +115,11 @@ export function isSensibleRoute(
     return false;
   }
 
-  // 3. Filtro Anti-Vueltas Tontas:
-  // Si están a corta distancia (< 100m) pero la ruta vial es un desvío desmedido (> 3.5x o > 400m para < 70m)
+  // 3. Filtro Anti-Vueltas Tontas multi-escala:
+  const detourRatio = roadDist / Math.max(1, geodesicDist);
+
+  // Corta distancia (< 100m)
   if (geodesicDist < SHORT_RANGE_GEODESIC_THRESHOLD_METERS) {
-    const detourRatio = roadDist / Math.max(1, geodesicDist);
     if (detourRatio > MAX_SHORT_RANGE_DETOUR_RATIO) {
       if (__DEV__) {
         console.warn(`[ROUTE:FILTER_DETOUR_LOOP] Vuelta tonta detectada: distGeodesica=${geodesicDist.toFixed(1)}m, distVial=${roadDist}m, detourRatio=${detourRatio.toFixed(1)} > ${MAX_SHORT_RANGE_DETOUR_RATIO}. Suprimiendo polyline absurda.`);
@@ -126,6 +133,27 @@ export function isSensibleRoute(
       }
       return false;
     }
+    return true;
+  }
+
+  // Media distancia micro-urbana (100m - 800m, tolera cuadrículas de un solo sentido)
+  if (geodesicDist <= LOCAL_GRID_GEODESIC_THRESHOLD_METERS) {
+    if (detourRatio > MAX_LOCAL_GRID_DETOUR_RATIO) {
+      if (__DEV__) {
+        console.warn(`[ROUTE:FILTER_DETOUR_LOOP_LOCAL_GRID] Vuelta tonta cuadrícula local detectada: distGeodesica=${geodesicDist.toFixed(1)}m, distVial=${roadDist}m, detourRatio=${detourRatio.toFixed(1)} > ${MAX_LOCAL_GRID_DETOUR_RATIO}. Suprimiendo polyline.`);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  // Distancia regional / rural / autopista (> 800m):
+  // Ninguna ruta real supera 2.8x. Rechaza categóricamente los 13.2 km de Google (ratio 4.866).
+  if (detourRatio > MAX_REGIONAL_DETOUR_RATIO) {
+    if (__DEV__) {
+      console.warn(`[ROUTE:FILTER_DETOUR_LOOP_REGIONAL] Vuelta tonta regional detectada: distGeodesica=${geodesicDist.toFixed(1)}m, distVial=${roadDist}m, detourRatio=${detourRatio.toFixed(1)} > ${MAX_REGIONAL_DETOUR_RATIO}. Suprimiendo polyline.`);
+    }
+    return false;
   }
 
   return true;
@@ -338,11 +366,12 @@ async function fetchFromClientOsrm(
     const combinedSignal = signal || timeoutSignal;
 
     const res = await fetch(queryUrl, { signal: combinedSignal });
-    if (!res.ok) {
+    // OSRM devuelve HTTP 400 cuando ocurre NoSegment con &radiuses restrictivos
+    if (!res.ok && res.status !== 400) {
       if (__DEV__) console.warn(`[ROUTE:CLIENT_OSRM_ERROR] httpStatus=${res.status} durationMs=${Date.now() - startTs}`);
       return null;
     }
-    return await res.json();
+    return await res.json().catch(() => null);
   };
 
   try {
@@ -443,16 +472,16 @@ export async function getDirections(
     const backendResult = await fetchFromBackendProxy(origCoord, destCoord, signal);
     if (backendResult && backendResult.coordinates.length >= 2) {
       if (!isSensibleRoute(backendResult, origCoord, destCoord)) {
-        if (__DEV__) console.warn('[ROUTE:BACKEND_PROXY_INSENSIBLE] Ruta del backend descartada por no ser sensata cartográficamente.');
-        return null;
+        if (__DEV__) console.warn('[ROUTE:BACKEND_PROXY_INSENSIBLE] Ruta del backend descartada por no ser sensata cartográficamente. Conmutando a fallback...');
+      } else {
+        if (clientRouteCache.size >= MAX_CLIENT_CACHE_SIZE) {
+          const oldestKey = clientRouteCache.keys().next().value;
+          if (oldestKey) clientRouteCache.delete(oldestKey);
+        }
+        clientRouteCache.set(cacheKey, { result: backendResult, expiresAt: Date.now() + CLIENT_CACHE_TTL_MS });
+        if (__DEV__) console.log(`[ROUTE:SUCCESS] provider=${backendResult.provider} points=${backendResult.coordinates.length} distance=${backendResult.distanceMeters}m duration=${backendResult.durationSeconds}s durationMs=${Date.now() - startTs}`);
+        return backendResult;
       }
-      if (clientRouteCache.size >= MAX_CLIENT_CACHE_SIZE) {
-        const oldestKey = clientRouteCache.keys().next().value;
-        if (oldestKey) clientRouteCache.delete(oldestKey);
-      }
-      clientRouteCache.set(cacheKey, { result: backendResult, expiresAt: Date.now() + CLIENT_CACHE_TTL_MS });
-      if (__DEV__) console.log(`[ROUTE:SUCCESS] provider=${backendResult.provider} points=${backendResult.coordinates.length} distance=${backendResult.distanceMeters}m duration=${backendResult.durationSeconds}s durationMs=${Date.now() - startTs}`);
-      return backendResult;
     }
   } catch (err: any) {
     if (err?.name === 'AbortError' || signal?.aborted) {

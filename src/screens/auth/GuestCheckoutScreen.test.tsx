@@ -168,6 +168,7 @@ describe('GuestCheckoutScreen component', () => {
         clientLat: -33.4489,
         clientLng: -70.6693,
         clientDescription: 'Necesito reparar una llave',
+        clientAddress: 'Santiago, Región Metropolitana de Santiago',
       });
       expect(mockSetSession).toHaveBeenCalledWith('guest-token', { id: 99, email: 'guest@email.cl' });
       expect(mockNavigate).toHaveBeenCalledWith('MainApp', { screen: 'Home' });

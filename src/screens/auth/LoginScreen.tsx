@@ -358,7 +358,7 @@ export const LoginScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9FAFB', // gray-50
+    backgroundColor: TOKENS.colors.surface50,
   },
   blob: {
     position: 'absolute',
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
   blobBottomRight: {
     bottom: -50,
     right: -50,
-    backgroundColor: '#9333ea', // purple-600 approx
+    backgroundColor: TOKENS.colors.brand700,
   },
   scrollContent: {
     flexGrow: 1,

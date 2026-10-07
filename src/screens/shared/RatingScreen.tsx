@@ -161,7 +161,7 @@ export const RatingScreen: React.FC = () => {
             <View style={styles.inputWrap}>
               <TextInput
                 placeholder="Escribe tu reseña sobre el servicio aquí (obligatorio)..."
-                placeholderTextColor="#6E7187"
+                placeholderTextColor={TOKENS.colors.textSubtle}
                 value={reviewComment}
                 onChangeText={setReviewComment}
                 multiline
@@ -246,13 +246,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Review Form Card (Fondo Negro / Dark Surface Exclusivo)
+  // Review Form Card (Fondo Dark Surface)
   reviewCard: {
-    backgroundColor: '#111218',
+    backgroundColor: TOKENS.colors.dark900,
     borderRadius: 24,
     padding: TOKENS.spacing.lg,
     borderWidth: 1,
-    borderColor: '#252838',
+    borderColor: TOKENS.colors.dark800,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
@@ -266,13 +266,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#222533',
+    borderBottomColor: TOKENS.colors.dark800,
   },
   targetAvatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#262938',
+    backgroundColor: TOKENS.colors.dark800,
   },
   targetUserInfo: {
     flex: 1,
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
   targetUserName: {
     fontSize: 16,
     fontWeight: TOKENS.typography.weights.bold,
-    color: '#FFFFFF',
+    color: TOKENS.colors.white,
   },
   targetUserSub: {
     fontSize: 12,

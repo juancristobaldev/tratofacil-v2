@@ -310,6 +310,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       await realtime.confirmArrival(order.id, providerCoords?.latitude, providerCoords?.longitude);
       setOrderState('ARRIVED');
       showNotification({
+        id: `providerOrder:${order.id}:ARRIVED`,
         title: 'Llegada confirmada',
         message: 'Has confirmado tu llegada al domicilio. Esperando inicio por parte del cliente.',
         type: 'success',
@@ -317,7 +318,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
     } catch (err: any) {
       showNotification({
         title: 'Error de llegada',
-        message: err?.message || 'Debes encontrarte a menos de 100 metros para confirmar llegada.',
+        message: err?.message || 'Debes encontrarte a menos de 50 metros para confirmar llegada.',
         type: 'error',
       });
     } finally {
@@ -441,26 +442,31 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
           )}
 
           {((orderState === 'EN_CAMINO' || (orderState === 'ARRIVED' && order?.status === 'ACCEPTED' && !order?.arrivedAt)) && isWithinArrivalRadius) ? (
-            <View style={styles.compactActionGroup}>
+            <View key="group-arrived-compact" style={styles.compactActionGroup}>
               <Button
+                key="btn-confirm-arrival-compact"
                 title="Confirmar llegada"
                 size="md"
+                fullWidth={false}
                 onPress={handleConfirmArrival}
                 loading={isConfirmingArrival}
                 disabled={isConfirmingArrival}
                 style={styles.compactGroupBtn}
               />
               <Button
+                key="btn-chat-arrived-compact"
                 title="Chat"
                 variant="secondary"
                 icon="MessageCircle"
                 size="md"
+                fullWidth={false}
                 onPress={handleOpenChat}
                 style={styles.compactGroupBtn}
               />
             </View>
           ) : (orderState === 'EN_CAMINO' || orderState === 'ARRIVED') ? (
             <Button
+              key="btn-open-chat-transit-compact"
               title="Abrir Chat"
               variant="secondary"
               icon="MessageCircle"
@@ -831,7 +837,8 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             <Text style={styles.guideText}>Conduce hacia la ubicación del cliente para iniciar el servicio.</Text>
 
             <Button
-              title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 100m'})`}
+              key="btn-confirm-arrival-en-camino-expanded"
+              title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 50m'})`}
               variant={isWithinArrivalRadius ? 'primary' : 'outline'}
               disabled={!isWithinArrivalRadius || isConfirmingArrival}
               loading={isConfirmingArrival}
@@ -882,7 +889,8 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
 
             {(!order?.arrivedAt || order?.status === 'ACCEPTED') && (
               <Button
-                title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 100m'})`}
+                key="btn-confirm-arrival-fallback-expanded"
+                title={isWithinArrivalRadius ? 'Confirmar llegada' : `Acércate para confirmar llegada (${distanceMeters != null ? `${Math.round(distanceMeters)}m` : '< 50m'})`}
                 variant={isWithinArrivalRadius ? 'primary' : 'outline'}
                 disabled={!isWithinArrivalRadius || isConfirmingArrival}
                 loading={isConfirmingArrival}

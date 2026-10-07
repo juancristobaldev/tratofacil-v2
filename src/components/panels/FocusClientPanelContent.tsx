@@ -3,11 +3,11 @@ import {
   StyleSheet,
   View,
   Text,
-  Alert,
   Linking,
   AppState,
   ActivityIndicator,
 } from 'react-native';
+import { CustomAlert as Alert } from '../ui/CustomAlert';
 import { BottomSheetScrollView, BottomSheetView, TouchableOpacity } from '../../bottom-sheet/primitives';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, Rating, Button, Badge, PaymentActionCards, formatTimer, calculateElapsedSeconds } from '../ui';
@@ -173,6 +173,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
     try {
       await realtime.payWithSavedCard(activeOrder.id);
       showNotification({
+        id: `clientOrder:${activeOrder.id}:ACCEPTED`,
         title: 'Pago exitoso',
         message: 'Tu pago ha sido procesado con tu tarjeta vinculada.',
         type: 'success',
@@ -379,6 +380,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
           {isAcceptedPhase && (
             canStartOrder ? (
               <Button
+                key="btn-confirm-start-order-compact"
                 title="Confirmar inicio de servicio"
                 onPress={handleStartOrder}
                 loading={isStartingOrder}
@@ -388,6 +390,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               />
             ) : (
               <Button
+                key="btn-open-chat-transit-compact"
                 title="Abrir Chat"
                 variant="secondary"
                 icon="MessageCircle"
@@ -633,6 +636,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
               <Text style={styles.arrivalTitle}>Listo para iniciar servicio</Text>
               <Text style={styles.arrivalSubtitle}>El profesional se encuentra en tu dirección.</Text>
               <Button
+                key="btn-confirm-start-order-expanded"
                 title="Confirmar inicio de servicio"
                 onPress={handleStartOrder}
                 loading={isStartingOrder}

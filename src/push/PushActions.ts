@@ -68,6 +68,8 @@ const actionHandlers: Record<string, ActionHandler> = {
   OPEN_CHAT: openApp,
   NAVIGATE: openApp,
   RATE: openApp,
+  REVIEWS: openApp,
+  WALLET: openApp,
   START_SERVICE: openApp,
   COUNTER_OFFER: openApp,
 };
@@ -88,6 +90,16 @@ export async function handlePushAction(
     orderId: Number(data.orderId),
     title: data.title ?? '',
     body: data.body ?? '',
+    deepLink: data.deepLink,
+    channelId: data.channelId,
+    clientName: data.clientName,
+    providerName: data.providerName,
+    serviceName: data.serviceName,
+    senderName: data.senderName,
+    amount: data.amount ? Number(data.amount) : undefined,
+    rating: data.rating ? Number(data.rating) : undefined,
+    distanceMeters: data.distanceMeters ? Number(data.distanceMeters) : undefined,
+    action: actionId,
   };
 
   const handler = actionHandlers[actionId];

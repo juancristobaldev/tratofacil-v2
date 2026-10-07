@@ -44,6 +44,8 @@
 	</dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>TratoFacil necesita acceso a tu ubicación de manera constante para rastrear los servicios en curso de forma precisa.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>TratoFacil necesita acceso a tu ubicación en segundo plano para rastrear el progreso de los servicios activos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TratoFacil necesita acceso a tu ubicación para conectar clientes con profesionales cercanos y mostrar órdenes en el mapa de forma precisa.</string>
 	<key>RCTNewArchEnabled</key>

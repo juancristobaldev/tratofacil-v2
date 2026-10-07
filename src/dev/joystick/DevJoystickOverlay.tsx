@@ -18,7 +18,7 @@ import { Icon } from '../../components/ui/Icon';
 import { useFocusSession } from '../../features/focus-session/useFocusSession';
 
 interface DevJoystickOverlayProps {
-  onFollowCoordinate?: (coord: RouteCoordinate) => void;
+  onFollowCoordinate?: (coord: RouteCoordinate, options?: any) => void;
   bottomOffset?: number; // Desplazamiento desde el fondo para evitar bottom nav / sheet
   routeCoords?: RouteCoordinate[] | null;
 }
@@ -68,7 +68,12 @@ export const DevJoystickOverlay: React.FC<DevJoystickOverlayProps> = ({
     const unsubscribeMovement = controller.subscribe(payload => {
       const config = getDevJoystickConfig();
       if (config.followCamera && onFollowCoordinate && payload.isMoving) {
-        onFollowCoordinate(payload.position);
+        onFollowCoordinate(payload.position, {
+          heading: payload.heading,
+          speed: (payload.speedKmh * 1000) / 3600,
+          routeCoords: activeRouteCoords ?? undefined,
+          source: 'LOCAL_GPS',
+        });
       }
       setHasRoute(locationSimulator.hasActiveRoute());
     });
@@ -83,7 +88,7 @@ export const DevJoystickOverlay: React.FC<DevJoystickOverlayProps> = ({
       unsubscribeMovement();
       unsubscribeConfig();
     };
-  }, [onFollowCoordinate]);
+  }, [onFollowCoordinate, activeRouteCoords]);
 
   const handleRecenter = () => {
     const currentPos = locationSimulator.getCurrentPosition();
@@ -91,6 +96,10 @@ export const DevJoystickOverlay: React.FC<DevJoystickOverlayProps> = ({
       onFollowCoordinate({
         latitude: currentPos.coords.latitude,
         longitude: currentPos.coords.longitude,
+      }, {
+        heading: currentPos.coords.heading,
+        routeCoords: activeRouteCoords ?? undefined,
+        source: 'LOCAL_GPS',
       });
     }
   };

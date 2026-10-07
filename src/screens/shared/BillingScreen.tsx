@@ -1,6 +1,7 @@
 import { SubscriptionType } from "../../graphql/generated";
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Alert, Linking, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, ActivityIndicator, RefreshControl, Linking, TouchableOpacity } from 'react-native';
+import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation } from '@apollo/client/react';
 import { TOKENS } from '../../theme';

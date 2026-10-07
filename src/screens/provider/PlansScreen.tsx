@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { PlanInterval, SubscriptionType, ProviderPlan } from '../../graphql/generated';
-import { StyleSheet, View, Text, ScrollView, Alert, RefreshControl, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
+import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
