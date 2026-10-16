@@ -153,7 +153,6 @@ export const ManageSaleScreen: React.FC = () => {
             <Text style={styles.shippingType}>{sale.shippingInfo.type}</Text>
             <Text style={styles.shippingText}>{sale.shippingInfo.address}</Text>
             <Text style={styles.shippingText}>{sale.shippingInfo.city}</Text>
-            <Text style={styles.shippingText}>Tel: {sale.shippingInfo.phone}</Text>
 
             <View style={styles.actionRequiredBox}>
               <Icon name="AlertCircle" size={14} color={TOKENS.colors.warning600} />

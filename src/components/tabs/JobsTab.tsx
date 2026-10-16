@@ -477,14 +477,6 @@ export const JobsTab: React.FC = () => {
                             <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#b91c1c' }}>📄 Antecedentes (PDF)</Text>
                           </TouchableOpacity>
                         ) : null}
-                        {(app as any).cvUrl ? (
-                          <TouchableOpacity
-                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#c7d2fe' }}
-                            onPress={() => Linking.openURL(mediaUrl((app as any).cvUrl, 'pdf'))}
-                          >
-                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4338ca' }}>📄 CV (PDF)</Text>
-                          </TouchableOpacity>
-                        ) : null}
                       </View>
 
                       <TouchableOpacity

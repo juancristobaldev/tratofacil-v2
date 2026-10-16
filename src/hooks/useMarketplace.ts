@@ -109,7 +109,7 @@ interface UseMarketplaceReturn {
   createLoading: boolean;
   updateProduct: (input: UpdateProductInput) => Promise<void>;
   removeProduct: (id: number) => Promise<void>;
-  createOrder: (input: CreateOrderProductInput, shipping: CreateShippingInfoInput) => Promise<{ id: number; status: string; total: number }>;
+  createOrder: (input: CreateOrderProductInput, shipping?: CreateShippingInfoInput | null) => Promise<{ id: number; status: string; total: number }>;
   updateShipping: (input: { orderId: number; shippingCompany: string; trackingCode: string }) => Promise<void>;
   updateOrderStatus: (orderId: number, status: string) => Promise<void>;
   confirmOrderReceipt: (orderId: number) => Promise<void>;
@@ -259,9 +259,9 @@ export function useMarketplace(): UseMarketplaceReturn {
     });
   };
 
-  const createOrder = async (input: CreateOrderProductInput, shipping: CreateShippingInfoInput) => {
+  const createOrder = async (input: CreateOrderProductInput, shipping?: CreateShippingInfoInput | null) => {
     const { data: result } = await createOrderMut({
-      variables: { input, shippingInput: shipping },
+      variables: { input, shippingInput: shipping || null },
       refetchQueries: ['MyOrders', 'GetMarketplaceData'],
     });
     return result!.createOrderProductWithPayment;

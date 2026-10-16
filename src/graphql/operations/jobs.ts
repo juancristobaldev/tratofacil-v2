@@ -15,7 +15,6 @@ export const MY_JOBS = gql`
         message
         status
         antecedentesUrl
-        cvUrl
         additionalDocs
         worker {
           id
@@ -147,7 +146,6 @@ export const APPLY_TO_JOB = gql`
     $jobId: Int
     $message: String
     $antecedentesUrl: String
-    $cvUrl: String
     $additionalDocs: [String!]
   ) {
     applyToJob(
@@ -155,14 +153,12 @@ export const APPLY_TO_JOB = gql`
       jobId: $jobId
       message: $message
       antecedentesUrl: $antecedentesUrl
-      cvUrl: $cvUrl
       additionalDocs: $additionalDocs
     ) {
       id
       message
       status
       antecedentesUrl
-      cvUrl
       additionalDocs
     }
   }

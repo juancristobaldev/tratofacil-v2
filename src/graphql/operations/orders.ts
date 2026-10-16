@@ -88,7 +88,6 @@ export const GET_MY_SALES = gql`
         reference
         commune
         region
-        phone
       }
     }
   }

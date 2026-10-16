@@ -236,7 +236,7 @@ export const GET_MARKETPLACE_DATA = gql`
 `;
 
 export const CREATE_ORDER_PRODUCT_WITH_PAYMENT = gql`
-  mutation CreateOrderProductWithPayment($input: CreateOrderProductInput!, $shippingInput: CreateShippingInfoInput!) {
+  mutation CreateOrderProductWithPayment($input: CreateOrderProductInput!, $shippingInput: CreateShippingInfoInput) {
     createOrderProductWithPayment(input: $input, shippingInput: $shippingInput) {
       id
       status

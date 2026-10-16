@@ -78,8 +78,13 @@ export const OrderDetailScreen: React.FC = () => {
         },
         {
           time: 'Paso 2',
-          title: 'Compra Completada',
-          description: order.shipping.status === 'COMPLETED' ? 'Producto listo para retiro.' : 'Esperando confirmación de entrega del vendedor.',
+          title: order.shipping.status === 'COMPLETED' ? 'Compra Completada' : 'Entrega / Retiro',
+          description:
+            order.shipping.status === 'COMPLETED'
+              ? 'Producto retirado y compra completada.'
+              : order.shipping.tracking === 'RETIRADO_EN_TIENDA' || order.shipping.tracking === 'ACORDADO_CON_CLIENTE'
+              ? 'Producto listo para retiro en tienda. Confirma la recepción.'
+              : 'Esperando confirmación de entrega del vendedor.',
           iconName: 'Package',
           status: order.shipping.status === 'COMPLETED' ? 'completed' : 'current',
         },

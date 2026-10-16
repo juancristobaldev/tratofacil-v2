@@ -6,7 +6,6 @@ import * as Types from './generated';
 export type ApplyToJobInput = {
   additionalDocs?: Array<string> | null | undefined;
   antecedentesUrl: string;
-  cvUrl: string;
   jobId: number;
   message?: string | null | undefined;
 };
@@ -573,7 +572,7 @@ export type GetServicesByCategoryQuery = { servicesByCategory: Array<{ id: numbe
 export type MyJobsQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type MyJobsQuery = { myJobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: string, updatedAt: string, applications: Array<{ id: number, message: string | null, status: string, antecedentesUrl: string | null, cvUrl: string | null, additionalDocs: Array<string> | null, worker: { id: number, displayName: string | null } }> | null, orders: Array<{ id: number, status: Types.OrderStatus, worker: { id: number, displayName: string | null } | null }> | null }> };
+export type MyJobsQuery = { myJobs: Array<{ id: number, title: string, description: string | null, price: number | null, location: string | null, createdAt: string, updatedAt: string, applications: Array<{ id: number, message: string | null, status: string, antecedentesUrl: string | null, additionalDocs: Array<string> | null, worker: { id: number, displayName: string | null } }> | null, orders: Array<{ id: number, status: Types.OrderStatus, worker: { id: number, displayName: string | null } | null }> | null }> };
 
 export type MyApplicationsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -622,12 +621,11 @@ export type ApplyToJobMutationVariables = Exact<{
   jobId?: number | null | undefined;
   message?: string | null | undefined;
   antecedentesUrl?: string | null | undefined;
-  cvUrl?: string | null | undefined;
   additionalDocs?: Array<string> | string | null | undefined;
 }>;
 
 
-export type ApplyToJobMutation = { applyToJob: { id: number, message: string | null, status: string, antecedentesUrl: string | null, cvUrl: string | null, additionalDocs: Array<string> | null } };
+export type ApplyToJobMutation = { applyToJob: { id: number, message: string | null, status: string, antecedentesUrl: string | null, additionalDocs: Array<string> | null } };
 
 export type CreateOrderJobWithPaymentMutationVariables = Exact<{
   input: Types.CreateOrderJobInput;

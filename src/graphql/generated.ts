@@ -38,7 +38,6 @@ export type AdsWithMarketing = {
 export type ApplyToJobInput = {
   additionalDocs?: InputMaybe<Array<Scalars['String']['input']>>;
   antecedentesUrl: Scalars['String']['input'];
-  cvUrl: Scalars['String']['input'];
   jobId: Scalars['Int']['input'];
   message?: InputMaybe<Scalars['String']['input']>;
 };
@@ -633,7 +632,6 @@ export type JobApplication = {
   additionalDocs?: Maybe<Array<Scalars['String']['output']>>;
   antecedentesUrl?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
-  cvUrl?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
   job: Job;
   jobId: Scalars['Int']['output'];
@@ -997,7 +995,6 @@ export type MutationAdminVerifyCertificateArgs = {
 export type MutationApplyToJobArgs = {
   additionalDocs?: InputMaybe<Array<Scalars['String']['input']>>;
   antecedentesUrl?: InputMaybe<Scalars['String']['input']>;
-  cvUrl?: InputMaybe<Scalars['String']['input']>;
   input?: InputMaybe<ApplyToJobInput>;
   jobId?: InputMaybe<Scalars['Int']['input']>;
   message?: InputMaybe<Scalars['String']['input']>;

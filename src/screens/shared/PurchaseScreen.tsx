@@ -74,9 +74,7 @@ export const PurchaseScreen: React.FC = () => {
           region: shippingData.region,
           phone: shippingData.phone,
           reference: shippingData.additional || '',
-        } : {
-          street: '', number: '', commune: '', region: '', phone: '',
-        },
+        } : null,
       );
       const orderProductId = orderResult?.id;
       if (!orderProductId) throw new Error('No se pudo generar la orden de compra.');
@@ -128,9 +126,7 @@ export const PurchaseScreen: React.FC = () => {
           region: shippingData.region,
           phone: shippingData.phone,
           reference: shippingData.additional || '',
-        } : {
-          street: '', number: '', commune: '', region: '', phone: '',
-        },
+        } : null,
       );
       const orderProductId = orderResult?.id;
       if (!orderProductId) throw new Error('No se pudo generar la orden de compra.');
