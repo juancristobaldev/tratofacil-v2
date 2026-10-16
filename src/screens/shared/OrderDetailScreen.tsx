@@ -48,7 +48,7 @@ export const OrderDetailScreen: React.FC = () => {
           shippingDisabled: (productOrder.product as any).shippingDisabled ?? false,
         },
         seller: {
-          id: productOrder.product.user?.id ?? null,
+          id: productOrder.product.user?.provider?.id ?? productOrder.product.user?.id ?? null,
           name: productOrder.product.user?.provider?.name || productOrder.product.user?.displayName || 'Vendedor',
           rating: 0,
           reviews: 0,
@@ -79,7 +79,7 @@ export const OrderDetailScreen: React.FC = () => {
         {
           time: 'Paso 2',
           title: 'Compra Completada',
-          description: order.shipping.status === 'COMPLETED' ? 'Producto listo para retiro.' : 'Esperando confirmación del vendedor.',
+          description: order.shipping.status === 'COMPLETED' ? 'Producto listo para retiro.' : 'Esperando confirmación de entrega del vendedor.',
           iconName: 'Package',
           status: order.shipping.status === 'COMPLETED' ? 'completed' : 'current',
         },
@@ -154,16 +154,28 @@ export const OrderDetailScreen: React.FC = () => {
         {/* TRACEABILITY / TIMELINE */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Icon name="Truck" size={20} color={TOKENS.colors.brand600} />
-            <Text style={styles.cardTitle}>Estado del Envío</Text>
+            <Icon
+              name={order.product.shippingDisabled ? 'Store' : 'Truck'}
+              size={20}
+              color={order.product.shippingDisabled ? TOKENS.colors.warning600 : TOKENS.colors.brand600}
+            />
+            <Text style={styles.cardTitle}>
+              {order.product.shippingDisabled ? 'Modalidad de Entrega' : 'Estado del Envío'}
+            </Text>
           </View>
-          <Text style={styles.trackingText}>Seguimiento: {order.shipping.tracking}</Text>
+          {!order.product.shippingDisabled && (
+            <Text style={styles.trackingText}>Seguimiento: {order.shipping.tracking}</Text>
+          )}
 
           <ServiceTimeline steps={timelineSteps} />
           
           <View style={styles.addressBox}>
             <Icon name="MapPin" size={16} color={TOKENS.colors.textSubtle} />
-            <Text style={styles.addressText}>{order.shipping.address}</Text>
+            <Text style={styles.addressText}>
+              {order.product.shippingDisabled
+                ? 'Retiro presencial en la ubicación del vendedor. Coordina la entrega directamente.'
+                : order.shipping.address}
+            </Text>
           </View>
         </View>
 
@@ -204,8 +216,10 @@ export const OrderDetailScreen: React.FC = () => {
             <Text style={styles.summaryValue}>${order.product.price.toLocaleString('es-CL')}</Text>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Envío</Text>
-            <Text style={styles.summaryValue}>${order.product.shippingPrice.toLocaleString('es-CL')}</Text>
+            <Text style={styles.summaryLabel}>Modalidad de Entrega</Text>
+            <Text style={[styles.summaryValue, order.product.shippingDisabled && { color: TOKENS.colors.success700 }]}>
+              {order.product.shippingDisabled ? 'Retiro en tienda (Sin costo)' : `$${order.product.shippingPrice.toLocaleString('es-CL')}`}
+            </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>
@@ -219,16 +233,27 @@ export const OrderDetailScreen: React.FC = () => {
       {/* FOOTER ACTION */}
       {order.shipping.status !== 'COMPLETED' && order.shipping.status !== 'SUCCESS' && (
         <View style={[styles.footer, { paddingBottom: insets.bottom || TOKENS.spacing.md }]}>
-          <Button title={isReceiving ? 'Confirmando...' : 'Recibí mi Producto'} icon="CheckCircle" disabled={isReceiving} onPress={async () => {
-            setIsReceiving(true);
-            try {
-              await confirmOrderReceipt(parseInt(String(id), 10));
-            } catch (err: any) {
-              Alert.alert('Error', err.message || 'No se pudo confirmar la recepción.');
-            } finally {
-              setIsReceiving(false);
-            }
-          }} style={styles.confirmBtn} />
+          <Button
+            title={isReceiving ? 'Confirmando...' : 'Recibí mi Producto'}
+            icon="CheckCircle"
+            disabled={isReceiving}
+            onPress={async () => {
+              setIsReceiving(true);
+              try {
+                await confirmOrderReceipt(parseInt(String(id), 10));
+                Alert.alert(
+                  '¡Producto Recibido!',
+                  'Has confirmado la recepción satisfactoria de tu producto. Los fondos han sido liberados al vendedor.',
+                );
+                await refetchOrders();
+              } catch (err: any) {
+                Alert.alert('Error', err.message || 'No se pudo confirmar la recepción.');
+              } finally {
+                setIsReceiving(false);
+              }
+            }}
+            style={styles.confirmBtn}
+          />
         </View>
       )}
     </View>

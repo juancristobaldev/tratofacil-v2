@@ -38,6 +38,11 @@ jest.mock('../../realtime/RealtimeContext', () => ({
   useRealtime: () => ({ guestCreateContactRequest: mockGuestCreateContactRequest }),
 }));
 
+jest.mock('../../utils/geocode', () => ({
+  reverseGeocode: jest.fn().mockResolvedValue('Santiago, Región Metropolitana de Santiago'),
+}));
+
+
 jest.mock('lucide-react-native', () => {
   const mockReact = require('react');
   const { Text } = require('react-native');

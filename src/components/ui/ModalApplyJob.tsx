@@ -4,8 +4,10 @@ import { useNavigation } from '@react-navigation/native';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { CustomAlert as Alert } from './CustomAlert';
 import { TOKENS } from '../../theme';
 import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface ModalApplyJobProps {
   visible: boolean;
@@ -21,6 +23,7 @@ export const ModalApplyJob: React.FC<ModalApplyJobProps> = ({
   onSuccessfulApply,
 }) => {
   const { role } = useRole();
+  const { user } = useAuth();
   const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -41,6 +44,23 @@ export const ModalApplyJob: React.FC<ModalApplyJobProps> = ({
       navigation.navigate('Register');
       return;
     }
+
+    const hasBasic = Boolean(user?.displayName?.trim() && user?.birthday && user?.emailVerified);
+    const hasBank = Boolean(user?.bankAccount || user?.provider?.bank);
+
+    if (!hasBasic || !hasBank) {
+      onClose();
+      Alert.alert(
+        'Verificación requerida',
+        'Para postular a trabajos debes completar tus datos personales, verificar tu correo y asociar una cuenta bancaria para recibir tus pagos.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Ir a Verificación', onPress: () => navigation.navigate('VerificationCenter') },
+        ]
+      );
+      return;
+    }
+
     processApplication();
   };
 

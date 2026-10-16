@@ -27,7 +27,7 @@ export const PLAN_CONFIG = {
   TRATOFACIL_SRV_PRO: {
     name: 'PRO',
     commissionRate: 0.1,
-    maxServices: Infinity,
+    maxServices: 5,
     maxCategories: 3,
     priority: 2,
   },

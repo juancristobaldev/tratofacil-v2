@@ -11,13 +11,20 @@ export type Scalars = {
   DateTime: { input: string; output: string; }
 };
 
+export type AdminResolveDisputeInput = {
+  adminNotes?: InputMaybe<Scalars['String']['input']>;
+  id: Scalars['Int']['input'];
+  status: DisputeStatus;
+};
+
 export type Ads = {
   __typename?: 'Ads';
-  expiredAt: Scalars['DateTime']['output'];
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
+  expiredAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['Int']['output'];
-  orders: Array<OrderAds>;
-  user: User;
-  userId: Scalars['Int']['output'];
+  orders?: Maybe<Array<OrderAds>>;
+  user?: Maybe<User>;
+  userId?: Maybe<Scalars['Int']['output']>;
 };
 
 export type AdsWithMarketing = {
@@ -26,6 +33,14 @@ export type AdsWithMarketing = {
   marketingHero: Array<ImageMarketing>;
   marketingHorizontal: Array<ImageMarketing>;
   marketingVertical: Array<ImageMarketing>;
+};
+
+export type ApplyToJobInput = {
+  additionalDocs?: InputMaybe<Array<Scalars['String']['input']>>;
+  antecedentesUrl: Scalars['String']['input'];
+  cvUrl: Scalars['String']['input'];
+  jobId: Scalars['Int']['input'];
+  message?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type AuthType = {
@@ -116,6 +131,7 @@ export type CategoryProduct = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+/** Entidad de mensaje de chat moderado en tiempo real */
 export type ChatMessageEntity = {
   __typename?: 'ChatMessageEntity';
   createdAt: Scalars['DateTime']['output'];
@@ -223,6 +239,7 @@ export type CreateCategoryProductInput = {
 export type CreateCertificateInput = {
   fileUrl: Scalars['String']['input'];
   institution?: InputMaybe<Scalars['String']['input']>;
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
   title: Scalars['String']['input'];
   year?: InputMaybe<Scalars['Int']['input']>;
 };
@@ -259,6 +276,17 @@ export type CreateCouponInput = {
   percent_off?: InputMaybe<Scalars['Int']['input']>;
   scope?: Scalars['String']['input'];
   times?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type CreateDisputeInput = {
+  description: Scalars['String']['input'];
+  evidenceUrls?: InputMaybe<Array<Scalars['String']['input']>>;
+  orderId?: InputMaybe<Scalars['Int']['input']>;
+  orderJobId?: InputMaybe<Scalars['Int']['input']>;
+  orderProductId?: InputMaybe<Scalars['Int']['input']>;
+  orderRealtimeId?: InputMaybe<Scalars['Int']['input']>;
+  orderType: DisputeOrderType;
+  reason: Scalars['String']['input'];
 };
 
 export type CreateHobbyInput = {
@@ -343,6 +371,7 @@ export type CreateProviderPortfolioInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   imageUrl: Scalars['String']['input'];
   position?: InputMaybe<Scalars['Int']['input']>;
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -428,6 +457,49 @@ export type CredentialsInput = {
 export type DeleteHobbyInput = {
   id: Scalars['Int']['input'];
 };
+
+export type Dispute = {
+  __typename?: 'Dispute';
+  adminNotes?: Maybe<Scalars['String']['output']>;
+  complainant?: Maybe<User>;
+  complainantId: Scalars['Int']['output'];
+  createdAt: Scalars['DateTime']['output'];
+  defendant?: Maybe<User>;
+  defendantId: Scalars['Int']['output'];
+  description: Scalars['String']['output'];
+  evidenceUrls?: Maybe<Array<Scalars['String']['output']>>;
+  id: Scalars['Int']['output'];
+  order?: Maybe<Order>;
+  orderId?: Maybe<Scalars['Int']['output']>;
+  orderJob?: Maybe<OrderJob>;
+  orderJobId?: Maybe<Scalars['Int']['output']>;
+  orderProduct?: Maybe<OrderProduct>;
+  orderProductId?: Maybe<Scalars['Int']['output']>;
+  orderRealTime?: Maybe<OrderRealTime>;
+  orderRealtimeId?: Maybe<Scalars['Int']['output']>;
+  orderType: DisputeOrderType;
+  reason: Scalars['String']['output'];
+  resolvedAt?: Maybe<Scalars['DateTime']['output']>;
+  resolvedById?: Maybe<Scalars['Int']['output']>;
+  status: DisputeStatus;
+  updatedAt: Scalars['DateTime']['output'];
+};
+
+/** Tipo de vertical de la orden asociada a la querella */
+export enum DisputeOrderType {
+  Job = 'JOB',
+  Marketplace = 'MARKETPLACE',
+  Realtime = 'REALTIME',
+  Service = 'SERVICE'
+}
+
+/** Estado de una querella o disputa */
+export enum DisputeStatus {
+  Pending = 'PENDING',
+  Rejected = 'REJECTED',
+  Resolved = 'RESOLVED',
+  UnderReview = 'UNDER_REVIEW'
+}
 
 export type FlowPaymentResponse = {
   __typename?: 'FlowPaymentResponse';
@@ -558,7 +630,10 @@ export type Job = {
 
 export type JobApplication = {
   __typename?: 'JobApplication';
+  additionalDocs?: Maybe<Array<Scalars['String']['output']>>;
+  antecedentesUrl?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
+  cvUrl?: Maybe<Scalars['String']['output']>;
   id: Scalars['Int']['output'];
   job: Job;
   jobId: Scalars['Int']['output'];
@@ -605,11 +680,13 @@ export type Mutation = {
   /** God Mode: Suplantar sesin de cualquier usuario como admin */
   adminLoginAsUser: AuthType;
   adminRejectWithdrawal: Withdrawal;
+  adminResolveDispute: Dispute;
   adminSetServiceActive: Service;
   adminSetServiceProviderActive: Scalars['Boolean']['output'];
   adminUpdateCategory: Category;
   adminUpdateOrderJobStatus: OrderJob;
   adminUpdateOrderProductStatus: OrderProduct;
+  adminUpdateOrderRealTimeStatus: OrderRealTime;
   adminUpdateOrderStatus: Order;
   adminUpdateService: Service;
   adminUpdateUser: User;
@@ -638,6 +715,7 @@ export type Mutation = {
   createCheckout: CheckoutSession;
   createClientReview: ClientReview;
   createCoupon: CouponResponse;
+  createDispute: Dispute;
   createFlowAdTransaction: FlowPaymentResponse;
   createHobby: Hobby;
   createImageMarketing: ImageMarketing;
@@ -841,6 +919,11 @@ export type MutationAdminRejectWithdrawalArgs = {
 };
 
 
+export type MutationAdminResolveDisputeArgs = {
+  input: AdminResolveDisputeInput;
+};
+
+
 export type MutationAdminSetServiceActiveArgs = {
   active: Scalars['Boolean']['input'];
   id: Scalars['Int']['input'];
@@ -876,6 +959,12 @@ export type MutationAdminUpdateOrderProductStatusArgs = {
 };
 
 
+export type MutationAdminUpdateOrderRealTimeStatusArgs = {
+  id: Scalars['Int']['input'];
+  status: RealtimeOrderStatus;
+};
+
+
 export type MutationAdminUpdateOrderStatusArgs = {
   id: Scalars['Int']['input'];
   status: OrderStatus;
@@ -906,7 +995,11 @@ export type MutationAdminVerifyCertificateArgs = {
 
 
 export type MutationApplyToJobArgs = {
-  jobId: Scalars['Int']['input'];
+  additionalDocs?: InputMaybe<Array<Scalars['String']['input']>>;
+  antecedentesUrl?: InputMaybe<Scalars['String']['input']>;
+  cvUrl?: InputMaybe<Scalars['String']['input']>;
+  input?: InputMaybe<ApplyToJobInput>;
+  jobId?: InputMaybe<Scalars['Int']['input']>;
   message?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -1017,6 +1110,11 @@ export type MutationCreateClientReviewArgs = {
 
 export type MutationCreateCouponArgs = {
   input: CreateCouponInput;
+};
+
+
+export type MutationCreateDisputeArgs = {
+  input: CreateDisputeInput;
 };
 
 
@@ -1482,6 +1580,7 @@ export type MutationUpdateOrderProductStatusArgs = {
 
 
 export type MutationUpdateOrderServiceStatusArgs = {
+  evidenceUrls?: InputMaybe<Array<Scalars['String']['input']>>;
   orderId: Scalars['Int']['input'];
   status: OrderStatus;
 };
@@ -1558,6 +1657,8 @@ export type Order = {
   clientLng?: Maybe<Scalars['Float']['output']>;
   clientPlaceId?: Maybe<Scalars['String']['output']>;
   commission: Scalars['Float']['output'];
+  /** Imágenes de prueba de la ejecución del servicio */
+  completionEvidence?: Maybe<Array<Scalars['String']['output']>>;
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['Int']['output'];
   payment?: Maybe<Payment>;
@@ -1984,6 +2085,7 @@ export type Provider = {
   /** @deprecated Usar logoImage.cdnUrl */
   logoUrl?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
+  plan?: Maybe<ProviderPlan>;
   portfolio?: Maybe<Array<ProviderPortfolio>>;
   priority: Scalars['Int']['output'];
   realtimeReviews?: Maybe<Array<Maybe<RealtimeProviderReview>>>;
@@ -2007,6 +2109,8 @@ export type ProviderCertificate = {
   id: Scalars['Int']['output'];
   institution?: Maybe<Scalars['String']['output']>;
   providerId: Scalars['Int']['output'];
+  serviceProvider?: Maybe<ServiceProvider>;
+  serviceProviderId?: Maybe<Scalars['Int']['output']>;
   title: Scalars['String']['output'];
   verified: Scalars['Boolean']['output'];
   year?: Maybe<Scalars['Int']['output']>;
@@ -2036,6 +2140,8 @@ export type ProviderPortfolio = {
   imageUrl: Scalars['String']['output'];
   position: Scalars['Int']['output'];
   providerId: Scalars['Int']['output'];
+  serviceProvider?: Maybe<ServiceProvider>;
+  serviceProviderId?: Maybe<Scalars['Int']['output']>;
   title?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTime']['output'];
 };
@@ -2076,6 +2182,8 @@ export type Query = {
   __typename?: 'Query';
   /** Listado de todas las categorías */
   adminCategories: Array<Category>;
+  adminGetDispute: Dispute;
+  adminGetDisputes: Array<Dispute>;
   adminGetPayableItems: Array<PayableItem>;
   adminGetWithdrawals: Array<Withdrawal>;
   adminJobReviews: Array<ReviewsJob>;
@@ -2085,6 +2193,8 @@ export type Query = {
   adminOrders: Array<Order>;
   /** Moderación de todas las reseñas */
   adminOrdersProduct: Array<OrderProduct>;
+  /** Listado maestro de órdenes en tiempo real */
+  adminOrdersRealTime: Array<OrderRealTime>;
   /** Obtener todos los proveedores con sus detalles */
   adminProviders: Array<Provider>;
   /** Moderación de todas las reseñas */
@@ -2135,6 +2245,7 @@ export type Query = {
   me: User;
   messages: Array<ChatMessageEntity>;
   myApplications: Array<JobApplication>;
+  myDisputes: Array<Dispute>;
   myJobs: Array<Job>;
   myOffers: Array<Job>;
   myOrders: OrdersObject;
@@ -2159,12 +2270,24 @@ export type Query = {
   providers: Array<Provider>;
   publicProfile?: Maybe<User>;
   serviceDetail: ServiceDetail;
+  serviceProviderPortfolio: Array<ProviderPortfolio>;
   servicesByCategory: Array<Service>;
   shippingInfoByOrderProduct?: Maybe<ShippingInfo>;
   subCategories: Array<Category>;
   subCategoryProducts: Array<CategoryProduct>;
   user?: Maybe<User>;
   users: Array<User>;
+};
+
+
+export type QueryAdminGetDisputeArgs = {
+  id: Scalars['Int']['input'];
+};
+
+
+export type QueryAdminGetDisputesArgs = {
+  orderType?: InputMaybe<DisputeOrderType>;
+  status?: InputMaybe<DisputeStatus>;
 };
 
 
@@ -2222,6 +2345,11 @@ export type QueryGetImageTransitionByIdArgs = {
 };
 
 
+export type QueryGetMyCertificatesArgs = {
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryGetMyServiceSalesArgs = {
   providerId: Scalars['Int']['input'];
 };
@@ -2269,6 +2397,11 @@ export type QueryMessagesArgs = {
 };
 
 
+export type QueryMyPortfolioArgs = {
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryPaymentStatusArgs = {
   attemptId?: InputMaybe<Scalars['String']['input']>;
   paymentId?: InputMaybe<Scalars['String']['input']>;
@@ -2309,6 +2442,7 @@ export type QueryProviderDailyAvailabilityArgs = {
 
 export type QueryProviderPortfolioArgs = {
   providerId: Scalars['Int']['input'];
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -2323,9 +2457,15 @@ export type QueryServiceDetailArgs = {
 };
 
 
+export type QueryServiceProviderPortfolioArgs = {
+  serviceProviderId: Scalars['Int']['input'];
+};
+
+
 export type QueryServicesByCategoryArgs = {
   categorySlug: Scalars['String']['input'];
   city?: InputMaybe<Scalars['String']['input']>;
+  hasHomeVisit?: InputMaybe<Scalars['Boolean']['input']>;
   includeProvidersOnly?: InputMaybe<Scalars['Boolean']['input']>;
   skip?: InputMaybe<Scalars['Int']['input']>;
   subCategorySlug?: InputMaybe<Scalars['String']['input']>;
@@ -2423,9 +2563,17 @@ export type ReviewsJob = {
 
 export type ReviewsProduct = {
   __typename?: 'ReviewsProduct';
+  client?: Maybe<User>;
+  clientId?: Maybe<Scalars['Int']['output']>;
   comment?: Maybe<Scalars['String']['output']>;
-  orderId: Scalars['Int']['output'];
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
+  id: Scalars['Int']['output'];
+  orderId?: Maybe<Scalars['Int']['output']>;
+  product?: Maybe<Product>;
+  productId?: Maybe<Scalars['Int']['output']>;
   rating: Scalars['Int']['output'];
+  seller?: Maybe<User>;
+  sellerId?: Maybe<Scalars['Int']['output']>;
 };
 
 /** Roles de usuario permitidos en la aplicación */
@@ -2495,13 +2643,17 @@ export type ServiceDetail = {
 
 export type ServiceProvider = {
   __typename?: 'ServiceProvider';
+  certificates?: Maybe<Array<ProviderCertificate>>;
   cities?: Maybe<Array<ServiceProviderOnCity>>;
   commission?: Maybe<Scalars['Float']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   hasHomeVisit: Scalars['Boolean']['output'];
   id: Scalars['Int']['output'];
+  /** Indica si este servicio tiene al menos un certificado verificado por admin */
+  isCertified: Scalars['Boolean']['output'];
   netAmount?: Maybe<Scalars['Float']['output']>;
   orders?: Maybe<Array<Order>>;
+  portfolio?: Maybe<Array<ProviderPortfolio>>;
   price?: Maybe<Scalars['Float']['output']>;
   provider?: Maybe<Provider>;
   providerId: Scalars['Int']['output'];
@@ -2565,6 +2717,7 @@ export type UpdateCertificateInput = {
   fileUrl?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['Int']['input'];
   institution?: InputMaybe<Scalars['String']['input']>;
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
   year?: InputMaybe<Scalars['Int']['input']>;
 };
@@ -2635,6 +2788,7 @@ export type UpdateProviderPortfolioInput = {
   id: Scalars['Int']['input'];
   imageUrl?: InputMaybe<Scalars['String']['input']>;
   position?: InputMaybe<Scalars['Int']['input']>;
+  serviceProviderId?: InputMaybe<Scalars['Int']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -2674,7 +2828,7 @@ export type User = {
   cardActive?: Maybe<Scalars['Boolean']['output']>;
   chatMessages?: Maybe<Array<ChatMessageEntity>>;
   clientReviewsReceived?: Maybe<Array<ClientReview>>;
-  createdAt: Scalars['DateTime']['output'];
+  createdAt?: Maybe<Scalars['DateTime']['output']>;
   creditCardType?: Maybe<Scalars['String']['output']>;
   deletedAt?: Maybe<Scalars['DateTime']['output']>;
   displayName?: Maybe<Scalars['String']['output']>;
@@ -2696,7 +2850,7 @@ export type User = {
   marketplacePlanOrders?: Maybe<Array<PlanUserOrder>>;
   nicename: Scalars['String']['output'];
   orders?: Maybe<Array<Order>>;
-  phone: Scalars['String']['output'];
+  phone?: Maybe<Scalars['String']['output']>;
   planOrders?: Maybe<Array<PlanOrder>>;
   productOrders?: Maybe<Array<OrderProduct>>;
   productReviewsGiven?: Maybe<Array<ReviewsProduct>>;
@@ -2711,7 +2865,7 @@ export type User = {
   reviewsReceived?: Maybe<Array<Maybe<ClientReview>>>;
   role: Role;
   status: Scalars['Int']['output'];
-  updatedAt: Scalars['DateTime']['output'];
+  updatedAt?: Maybe<Scalars['DateTime']['output']>;
   url: Scalars['String']['output'];
   username: Scalars['String']['output'];
   wallet?: Maybe<Wallet>;

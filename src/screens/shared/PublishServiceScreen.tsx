@@ -175,8 +175,22 @@ export const PublishServiceScreen: React.FC = () => {
 
   const handlePublish = async () => {
     if (!user?.isProfileComplete) {
-      Alert.alert('Perfil incompleto', 'Completa tu perfil de proveedor antes de publicar un servicio.');
-      navigation.navigate('MyProfile');
+      Alert.alert(
+        'Perfil incompleto',
+        'Completa tu perfil de proveedor en el Centro de Verificación antes de publicar un servicio.',
+        [{ text: 'Ir a Verificación', onPress: () => navigation.navigate('VerificationCenter') }]
+      );
+      return;
+    }
+    const hasAntecedentes = user?.provider?.certificates?.some(
+      (c: any) => c && typeof c.title === 'string' && /antecedente/i.test(c.title) && c.verified
+    );
+    if (!hasAntecedentes) {
+      Alert.alert(
+        'Certificado de Antecedentes requerido',
+        'Tu Certificado de Antecedentes debe estar aprobado por nuestro equipo de administración antes de publicar servicios.',
+        [{ text: 'Ver estado', onPress: () => navigation.navigate('VerificationCenter') }]
+      );
       return;
     }
     if (!selectedServiceSlug || !city || priceVal <= 0) {
@@ -199,8 +213,23 @@ export const PublishServiceScreen: React.FC = () => {
       });
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
-      navigation.navigate('Plans');
+      const msg = err?.message || 'Error al publicar el servicio';
+      if (
+        msg.includes('perfil de proveedor') ||
+        msg.includes('verificación') ||
+        msg.includes('antecedentes')
+      ) {
+        Alert.alert(
+          'Verificación requerida',
+          msg,
+          [{ text: 'Ir a Verificación', onPress: () => navigation.navigate('VerificationCenter') }]
+        );
+      } else if (msg.toLowerCase().includes('plan') || msg.toLowerCase().includes('límite') || msg.toLowerCase().includes('limite')) {
+        Alert.alert('Límite del Plan', msg);
+        navigation.navigate('Plans');
+      } else {
+        Alert.alert('Error', msg);
+      }
     }
   };
 

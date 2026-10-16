@@ -14,6 +14,9 @@ export const MY_JOBS = gql`
         id
         message
         status
+        antecedentesUrl
+        cvUrl
+        additionalDocs
         worker {
           id
           displayName
@@ -139,11 +142,28 @@ export const REMOVE_JOB = gql`
 `;
 
 export const APPLY_TO_JOB = gql`
-  mutation ApplyToJob($jobId: Int!, $message: String) {
-    applyToJob(jobId: $jobId, message: $message) {
+  mutation ApplyToJob(
+    $input: ApplyToJobInput
+    $jobId: Int
+    $message: String
+    $antecedentesUrl: String
+    $cvUrl: String
+    $additionalDocs: [String!]
+  ) {
+    applyToJob(
+      input: $input
+      jobId: $jobId
+      message: $message
+      antecedentesUrl: $antecedentesUrl
+      cvUrl: $cvUrl
+      additionalDocs: $additionalDocs
+    ) {
       id
       message
       status
+      antecedentesUrl
+      cvUrl
+      additionalDocs
     }
   }
 `;

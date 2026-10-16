@@ -70,6 +70,10 @@ jest.mock('../../hooks/useProfile', () => ({
 describe('ProviderProfileScreen - Gallery / Portfolio Behavior', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPublicProfile = null;
+    mockPublicProfileLoading = false;
+    mockPublicProfileError = null;
+    mockPublicProfileFetched = true;
   });
 
   it('renders clean empty state when provider has no portfolio photos', async () => {
@@ -193,15 +197,131 @@ describe('ProviderProfileScreen - Gallery / Portfolio Behavior', () => {
     expect(view.getByText('No se pudo cargar el perfil del profesional.')).toBeTruthy();
   });
 
-  it('renders error state when provider is not found after query completes', async () => {
-    mockPublicProfile = null;
-    mockPublicProfileLoading = false;
-    mockPublicProfileError = null;
-    mockPublicProfileFetched = true;
+  it('displays "Este profesional es certificado" when service is certified and "Este profesional no esta certificado" when not, without leaking certificate documents', async () => {
+    mockPublicProfile = {
+      id: 1,
+      provider: {
+        id: 99,
+        name: 'Carlos Electricista',
+        bio: 'Experto en tableros eléctricos.',
+        location: 'Santiago',
+        services: [
+          {
+            id: 10,
+            price: 25000,
+            isCertified: true,
+            service: { name: 'Instalación Eléctrica', slug: 'instalacion-electrica' },
+            portfolio: [],
+          },
+          {
+            id: 20,
+            price: 18000,
+            isCertified: false,
+            service: { name: 'Pintura Interior', slug: 'pintura-interior' },
+            portfolio: [],
+          },
+        ],
+        // Raw certificates that must NEVER leak to the client
+        certificates: [
+          { id: 999, title: 'Secret Certified Master Title', institution: 'Secret MIT Lab', verified: true, fileUrl: 'private.pdf' },
+        ],
+        reviews: [],
+        realtimeReviews: [],
+      },
+    };
 
     const view = await render(<ProviderProfileScreen />);
 
-    // Should show error state
-    expect(view.getByText('No se pudo cargar el perfil del profesional.')).toBeTruthy();
+    // In Servicios tab (service 0 is selected):
+    // Should show "Este profesional es certificado" for Instalación Eléctrica
+    expect(view.getByText('Este profesional es certificado')).toBeTruthy();
+    // Should show "Este profesional no esta certificado" for Pintura Interior
+    expect(view.getByText('Este profesional no esta certificado')).toBeTruthy();
+
+    // Verify private certificate documents/institutions are NEVER displayed to client
+    expect(view.queryByText('Secret Certified Master Title')).toBeNull();
+    expect(view.queryByText(/Secret MIT Lab/)).toBeNull();
+    expect(view.queryByText(/private\.pdf/)).toBeNull();
+
+    // Switch to 'Sobre Mí' tab
+    await fireEvent.press(view.getByText('Sobre Mí'));
+
+    // Should display both services certification states
+    expect(view.getAllByText('Este profesional es certificado').length).toBeGreaterThanOrEqual(1);
+    expect(view.getAllByText('Este profesional no esta certificado').length).toBeGreaterThanOrEqual(1);
+    expect(view.queryByText('Secret Certified Master Title')).toBeNull();
+  });
+
+  it('isolates gallery per service provider and switches gallery when selecting a different service', async () => {
+    mockPublicProfile = {
+      id: 1,
+      provider: {
+        id: 99,
+        name: 'Carlos Electricista',
+        bio: 'Experto en tableros y pintura.',
+        location: 'Santiago',
+        services: [
+          {
+            id: 10,
+            price: 25000,
+            isCertified: true,
+            service: { name: 'Instalación Eléctrica', slug: 'instalacion-electrica' },
+            portfolio: [
+              {
+                id: 101,
+                title: 'Foto Tablero Eléctrico',
+                description: 'Instalación trifásica',
+                imageUrl: 'tablero.jpg',
+                image: { id: 501, cdnUrl: 'https://cdn.tratofacil.cl/files/tablero.jpg' },
+              },
+            ],
+          },
+          {
+            id: 20,
+            price: 18000,
+            isCertified: false,
+            service: { name: 'Pintura Interior', slug: 'pintura-interior' },
+            portfolio: [
+              {
+                id: 201,
+                title: 'Foto Pared Pintada',
+                description: 'Acabado satinado',
+                imageUrl: 'pared.jpg',
+                image: { id: 601, cdnUrl: 'https://cdn.tratofacil.cl/files/pared.jpg' },
+              },
+            ],
+          },
+        ],
+        reviews: [],
+        realtimeReviews: [],
+      },
+    };
+
+    const view = await render(<ProviderProfileScreen />);
+
+    // Switch to 'Sobre Mí' tab while service 0 is selected
+    await fireEvent.press(view.getByText('Sobre Mí'));
+
+    // Should display 1 foto for electrical service
+    expect(view.getByText('1 foto')).toBeTruthy();
+    await fireEvent.press(view.getByText('1/1'));
+    expect(view.getByText('Foto Tablero Eléctrico')).toBeTruthy();
+    expect(view.queryByText('Foto Pared Pintada')).toBeNull();
+
+    // Close modal
+    await fireEvent.press(view.getByText('Sobre Mí')); // tap overlay or switch
+
+    // Switch back to Servicios tab and select Pintura Interior
+    await fireEvent.press(view.getByText('Servicios'));
+    await fireEvent.press(view.getByText('Pintura Interior'));
+
+    // Switch to 'Sobre Mí' tab again
+    await fireEvent.press(view.getByText('Sobre Mí'));
+
+    // Now gallery should show painting photo, not electrical photo!
+    expect(view.getByText('1 foto')).toBeTruthy();
+    await fireEvent.press(view.getByText('1/1'));
+    expect(view.getByText('Foto Pared Pintada')).toBeTruthy();
+    expect(view.queryByText('Foto Tablero Eléctrico')).toBeNull();
   });
 });

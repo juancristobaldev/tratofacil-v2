@@ -2,6 +2,7 @@ import type { CreateRealtimeOrderInput, GuestCreateRealtimeOrderInput, MutationQ
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import type { MutableRefObject } from 'react';
 import { Platform, AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from 'react-native-geolocation-service';
 import { useQuery, useMutation, useApolloClient } from '@apollo/client/react';
 import { io, Socket } from 'socket.io-client';
@@ -12,6 +13,15 @@ import { useNotification } from '../context/NotificationContext';
 import { logSocketIn, logSocketOut, setSocketLogIdentifiers } from '../utils/socketLogger';
 import { startLocationTracking, stopLocationTracking } from '../native/locationTracker';
 import { locationSimulator } from '../dev/joystick/locationSimulator';
+import { getOrCreateDeviceId, getCachedDeviceId } from '../utils/deviceId';
+
+const REVIEWED_ORDERS_STORAGE_KEY = '@tratofacil:reviewed_orders';
+
+export interface DeviceConflictData {
+  orderRealtimeId: number;
+  currentActiveDeviceId?: string;
+  message?: string;
+}
 import {
   GET_MY_REALTIME_STATE,
   GET_MY_REALTIME_ORDERS_AS_CLIENT,
@@ -164,6 +174,9 @@ export interface UseTimeRealServicesReturn {  loading: boolean;
   clientCounterOffer: (orderRealtimeId: number, quotedPrice: number, quotedHours: number, quotedTransport: number) => Promise<any>;
   respondToCounterOffer: (orderRealtimeId: number, decision: string) => Promise<any>;
   resetOrderSession: (orderId?: number) => void;
+  deviceConflict: DeviceConflictData | null;
+  dismissDeviceConflict: () => void;
+  claimSessionControl: (orderRealtimeId: number) => void;
 }
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -188,10 +201,15 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const socketRef = useRef<Socket | null>(null);
   const [socketStatus, setSocketStatus] = useState<SocketStatus>('disconnected');
   const [connectionGeneration, setConnectionGeneration] = useState(0);
+  const [deviceConflict, setDeviceConflict] = useState<DeviceConflictData | null>(null);
   const subscriptionsRef = useRef<Map<string, Set<Function>>>(new Map());
   const activeChatRoomRef = useRef<number | null>(null);
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationTsRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    getOrCreateDeviceId().catch(() => {});
+  }, []);
 
   // El efecto de conexión del socket (más abajo) no depende de `role`/`showNotification`
   // para no forzar una reconexión cada vez que el usuario cambia de modo cliente/proveedor.
@@ -313,6 +331,40 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
   const distanceMilestonesNotifiedRef = useRef<Map<number, Set<string>>>(new Map());
   const lastQuoteNotifiedRef = useRef<Map<number, number>>(new Map());
   const lastCounterOfferNotifiedRef = useRef<Map<number, number>>(new Map());
+
+  const reviewedOrderIdsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    let isMounted = true;
+    AsyncStorage.getItem(REVIEWED_ORDERS_STORAGE_KEY)
+      .then((raw) => {
+        if (!isMounted || !raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((id: number) => {
+              if (Number.isFinite(id)) reviewedOrderIdsRef.current.add(id);
+            });
+          }
+        } catch {}
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const markOrderReviewed = useCallback((orderId: number) => {
+    if (orderId) {
+      reviewedOrderIdsRef.current.add(orderId);
+      const arr = Array.from(reviewedOrderIdsRef.current);
+      AsyncStorage.setItem(REVIEWED_ORDERS_STORAGE_KEY, JSON.stringify(arr)).catch(() => {});
+    }
+  }, []);
+
+  const isOrderReviewed = useCallback((orderId: number) => {
+    return Boolean(orderId && reviewedOrderIdsRef.current.has(orderId));
+  }, []);
 
   useEffect(() => {
     if (!__DEV__) return;
@@ -501,7 +553,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         // cerramos; en caso contrario la mantenemos viva (evita el null-clear de R2).
         const match = clientOrders.find((o: any) => o.id === localActiveOrder.id);
         if (match && TERMINAL.includes(match.status)) {
-          _setLocalActiveOrder(match);
+          if (isOrderReviewed(match.id)) {
+            _setLocalActiveOrder(null);
+          } else {
+            _setLocalActiveOrder(match);
+          }
         }
       }
       return;
@@ -601,7 +657,11 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
         // cerramos; en caso contrario la mantenemos viva (evita el null-clear de R2).
         const match = providerOrders.find((o: any) => o.id === localProviderActiveOrder.id);
         if (match && TERMINAL.includes(match.status)) {
-          _setLocalProviderActiveOrder(match);
+          if (isOrderReviewed(match.id)) {
+            _setLocalProviderActiveOrder(null);
+          } else {
+            _setLocalProviderActiveOrder(match);
+          }
         }
       }
       return;
@@ -674,9 +734,10 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
 
     setSocketStatus('connecting');
 
+    const deviceId = getCachedDeviceId();
     const socket = io(`${ENDPOINT.replace(/\/$/, '')}/find`, {
       transports: ['websocket'],
-      auth: { token },
+      auth: { token, deviceId },
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 10000,
@@ -1335,6 +1396,37 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       dispatch('review:received', payload);
     });
 
+    socket.on('session:device-conflict', (payload: DeviceConflictData) => {
+      logSocketIn('session:device-conflict', payload);
+      setDeviceConflict(payload);
+      dispatch('session:device-conflict', payload);
+    });
+
+    socket.on('session:displaced', (payload: { orderRealtimeId: number; newDeviceId?: string; message?: string }) => {
+      logSocketIn('session:displaced', payload);
+      stopLocationTracking();
+      notifyRef.current({
+        id: `displaced:${payload.orderRealtimeId}`,
+        title: 'Control transferido',
+        message: payload.message || 'El control del servicio fue transferido a otro dispositivo.',
+        type: 'info',
+        duration: 7000,
+      });
+      dispatch('session:displaced', payload);
+    });
+
+    socket.on('session:control-granted', (payload: { orderRealtimeId: number; deviceId: string }) => {
+      logSocketIn('session:control-granted', payload);
+      setDeviceConflict(null);
+      notifyRef.current({
+        id: `controlGranted:${payload.orderRealtimeId}`,
+        title: 'Control activo',
+        message: 'Has tomado el control del servicio en este dispositivo.',
+        type: 'success',
+      });
+      dispatch('session:control-granted', payload);
+    });
+
     const appStateHandler = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
         if (socketRef.current) {
@@ -1911,48 +2003,6 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [sendMsgMut],
   );
 
-  const reviewedOrderIdsRef = useRef<Set<number>>(new Set());
-
-  const markOrderReviewed = useCallback((orderId: number) => {
-    if (orderId) {
-      reviewedOrderIdsRef.current.add(orderId);
-    }
-  }, []);
-
-  const isOrderReviewed = useCallback((orderId: number) => {
-    return Boolean(orderId && reviewedOrderIdsRef.current.has(orderId));
-  }, []);
-
-  const createProviderReview = useCallback(
-    async (input: CreateRealtimeProviderReviewInput) => {
-      markOrderReviewed(input.orderRealtimeId);
-      _setLocalActiveOrder(null);
-      try {
-        apolloClient.cache.evict({ id: `OrderRealTime:${input.orderRealtimeId}` });
-        apolloClient.cache.gc();
-      } catch {}
-      await reviewProviderMut({ variables: { input } });
-      refetch();
-      refetchClientOrders();
-    },
-    [apolloClient, markOrderReviewed, reviewProviderMut, refetch, refetchClientOrders],
-  );
-
-  const createClientReview = useCallback(
-    async (input: CreateClientReviewInput) => {
-      markOrderReviewed(input.orderRealtimeId);
-      _setLocalProviderActiveOrder(null);
-      try {
-        apolloClient.cache.evict({ id: `OrderRealTime:${input.orderRealtimeId}` });
-        apolloClient.cache.gc();
-      } catch {}
-      await reviewClientMut({ variables: { input } });
-      refetch();
-      refetchClientOrders();
-    },
-    [apolloClient, markOrderReviewed, reviewClientMut, refetch, refetchClientOrders],
-  );
-
   const resetOrderSession = useCallback(
     (orderId?: number) => {
       _setLocalActiveOrder(null);
@@ -1969,6 +2019,48 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       }
     },
     [apolloClient, clearNotification],
+  );
+
+  const createProviderReview = useCallback(
+    async (input: CreateRealtimeProviderReviewInput) => {
+      markOrderReviewed(input.orderRealtimeId);
+      resetOrderSession(input.orderRealtimeId);
+      try {
+        await reviewProviderMut({ variables: { input } });
+      } catch (err: any) {
+        const msg = String(err?.message || '').toLowerCase();
+        if (msg.includes('ya') && (msg.includes('calific') || msg.includes('reseñ') || msg.includes('review'))) {
+          if (__DEV__) console.warn('[useTimeRealServices] Provider review already exists, ignored', err);
+        } else {
+          throw err;
+        }
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
+    },
+    [markOrderReviewed, resetOrderSession, reviewProviderMut, refetch, refetchClientOrders],
+  );
+
+  const createClientReview = useCallback(
+    async (input: CreateClientReviewInput) => {
+      markOrderReviewed(input.orderRealtimeId);
+      resetOrderSession(input.orderRealtimeId);
+      try {
+        await reviewClientMut({ variables: { input } });
+      } catch (err: any) {
+        const msg = String(err?.message || '').toLowerCase();
+        if (msg.includes('ya') && (msg.includes('calific') || msg.includes('reseñ') || msg.includes('review'))) {
+          if (__DEV__) console.warn('[useTimeRealServices] Client review already exists, ignored', err);
+        } else {
+          throw err;
+        }
+      } finally {
+        refetch();
+        refetchClientOrders();
+      }
+    },
+    [markOrderReviewed, resetOrderSession, reviewClientMut, refetch, refetchClientOrders],
   );
 
   const requestProviderToConnect = useCallback(
@@ -2082,6 +2174,16 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
     [respondCounterOffMut, apolloClient, refetch, refetchClientOrders],
   );
 
+  const claimSessionControl = useCallback((orderRealtimeId: number) => {
+    if (socketRef.current) {
+      socketRef.current.emit('session:claim-control', { orderRealtimeId });
+    }
+  }, []);
+
+  const dismissDeviceConflict = useCallback(() => {
+    setDeviceConflict(null);
+  }, []);
+
   return useMemo(
     () => ({
       loading,
@@ -2127,6 +2229,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       clientCounterOffer,
       respondToCounterOffer,
       resetOrderSession,
+      deviceConflict,
+      dismissDeviceConflict,
+      claimSessionControl,
       socketRef,
       setLocalProviderActiveOrder: _setLocalProviderActiveOrder,
     }),
@@ -2172,6 +2277,9 @@ export function useTimeRealServices(): UseTimeRealServicesReturn {
       clientCounterOffer,
       respondToCounterOffer,
       resetOrderSession,
+      deviceConflict,
+      dismissDeviceConflict,
+      claimSessionControl,
       _setLocalActiveOrder,
       _setLocalProviderActiveOrder,
     ],

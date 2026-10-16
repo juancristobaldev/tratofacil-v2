@@ -62,6 +62,7 @@ const HEADER_CONFIG: Record<string, { showHelp?: boolean; subtitle?: string }> =
   OrderDetail: { showHelp: false },
   ManageSale: { showHelp: false },
   MyServices: { subtitle: 'Administra los servicios que ofreces' },
+  MyJobs: { subtitle: 'Gestiona tus ofertas laborales publicadas' },
   ProviderProfile: { subtitle: 'Información del profesional' },
 };
 
@@ -89,7 +90,7 @@ const HeaderGeneral: React.FC<{ currentRoute: string; navigationRef: any }> = ({
 
   const title = ROUTE_TITLES[currentRoute] || 'TratoFácil';
   const pageConfig = HEADER_CONFIG[currentRoute] || {};
-  const noBackScreens = ['Rating', 'ServiceSuccess'];
+  const noBackScreens = ['ServiceSuccess'];
   const showBack = !noBackScreens.includes(currentRoute);
 
   return (
@@ -131,6 +132,7 @@ import { RatingScreen } from '../screens/shared/RatingScreen';
 import { BillingScreen } from '../screens/shared/BillingScreen';
 import { VerificationCenterScreen } from '../screens/shared/VerificationCenterScreen';
 import { ReviewsListScreen } from '../screens/shared/ReviewsListScreen';
+import { MyJobsScreen } from '../screens/client/MyJobsScreen';
 import { ProductDetailScreen } from '../screens/client/ProductDetailScreen';
 import { ShippingScreen } from '../screens/shared/ShippingScreen';
 import { PurchaseScreen } from '../screens/shared/PurchaseScreen';
@@ -274,6 +276,10 @@ export const CustomDrawerContent: React.FC<DrawerContentComponentProps> = (props
 
         {role === 'client' && (
           <>
+            <TouchableOpacity style={styles.drawerItem} onPress={() => navigation.navigate('MyJobs')}>
+              <Icon name="Briefcase" size={18} color={TOKENS.colors.textSubtle} />
+              <Text style={styles.drawerItemText}>Mis Trabajos Publicados</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.drawerItem} onPress={() => navigation.navigate('MyProfile')}>
               <Icon name="User" size={18} color={TOKENS.colors.textSubtle} />
               <Text style={styles.drawerItemText}>Mi Perfil</Text>
@@ -515,6 +521,7 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="BecomeProvider" component={BecomeProviderScreen} />
               <Stack.Screen name="MarketplacePlans" component={MarketplacePlansScreen} />
               <Stack.Screen name="PublishJob" component={PublishJobScreen} />
+              <Stack.Screen name="MyJobs" component={MyJobsScreen} />
               <Stack.Screen name="PublishProduct" component={PublishProductScreen} />
               <Stack.Screen name="Rating" component={RatingScreen} options={{ gestureEnabled: false }} />
               <Stack.Screen name="Billing" component={BillingScreen} />

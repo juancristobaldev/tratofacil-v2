@@ -32,6 +32,18 @@ export const GET_PUBLIC_PROFILE = gql`
           description
           slug
           serviceId
+          isCertified
+          portfolio {
+            id
+            title
+            description
+            imageUrl
+            image {
+              id
+              cdnUrl
+            }
+            createdAt
+          }
           service {
             id
             name
@@ -255,3 +267,18 @@ export const DELETE_PROVIDER_PORTFOLIO_ITEM = gql`
     deleteProviderPortfolioItem(id: $id)
   }
 `;
+
+export const CREATE_CERTIFICATE = gql`
+  mutation CreateCertificate($input: CreateCertificateInput!) {
+    createCertificate(input: $input) {
+      id
+      title
+      institution
+      year
+      fileUrl
+      verified
+      createdAt
+    }
+  }
+`;
+

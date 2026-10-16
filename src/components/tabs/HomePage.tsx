@@ -44,6 +44,10 @@ import { DevJoystickOverlay } from '../../dev/joystick';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 let homePageRuntimeOwnerGeneration = 0;
+const navigatedToRatingOrderIds = new Set<number>();
+export const _resetNavigatedToRatingOrderIds = () => {
+  navigatedToRatingOrderIds.clear();
+};
 import {
   TERMINAL_REALTIME_STATUSES,
   PROVIDER_FOCUS_STATUSES,
@@ -503,18 +507,36 @@ export const HomePage: React.FC = () => {
 
   const hasNavigatedToRatingRef = useRef<number | null>(null);
   useEffect(() => {
-    if (role !== 'provider' && clientActiveOrder?.status === 'COMPLETED' && clientActiveOrder?.provider && clientActiveOrder?.id) {
-      if (hasNavigatedToRatingRef.current === clientActiveOrder.id || realtime.isOrderReviewed?.(clientActiveOrder.id)) return;
-      hasNavigatedToRatingRef.current = clientActiveOrder.id;
-      const providerImg = getImageUrl(clientActiveOrder.provider.logoImage?.cdnUrl || null);
-      const reviews = clientActiveOrder.provider.reviews || [];
+    if (role !== 'provider' && clientActiveOrder?.status === 'COMPLETED' && clientActiveOrder?.id) {
+      const orderId = clientActiveOrder.id;
+      const resolvedProviderId =
+        clientActiveOrder.provider?.id ??
+        (clientActiveOrder as any).providerId ??
+        (clientActiveOrder as any).serviceProvider?.provider?.id;
+
+      if (!resolvedProviderId) return;
+
+      if (
+        hasNavigatedToRatingRef.current === orderId ||
+        navigatedToRatingOrderIds.has(orderId) ||
+        realtime.isOrderReviewed?.(orderId)
+      ) {
+        return;
+      }
+      hasNavigatedToRatingRef.current = orderId;
+      navigatedToRatingOrderIds.add(orderId);
+
+      const providerImg = getImageUrl(clientActiveOrder.provider?.logoImage?.cdnUrl || null);
+      const reviews = clientActiveOrder.provider?.reviews || [];
       const avgRating = reviews.length
         ? reviews.reduce((s: number, r: any) => s + r.rating, 0) / reviews.length
         : 0;
+
       navigation.navigate('Rating', {
         role: 'client',
         targetUser: {
-          name: clientActiveOrder.provider.name || 'Profesional',
+          id: resolvedProviderId,
+          name: clientActiveOrder.provider?.name || 'Profesional',
           avatar: providerImg || undefined,
           rating: avgRating,
           reviewsCount: reviews.length,
@@ -524,19 +546,30 @@ export const HomePage: React.FC = () => {
         amount: clientActiveOrder.payment?.amount || clientActiveOrder.quotedPrice || 0,
         address: clientActiveOrder.clientAddress || '',
         paymentMethod: clientActiveOrder.payment ? 'Flow.cl' : '-',
-        orderRealtimeId: clientActiveOrder.id,
-        providerId: clientActiveOrder.provider.id,
+        orderRealtimeId: orderId,
+        providerId: resolvedProviderId,
       });
       setSelectedProvider(null);
+      realtime.setLocalActiveOrder?.(null);
       dismiss();
     } else if (role === 'provider' && realtime.providerActiveOrder?.status === 'COMPLETED' && realtime.providerActiveOrder?.id) {
       const pOrder = realtime.providerActiveOrder;
-      if (hasNavigatedToRatingRef.current === pOrder.id || realtime.isOrderReviewed?.(pOrder.id)) return;
-      hasNavigatedToRatingRef.current = pOrder.id;
+      const orderId = pOrder.id;
+      if (
+        hasNavigatedToRatingRef.current === orderId ||
+        navigatedToRatingOrderIds.has(orderId) ||
+        realtime.isOrderReviewed?.(orderId)
+      ) {
+        return;
+      }
+      hasNavigatedToRatingRef.current = orderId;
+      navigatedToRatingOrderIds.add(orderId);
+
       const clientSummary = summarizeForRole(pOrder?.client, 'client');
       navigation.navigate('Rating', {
         role: 'provider',
         targetUser: {
+          id: pOrder?.client?.id,
           name: pOrder?.client?.displayName || 'Cliente',
           avatar: null,
           rating: clientSummary?.rating ?? 0,
@@ -546,10 +579,11 @@ export const HomePage: React.FC = () => {
         serviceDetails: pOrder?.clientDescription || '',
         amount: pOrder?.payment?.amount || pOrder?.quotedPrice || 0,
         address: pOrder?.clientAddress || '',
-        orderRealtimeId: pOrder?.id,
+        orderRealtimeId: orderId,
         clientId: pOrder?.client?.id,
       });
       setSelectedProvider(null);
+      realtime.setLocalProviderActiveOrder?.(null);
       dismiss();
     }
   }, [clientActiveOrder, dismiss, navigation, realtime, role]);
@@ -558,7 +592,6 @@ export const HomePage: React.FC = () => {
   useEffect(() => {
     if (!hasActiveRealtimeOrder && wasActiveRealtimeOrderRef.current) {
       setSelectedProvider(null);
-      hasNavigatedToRatingRef.current = null;
     }
     wasActiveRealtimeOrderRef.current = hasActiveRealtimeOrder;
   }, [hasActiveRealtimeOrder]);
@@ -758,6 +791,8 @@ export const HomePage: React.FC = () => {
     servicesByCategory.forEach((service: any) => {
       service.serviceProviders?.forEach((sp: any) => {
         if (!sp.provider) return;
+        // Solo servicios con visita a domicilio pueden aparecer en el mapa de tiempo real
+        if (!sp.hasHomeVisit) return;
         const p = sp.provider;
         const cityKey = (sp.cities?.[0]?.city || p.location || '').toLowerCase();
         const fallbackCoords = resolvedCoords[cityKey];
@@ -791,6 +826,7 @@ export const HomePage: React.FC = () => {
           reviewsCount: allReviews.length,
           verified: !!(p.certificates?.some((c: any) => c.verified)),
           isRealtimeActive: p.isRealtimeActive || false,
+          hasHomeVisit: true,
           serviceName: service.name,
           categorySlug: service.category?.slug || '',
           pricePerHour: sp.price || 0,

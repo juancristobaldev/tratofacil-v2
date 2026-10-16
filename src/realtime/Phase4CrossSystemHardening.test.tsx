@@ -508,7 +508,7 @@ describe('Phase 4 — Cross-System Integration & Regression Hardening', () => {
       expect(io).toHaveBeenCalledWith(
         expect.stringContaining('/find'),
         expect.objectContaining({
-          auth: { token: 'user_b_jwt_token' },
+          auth: expect.objectContaining({ token: 'user_b_jwt_token' }),
         }),
       );
 

@@ -27,7 +27,16 @@ export const RatingScreen: React.FC = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { role: userRole } = useRole();
-  const { createProviderReview, createClientReview } = useRealtime();
+  const {
+    createProviderReview,
+    createClientReview,
+    markOrderReviewed,
+    resetOrderSession,
+    clientOrders,
+    providerOrders,
+    localActiveOrder,
+    activeOrder,
+  } = useRealtime();
   const { reviewJob } = useJobs();
 
   const {
@@ -46,24 +55,67 @@ export const RatingScreen: React.FC = () => {
   } = route.params || {};
 
   const orderJobId = rawOrderJobId ?? jobId;
+  const effectiveOrderRealtimeId = orderRealtimeId ? Number(orderRealtimeId) : undefined;
+
+  const effectiveProviderId = React.useMemo(() => {
+    if (providerId) return Number(providerId);
+    if (route.params?.providerId) return Number(route.params.providerId);
+    if (route.params?.targetUser?.id) return Number(route.params.targetUser.id);
+    if (effectiveOrderRealtimeId && clientOrders?.length) {
+      const matched = clientOrders.find((o: any) => o.id === effectiveOrderRealtimeId);
+      if (matched?.provider?.id) return Number(matched.provider.id);
+      if (matched?.providerId) return Number(matched.providerId);
+    }
+    if (localActiveOrder) {
+      if (localActiveOrder.provider?.id) return Number(localActiveOrder.provider.id);
+      if (localActiveOrder.providerId) return Number(localActiveOrder.providerId);
+    }
+    if (activeOrder) {
+      if (activeOrder.provider?.id) return Number(activeOrder.provider.id);
+      if (activeOrder.providerId) return Number(activeOrder.providerId);
+    }
+    return undefined;
+  }, [providerId, route.params, effectiveOrderRealtimeId, clientOrders, localActiveOrder, activeOrder]);
+
+  const effectiveClientId = React.useMemo(() => {
+    if (clientId) return Number(clientId);
+    if (route.params?.clientId) return Number(route.params.clientId);
+    if (route.params?.targetUser?.id) return Number(route.params.targetUser.id);
+    if (effectiveOrderRealtimeId && providerOrders?.length) {
+      const matched = providerOrders.find((o: any) => o.id === effectiveOrderRealtimeId);
+      if (matched?.client?.id) return Number(matched.client.id);
+      if (matched?.clientId) return Number(matched.clientId);
+    }
+    return undefined;
+  }, [clientId, route.params, effectiveOrderRealtimeId, providerOrders]);
 
   const [selectedRating, setSelectedRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
+  const handleDismissOrSkip = React.useCallback(() => {
+    if (effectiveOrderRealtimeId) {
+      markOrderReviewed?.(effectiveOrderRealtimeId);
+      resetOrderSession?.(effectiveOrderRealtimeId);
+    } else {
+      resetOrderSession?.();
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
+    }
+  }, [effectiveOrderRealtimeId, markOrderReviewed, resetOrderSession, navigation]);
+
   useEffect(() => {
     const backAction = () => {
-      if (navigation.canGoBack()) {
-        navigation.goBack();
-      } else {
-        navigation.reset({ index: 0, routes: [{ name: 'MainApp' }] });
-      }
+      handleDismissOrSkip();
       return true;
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [navigation]);
+  }, [handleDismissOrSkip]);
 
   const isFormValid = reviewComment.trim().length > 0;
 
@@ -77,19 +129,19 @@ export const RatingScreen: React.FC = () => {
     }
 
     try {
-      if (role === 'client' && orderRealtimeId && providerId) {
+      if (role === 'client' && effectiveOrderRealtimeId && effectiveProviderId) {
         await createProviderReview({
           rating: selectedRating,
           comment,
-          orderRealtimeId,
-          providerId,
+          orderRealtimeId: effectiveOrderRealtimeId,
+          providerId: effectiveProviderId,
         });
-      } else if (role === 'provider' && orderRealtimeId && clientId) {
+      } else if (role === 'provider' && effectiveOrderRealtimeId && effectiveClientId) {
         await createClientReview({
           rating: selectedRating,
           comment,
-          orderRealtimeId,
-          clientId,
+          orderRealtimeId: effectiveOrderRealtimeId,
+          clientId: effectiveClientId,
         });
       } else if (role === 'client' && orderJobId && workerId) {
         await reviewJob({
@@ -102,6 +154,10 @@ export const RatingScreen: React.FC = () => {
     } catch (_err) {
       // Best-effort submission
     } finally {
+      if (effectiveOrderRealtimeId) {
+        markOrderReviewed?.(effectiveOrderRealtimeId);
+        resetOrderSession?.(effectiveOrderRealtimeId);
+      }
       setSubmitting(false);
     }
     if (orderJobId) {
@@ -196,6 +252,15 @@ export const RatingScreen: React.FC = () => {
                 Escribe un breve comentario para habilitar el envío
               </Text>
             )}
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Calificar más tarde"
+              onPress={handleDismissOrSkip}
+              disabled={submitting}
+              style={styles.skipBtn}
+            >
+              <Text style={styles.skipBtnText}>Calificar más tarde</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -355,5 +420,17 @@ const styles = StyleSheet.create({
     fontWeight: TOKENS.typography.weights.medium,
     marginTop: 8,
     textAlign: 'center',
+  },
+  skipBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipBtnText: {
+    fontSize: 14,
+    color: TOKENS.colors.textSubtle,
+    fontWeight: TOKENS.typography.weights.medium,
   },
 });

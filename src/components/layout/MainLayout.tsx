@@ -74,7 +74,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       case 'jobs':
         return role === 'provider' ? <MyServicesScreen /> : <JobsTab />;
       case 'direct':
-        return role === 'provider' ? <EarningsTab /> : <View style={styles.placeholder}><Text>Trato Directo</Text></View>;
+        return role === 'provider' ? <EarningsTab /> : <TratoDirectoScreen />;
       case 'trato_directo':
         return <TratoDirectoScreen />;
       default:

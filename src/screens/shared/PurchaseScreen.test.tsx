@@ -69,6 +69,19 @@ jest.mock('../../config/endpoints', () => ({
   DEEP_LINK_CALLBACK: 'tratofacil://callback',
 }));
 
+jest.mock('../../components/modals/VerificationCenterModal', () => ({
+  VerificationCenterModal: (props: any) => {
+    const React = require('react');
+    const { View, Text } = require('react-native');
+    if (!props.visible) return null;
+    return (
+      <View testID="verification-center-modal">
+        <Text>{props.title || 'Verificación Requerida'}</Text>
+      </View>
+    );
+  },
+}));
+
 jest.mock('lucide-react-native', () => {
   const mockReact = require('react');
   const { Text } = require('react-native');
@@ -193,7 +206,11 @@ describe('PurchaseScreen component', () => {
         message: 'Tu pago fue procesado con tu tarjeta guardada.',
         type: 'success',
       });
-      expect(mockNavigate).toHaveBeenCalledWith('PurchasesList');
+      expect(mockNavigate).toHaveBeenCalledWith('PaymentSuccess', {
+        title: '¡Compra exitosa!',
+        subtitle: 'Tu pedido de "Taladro inalámbrico" ha sido procesado correctamente.',
+        type: 'product',
+      });
     });
   });
 
@@ -211,5 +228,25 @@ describe('PurchaseScreen component', () => {
       });
     });
     expect(mockPay).not.toHaveBeenCalled();
+  });
+
+  it('COMPONENT: muestra advertencia temprana proactiva cuando emailVerified es false', async () => {
+    mockUser = { id: 1, emailVerified: false };
+    const view = await render(<PurchaseScreen />);
+
+    expect(view.getByText('Completa tu perfil para agilizar el pago')).toBeTruthy();
+  });
+
+  it('COMPONENT: abre VerificationCenterModal en contexto cuando el backend rechaza por verificación sin perder la orden', async () => {
+    mockCreateOrder.mockRejectedValueOnce(new Error('Debes verificar tu correo electrónico para comprar'));
+    const view = await render(<PurchaseScreen />);
+
+    await fireEvent.press(view.getByText('Pagar con Flow'));
+
+    await waitFor(() => {
+      expect(view.getByTestId('verification-center-modal')).toBeTruthy();
+    });
+    expect(mockPay).not.toHaveBeenCalled();
+    expect(mockShowNotification).not.toHaveBeenCalled();
   });
 });

@@ -177,7 +177,7 @@ describe('FocusProviderPanelContent Component (Flujos 8, 9, 31)', () => {
 
     // Debe mostrar la vista de modificación con el nuevo total y botones
     await waitFor(() => {
-      expect(view.getByText('Modificar cotización')).toBeTruthy();
+      expect(view.getByText('Modificar oferta')).toBeTruthy();
       expect(view.getByText('Confirmar nueva oferta')).toBeTruthy();
       expect(view.getByText('Descartar cambios')).toBeTruthy();
     });

@@ -1,0 +1,24 @@
+appId: com.tratofacilv2
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "While using the app"
+    optional: true
+- tapOn:
+    text: "Allow"
+    optional: true
+- assertVisible: "Encuentra Profesionales"
+- takeScreenshot: qa/evidence/e2e/mobile/01-onboarding
+- tapOn: "Saltar"
+- assertVisible: "Buscar"
+- takeScreenshot: qa/evidence/e2e/mobile/02-main-map
+- tapOn: "Abrir menú de navegación"
+- assertVisible: "Iniciar Sesión"
+- takeScreenshot: qa/evidence/e2e/mobile/03-drawer
+- tapOn: "Iniciar Sesión"
+- assertVisible: "Correo electrónico"
+- takeScreenshot: qa/evidence/e2e/mobile/04-login-screen
+- tapOn: "Correo electrónico"
+- inputText: "cliente.test@tratofacil.cl"
+- takeScreenshot: qa/evidence/e2e/mobile/05-login-form-filled

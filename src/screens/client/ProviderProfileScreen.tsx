@@ -16,6 +16,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Avatar, ErrorState, StatsOverviewCard, ReviewCard, RatingDistribution, SegmentedTabs } from '../../components';
+import { VerificationCenterModal } from '../../components/modals/VerificationCenterModal';
 import { useAuth } from '../../context/AuthContext';
 import { useLocation } from '../../context/LocationContext';
 import { useRealtime } from '../../realtime/RealtimeContext';
@@ -31,7 +32,7 @@ export const ProviderProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { location } = useLocation();
   const { createContactRequest } = useRealtime();
   const { showNotification } = useNotification();
@@ -41,6 +42,7 @@ export const ProviderProfileScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('servicios');
   const [description, setDescription] = useState('¡Necesito tu servicio ahora!');
   const [submitting, setSubmitting] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [selectedServiceIndex, setSelectedServiceIndex] = useState(0);
   const [activePhotoModalIndex, setActivePhotoModalIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -79,11 +81,13 @@ export const ProviderProfileScreen: React.FC = () => {
         distribution[star] = (distribution[star] || 0) + 1;
       });
 
-      // Solo incluir certificados con verified === true (sin fileImage requerido)
-      const verifiedCertificates = (p.certificates || []).filter((c: any) => c.verified === true);
+      // Verificación y Certificaciones por Servicio
+      const isAnyServiceCertified = (p.services || []).some((s: any) => Boolean(s.isCertified));
 
-      // Galería de fotos del proveedor (casos de éxito / trabajos realizados / portafolio)
-      const rawGallery = p.portfolio || (p as any).gallery || (p as any).workImages || [];
+      // Galería de fotos del proveedor asociada al servicio activo (ServiceProvider)
+      const rawGallery = firstSp?.portfolio?.length
+        ? firstSp.portfolio
+        : p.portfolio || (p as any).gallery || (p as any).workImages || [];
       const galleryItems = rawGallery
         .map((item: any) => ({
           id: item?.id,
@@ -104,7 +108,9 @@ export const ProviderProfileScreen: React.FC = () => {
         avatar: getImageUrl(p.logoImage?.cdnUrl || p.logoUrl || null),
         rating: avgRating,
         reviewsCount: allReviews.length,
-        verified: verifiedCertificates.length > 0 || !!p.rut,
+        verified: isAnyServiceCertified || !!p.rut,
+        isCertified: Boolean(firstSp?.isCertified),
+        plan: (p as any).plan || (p.user?.planOrders?.[0]?.planActive ? p.user.planOrders[0].plan : 'FREE'),
         isRealtimeActive: p.isRealtimeActive || false,
         description: p.bio || 'Profesional verificado en TratoFácil con experiencia en el rubro.',
         pricePerHour: firstSp?.price || 0,
@@ -115,7 +121,7 @@ export const ProviderProfileScreen: React.FC = () => {
         categorySlug: firstSp?.service?.slug || '',
         allServices: p.services || [],
         completedOrdersCount: p.completedOrdersCount || Math.max(allReviews.length * 3, 24),
-        certificates: verifiedCertificates,
+        certificates: [],
         gallery,
         galleryItems,
         distribution,
@@ -136,8 +142,24 @@ export const ProviderProfileScreen: React.FC = () => {
   const handleBooking = async () => {
     if (!provider || submitting || submittingRef.current) return;
 
+    const isHomeVisitService = provider.allServices[selectedServiceIndex]?.hasHomeVisit ?? true;
+    if (!isHomeVisitService) {
+      showNotification({
+        title: 'Atención en local',
+        message: 'Este servicio solo se atiende en el local del profesional y no admite solicitudes a domicilio en tiempo real.',
+        type: 'error',
+      });
+      return;
+    }
+
     if (!isAuthenticated) {
       navigation.navigate('GuestCheckout', { provider, description: description.trim() });
+      return;
+    }
+
+    const hasBasicVerification = Boolean(user?.displayName?.trim() && user?.birthday && user?.emailVerified);
+    if (!hasBasicVerification) {
+      setShowVerificationModal(true);
       return;
     }
 
@@ -173,10 +195,15 @@ export const ProviderProfileScreen: React.FC = () => {
       } else {
         navigation.navigate('MainApp', { screen: 'Home' });
       }
-    } catch {
+    } catch (err: any) {
       submittingRef.current = false;
       setSubmitting(false);
-      showNotification({ title: 'Error', message: 'No se pudo enviar la solicitud.', type: 'error' });
+      const msg = err?.message || '';
+      if (msg.includes('datos personales') || msg.includes('verificar tu correo') || msg.includes('verificación') || msg.includes('Forbidden')) {
+        setShowVerificationModal(true);
+      } else {
+        showNotification({ title: 'Error', message: msg || 'No se pudo enviar la solicitud.', type: 'error' });
+      }
     }
   };
 
@@ -248,13 +275,25 @@ export const ProviderProfileScreen: React.FC = () => {
             </Text>
 
             {/* Badges */}
-            {provider.verified && (
-              <View style={styles.badgesRow}>
+            <View style={styles.badgesRow}>
+              {provider.verified && (
                 <View style={styles.verifiedBadge}>
                   <Text style={styles.verifiedBadgeText}>Verificado</Text>
                 </View>
-              </View>
-            )}
+              )}
+              {provider.plan === 'TRATOFACIL_SRV_PREMIUM' && (
+                <View style={styles.premiumBadge} testID="provider-profile-badge-premium">
+                  <Icon name="Star" size={11} color="#b45309" />
+                  <Text style={styles.premiumBadgeText}>Premium VIP</Text>
+                </View>
+              )}
+              {provider.plan === 'TRATOFACIL_SRV_PRO' && (
+                <View style={styles.proBadge} testID="provider-profile-badge-pro">
+                  <Icon name="Shield" size={11} color="#4338ca" />
+                  <Text style={styles.proBadgeText}>Profesional Pro</Text>
+                </View>
+              )}
+            </View>
 
             {/* Stats Resumen */}
             <StatsOverviewCard
@@ -317,8 +356,33 @@ export const ProviderProfileScreen: React.FC = () => {
 
             {/* Servicio Seleccionado (Destacado) */}
             <View style={styles.selectedServiceCard}>
-              <View style={styles.selectedServiceTag}>
-                <Text style={styles.selectedServiceTagText}>Seleccionado</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                <View style={styles.selectedServiceTag}>
+                  <Text style={styles.selectedServiceTagText}>Seleccionado</Text>
+                </View>
+                <View style={[styles.selectedServiceTag, {
+                  backgroundColor: provider.allServices[selectedServiceIndex]?.hasHomeVisit ? TOKENS.colors.success50 : TOKENS.colors.warning50
+                }]}>
+                  <Text style={[styles.selectedServiceTagText, {
+                    color: provider.allServices[selectedServiceIndex]?.hasHomeVisit ? TOKENS.colors.success700 : TOKENS.colors.warning700
+                  }]}>
+                    {provider.allServices[selectedServiceIndex]?.hasHomeVisit ? 'A Domicilio' : 'Atención en local'}
+                  </Text>
+                </View>
+                <View style={[styles.selectedServiceTag, {
+                  backgroundColor: provider.allServices[selectedServiceIndex]?.isCertified ? '#f0fdf4' : '#f8fafc',
+                  borderColor: provider.allServices[selectedServiceIndex]?.isCertified ? '#bbf7d0' : '#e2e8f0',
+                  borderWidth: 1,
+                }]}>
+                  <Text style={[styles.selectedServiceTagText, {
+                    color: provider.allServices[selectedServiceIndex]?.isCertified ? '#166534' : '#64748b',
+                    fontWeight: '700',
+                  }]}>
+                    {provider.allServices[selectedServiceIndex]?.isCertified
+                      ? 'Este profesional es certificado'
+                      : 'Este profesional no esta certificado'}
+                  </Text>
+                </View>
               </View>
               <Text style={styles.selectedServiceTitle}>{provider.serviceName}</Text>
               <Text style={styles.selectedServiceDesc}>
@@ -332,7 +396,9 @@ export const ProviderProfileScreen: React.FC = () => {
                   <Text style={styles.priceEstimateLabel}>Precio Estimado</Text>
                   <Text style={styles.priceEstimateVal}>
                     ${(provider.pricePerHour || 25000).toLocaleString('es-CL')}{' '}
-                    <Text style={styles.priceEstimateUnit}>/visita</Text>
+                    <Text style={styles.priceEstimateUnit}>
+                      {provider.allServices[selectedServiceIndex]?.hasHomeVisit ? '/visita' : '/en local'}
+                    </Text>
                   </Text>
                 </View>
               </View>
@@ -352,7 +418,23 @@ export const ProviderProfileScreen: React.FC = () => {
                         onPress={() => setSelectedServiceIndex(idx)}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.otherServiceTitle}>{sp.service?.name || sp.description || 'Servicio adicional'}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={[styles.otherServiceTitle, { flex: 1 }]}>{sp.service?.name || sp.description || 'Servicio adicional'}</Text>
+                          <Text style={{ fontSize: 11, fontWeight: 'bold', color: sp.hasHomeVisit ? TOKENS.colors.success700 : TOKENS.colors.warning700 }}>
+                            {sp.hasHomeVisit ? 'A Domicilio' : 'En local'}
+                          </Text>
+                        </View>
+                        <View style={{ marginTop: 4, marginBottom: 2 }}>
+                          <Text style={{
+                            fontSize: 11,
+                            fontWeight: '700',
+                            color: sp.isCertified ? '#166534' : '#64748b',
+                          }}>
+                            {sp.isCertified
+                              ? 'Este profesional es certificado'
+                              : 'Este profesional no esta certificado'}
+                          </Text>
+                        </View>
                         {sp.description ? (
                           <Text style={styles.otherServiceDesc} numberOfLines={2}>{sp.description}</Text>
                         ) : null}
@@ -460,28 +542,50 @@ export const ProviderProfileScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Certificados de la API GraphQL (verified === true) */}
-              {provider.certificates.length > 0 ? (
-                provider.certificates.map((cert: any) => (
-                  <View key={cert.id} style={styles.certCard}>
-                    <View style={styles.certIconCircle}>
-                      <Icon name="Award" size={20} color={TOKENS.colors.brand700} />
+              {/* Estado de Certificación por Servicio */}
+              {provider.allServices.length > 0 ? (
+                provider.allServices.map((sp: any, idx: number) => {
+                  const isCertified = Boolean(sp.isCertified);
+                  return (
+                    <View key={sp.id || idx} style={styles.certCard}>
+                      <View style={[styles.certIconCircle, {
+                        backgroundColor: isCertified ? TOKENS.colors.success50 : '#f8fafc',
+                      }]}>
+                        <Icon
+                          name={isCertified ? "CheckCircle" : "Award"}
+                          size={20}
+                          color={isCertified ? TOKENS.colors.statusSuccess : TOKENS.colors.textMuted}
+                        />
+                      </View>
+                      <View style={styles.certTextCol}>
+                        <Text style={styles.certTitle}>{sp.service?.name || sp.description || 'Servicio'}</Text>
+                        <Text style={[styles.certSub, {
+                          color: isCertified ? '#166534' : '#64748b',
+                          fontWeight: '700',
+                        }]}>
+                          {isCertified
+                            ? 'Este profesional es certificado'
+                            : 'Este profesional no esta certificado'}
+                        </Text>
+                      </View>
+                      <View style={[styles.certVerifiedPill, {
+                        backgroundColor: isCertified ? '#f0fdf4' : '#f8fafc',
+                        borderColor: isCertified ? '#bbf7d0' : '#e2e8f0',
+                        borderWidth: 1,
+                      }]}>
+                        <Text style={[styles.certVerifiedPillText, {
+                          color: isCertified ? '#166534' : '#64748b',
+                        }]}>
+                          {isCertified ? 'Certificado' : 'No certificado'}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.certTextCol}>
-                      <Text style={styles.certTitle}>{cert.title}</Text>
-                      <Text style={styles.certSub}>
-                        {[cert.institution, cert.year ? `Año ${cert.year}` : null, 'Acreditado'].filter(Boolean).join(' • ')}
-                      </Text>
-                    </View>
-                    <View style={styles.certVerifiedPill}>
-                      <Text style={styles.certVerifiedPillText}>Verificado</Text>
-                    </View>
-                  </View>
-                ))
+                  );
+                })
               ) : (
                 <View style={styles.emptyCertCard}>
                   <Icon name="Award" size={24} color={TOKENS.colors.textMuted} />
-                  <Text style={styles.emptyCertText}>Sin certificados verificados registrados actualmente.</Text>
+                  <Text style={styles.emptyCertText}>Este profesional no esta certificado.</Text>
                 </View>
               )}
             </View>
@@ -516,21 +620,31 @@ export const ProviderProfileScreen: React.FC = () => {
       </ScrollView>
 
       {/* CTA INFERIOR FIJO - Foco Máximo en Solicitar Oferta */}
-      <View style={[styles.footerBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-        <TouchableOpacity
-          style={[styles.ctaBtn, submitting && styles.ctaBtnDisabled]}
-          onPress={handleBooking}
-          disabled={submitting}
-          activeOpacity={0.85}
-          accessibilityLabel="Solicitar servicio"
-          accessibilityRole="button"
-        >
-          <Text style={styles.ctaBtnText}>
-            {submitting ? 'Enviando solicitud...' : 'Solicitar Oferta'}
-          </Text>
-          <Icon name="ArrowRight" size={20} color={TOKENS.colors.white} />
-        </TouchableOpacity>
-      </View>
+      {(() => {
+        const isCurrentHomeVisit = provider.allServices[selectedServiceIndex]?.hasHomeVisit ?? true;
+        const isDisabled = submitting || !isCurrentHomeVisit;
+        return (
+          <View style={[styles.footerBar, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+            <TouchableOpacity
+              style={[styles.ctaBtn, isDisabled && styles.ctaBtnDisabled]}
+              onPress={handleBooking}
+              disabled={isDisabled}
+              activeOpacity={0.85}
+              accessibilityLabel={!isCurrentHomeVisit ? 'Servicio solo disponible en local' : 'Solicitar servicio'}
+              accessibilityRole="button"
+            >
+              <Text style={styles.ctaBtnText}>
+                {!isCurrentHomeVisit
+                  ? 'Solo atención en local'
+                  : submitting
+                  ? 'Enviando solicitud...'
+                  : 'Solicitar Oferta'}
+              </Text>
+              {isCurrentHomeVisit && <Icon name="ArrowRight" size={20} color={TOKENS.colors.white} />}
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
       </KeyboardAvoidingView>
 
       {/* Lightbox Modal para Galería de Fotos (Punto 14) */}
@@ -593,6 +707,19 @@ export const ProviderProfileScreen: React.FC = () => {
           )}
         </View>
       </Modal>
+
+      {/* IN-CONTEXT VERIFICATION MODAL */}
+      <VerificationCenterModal
+        visible={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onSuccess={() => {
+          setShowVerificationModal(false);
+          handleBooking();
+        }}
+        requiredScope="basic"
+        title="Completa tus datos para solicitar"
+        description="Solo necesitamos confirmar tus datos personales para contactar al profesional. Tu solicitud y descripción no se perderán."
+      />
     </View>
   );
 };
@@ -695,6 +822,42 @@ const styles = StyleSheet.create({
   },
   verifiedBadgeText: {
     color: '#2563eb',
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  premiumBadge: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  premiumBadgeText: {
+    color: '#b45309',
+    fontSize: 10,
+    fontWeight: TOKENS.typography.weights.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  proBadge: {
+    backgroundColor: '#eef2ff',
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  proBadgeText: {
+    color: '#4338ca',
     fontSize: 10,
     fontWeight: TOKENS.typography.weights.bold,
     textTransform: 'uppercase',

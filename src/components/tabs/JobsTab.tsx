@@ -18,6 +18,7 @@ import { useRefresh } from '../../context/RefreshContext';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import type { Job, JobApplication } from '../../graphql/generated';
+import { mediaUrl } from '../../utils/imageUrl';
 
 type JobTabMode = 'Ofertas' | 'Mis Postulaciones' | 'Mis Ofertas';
 
@@ -78,8 +79,26 @@ export const JobsTab: React.FC = () => {
     const id = parseInt(jobId, 10);
     applyToJob(id).then(() => {
       setAppliedIds((prev) => new Set(prev).add(Number(jobId)));
-    }).catch(() => {
-      Alert.alert('Error', 'No se pudo postular al trabajo.');
+      Alert.alert('¡Postulación enviada!', 'Tu postulación fue enviada exitosamente.');
+    }).catch((err: any) => {
+      const msg = err?.message || 'No se pudo postular al trabajo.';
+      if (
+        msg.includes('verificación') ||
+        msg.includes('bancaria') ||
+        msg.includes('datos personales') ||
+        msg.includes('cuenta bancaria')
+      ) {
+        Alert.alert(
+          'Verificación requerida',
+          msg,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Ir a Verificación', onPress: () => navigation.navigate('VerificationCenter') },
+          ]
+        );
+      } else {
+        Alert.alert('Error', msg);
+      }
     });
   };
 
@@ -447,6 +466,27 @@ export const JobsTab: React.FC = () => {
                     <Avatar uri={null} name={app.worker?.displayName || 'U'} size={48} />
                     <View style={styles.candidateInfo}>
                       <Text style={styles.candidateName}>{app.worker?.displayName || 'Usuario'}</Text>
+
+                      {/* Documentos del Postulante */}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        {(app as any).antecedentesUrl ? (
+                          <TouchableOpacity
+                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca' }}
+                            onPress={() => Linking.openURL(mediaUrl((app as any).antecedentesUrl, 'pdf'))}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#b91c1c' }}>📄 Antecedentes (PDF)</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {(app as any).cvUrl ? (
+                          <TouchableOpacity
+                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#eef2ff', borderWidth: 1, borderColor: '#c7d2fe' }}
+                            onPress={() => Linking.openURL(mediaUrl((app as any).cvUrl, 'pdf'))}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#4338ca' }}>📄 CV (PDF)</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+
                       <TouchableOpacity
                         style={{ marginTop: 8 }}
                         onPress={() => {

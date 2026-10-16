@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal as RNModal, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Linking } from 'react-native';
 import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
-import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState, PaymentActionCards } from '../../components';
+import { Icon, Avatar, Badge, Button, Rating, EmptyState, ErrorState, PaymentActionCards, Modal } from '../../components';
 import type { PaymentActionType } from '../../components';
 import { useJobs } from '../../hooks/useJobs';
 import { useFlow } from '../../hooks/useFlow';
@@ -185,9 +184,12 @@ export const MyJobsScreen: React.FC = () => {
                 </View>
                 <View style={styles.footerActions}>
                   <Button
-                    title="Ver Candidatos"
+                    title={(job.applications?.length || 0) > 0 ? `Ver Candidatos (${job.applications!.length})` : 'Sin postulantes aún'}
+                    variant={(job.applications?.length || 0) > 0 ? 'primary' : 'outline'}
+                    icon={(job.applications?.length || 0) > 0 ? 'Users' : 'Clock'}
                     onPress={() => {
                       setSelectedJobId(job.id);
+                      setSelectedCandidate(job.applications?.[0]?.worker?.id ?? null);
                       setShowCandidatesModal(true);
                     }}
                     style={{ flex: 1 }}
@@ -250,65 +252,96 @@ export const MyJobsScreen: React.FC = () => {
         )}
       </View>
 
-      <RNModal visible={showCandidatesModal} transparent animationType="slide">
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { paddingBottom: insets.bottom || 24 }]}>
+      <Modal
+        visible={showCandidatesModal}
+        onClose={() => setShowCandidatesModal(false)}
+        contentStyle={styles.candidatesModalContent}
+      >
+        {(() => {
+          const selectedJob = jobs.find((j) => j.id === selectedJobId);
+          const apps = selectedJob?.applications || [];
+          const hasApps = apps.length > 0;
+
+          return (
+            <View>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Candidatos Postulados</Text>
-                <TouchableOpacity onPress={() => setShowCandidatesModal(false)} style={styles.closeBtn}>
-                  <Icon name="X" size={24} color={TOKENS.colors.textMain} />
-                </TouchableOpacity>
               </View>
-              <Text style={styles.modalSubtitle}>Selecciona al profesional ideal para tu trabajo.</Text>
+              <Text style={styles.modalSubtitle}>
+                {hasApps
+                  ? 'Selecciona al profesional ideal para tu trabajo.'
+                  : 'Aún no se han recibido postulaciones para esta publicación.'}
+              </Text>
 
-              <View style={styles.candidatesList}>
-                {jobs
-                  .find((j) => j.id === selectedJobId)
-                  ?.applications?.map((app) => (
-                    <TouchableOpacity
-                      key={app.id}
-                      style={[
-                        styles.candidateCard,
-                        selectedCandidate === app.worker.id && styles.candidateCardSelected,
-                      ]}
-                      onPress={() => setSelectedCandidate(app.worker.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Avatar uri={null} name={app.worker.displayName || 'U'} size={48} />
-                      <View style={styles.candidateInfo}>
-                        <Text style={styles.candidateName}>{app.worker.displayName}</Text>
-                        {app.message ? <Text style={{ fontSize: 12, color: TOKENS.colors.textSubtle }}>{app.message}</Text> : null}
-                      </View>
-                      <View style={styles.radioCircle}>
-                        {selectedCandidate === app.worker.id && <View style={styles.radioInner} />}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-              </View>
+              {hasApps ? (
+                <>
+                  <ScrollView style={styles.candidatesScrollView} showsVerticalScrollIndicator={false}>
+                    <View style={styles.candidatesList}>
+                      {apps.map((app) => (
+                        <TouchableOpacity
+                          key={app.id}
+                          style={[
+                            styles.candidateCard,
+                            selectedCandidate === app.worker.id && styles.candidateCardSelected,
+                          ]}
+                          onPress={() => setSelectedCandidate(app.worker.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Avatar uri={null} name={app.worker.displayName || 'U'} size={44} />
+                          <View style={styles.candidateInfo}>
+                            <Text style={styles.candidateName}>{app.worker.displayName}</Text>
+                            {app.message ? (
+                              <Text style={styles.candidateMessage} numberOfLines={2}>
+                                {app.message}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <View style={styles.radioCircle}>
+                            {selectedCandidate === app.worker.id && <View style={styles.radioInner} />}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
 
-              <View style={styles.totalBox}>
-                <Text style={styles.totalLabel}>Total del trabajo a pagar:</Text>
-                <Text style={styles.totalValue}>
-                  ${(jobs.find((j) => j.id === selectedJobId)?.price || 0).toLocaleString('es-CL')}
-                </Text>
-              </View>
+                  <View style={styles.totalBox}>
+                    <Text style={styles.totalLabel}>Total del trabajo a pagar:</Text>
+                    <Text style={styles.totalValue}>
+                      ${(selectedJob?.price || 0).toLocaleString('es-CL')}
+                    </Text>
+                  </View>
 
-              {/* Acciones de Pago 1-Tap */}
-              <PaymentActionCards
-                hasCard={hasSavedCard}
-                cardBrand={cardBrand}
-                cardLast4={cardLast4}
-                onPayWithSavedCard={handlePaySavedCard}
-                onRegisterCard={handleRegisterCard}
-                onPayWithFlow={handlePayFlow}
-                isProcessing={isProcessing}
-                activeAction={activeAction}
-              />
+                  {/* Acciones de Pago 1-Tap */}
+                  <PaymentActionCards
+                    hasCard={hasSavedCard}
+                    cardBrand={cardBrand}
+                    cardLast4={cardLast4}
+                    onPayWithSavedCard={handlePaySavedCard}
+                    onRegisterCard={handleRegisterCard}
+                    onPayWithFlow={handlePayFlow}
+                    isProcessing={isProcessing}
+                    activeAction={activeAction}
+                  />
+                </>
+              ) : (
+                <View style={styles.emptyApplicantsContainer}>
+                  <EmptyState
+                    icon="Clock"
+                    title="Buscando profesionales"
+                    description="Tu oferta está activa y visible en el marketplace. Te avisaremos apenas un profesional postule."
+                  />
+                  <Button
+                    title="Entendido"
+                    variant="primary"
+                    onPress={() => setShowCandidatesModal(false)}
+                    style={{ marginTop: TOKENS.spacing.md }}
+                  />
+                </View>
+              )}
             </View>
-          </View>
-        </GestureHandlerRootView>
-      </RNModal>
+          );
+        })()}
+      </Modal>
     </View>
   );
 };
@@ -340,30 +373,21 @@ const styles = StyleSheet.create({
   workerName: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   workerSkill: { fontSize: TOKENS.typography.sizes.xs, color: TOKENS.colors.textSubtle, marginTop: 2 },
   footerActions: { flexDirection: 'row', gap: TOKENS.spacing.md, paddingTop: TOKENS.spacing.md, borderTopWidth: 1, borderTopColor: TOKENS.colors.surface100 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: TOKENS.colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: TOKENS.spacing.xl },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  candidatesModalContent: { maxWidth: 440, padding: TOKENS.spacing.lg, borderRadius: 24 },
+  modalHeader: { marginBottom: 4 },
   modalTitle: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.textMain },
-  closeBtn: { padding: 4 },
-  modalSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.lg },
-  candidatesList: { gap: TOKENS.spacing.md, marginBottom: TOKENS.spacing.lg },
+  modalSubtitle: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textSubtle, marginBottom: TOKENS.spacing.md },
+  candidatesScrollView: { maxHeight: 220, marginBottom: TOKENS.spacing.md },
+  candidatesList: { gap: TOKENS.spacing.sm },
   candidateCard: { flexDirection: 'row', alignItems: 'center', padding: TOKENS.spacing.md, backgroundColor: TOKENS.colors.surface50, borderRadius: 16, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
   candidateCardSelected: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
   candidateInfo: { flex: 1, marginLeft: 12 },
-  candidateName: { fontSize: TOKENS.typography.sizes.md, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  ratingRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  radioCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: TOKENS.colors.surface300, alignItems: 'center', justifyContent: 'center' },
-  radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: TOKENS.colors.brand500 },
-  totalBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: TOKENS.colors.surface100, padding: TOKENS.spacing.md, borderRadius: 12, marginBottom: TOKENS.spacing.lg },
+  candidateName: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
+  candidateMessage: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 2 },
+  radioCircle: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: TOKENS.colors.surface300, alignItems: 'center', justifyContent: 'center' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: TOKENS.colors.brand500 },
+  totalBox: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: TOKENS.colors.surface100, padding: TOKENS.spacing.md, borderRadius: 12, marginBottom: TOKENS.spacing.md },
   totalLabel: { fontSize: TOKENS.typography.sizes.sm, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
   totalValue: { fontSize: TOKENS.typography.sizes.lg, fontWeight: TOKENS.typography.weights.extrabold, color: TOKENS.colors.brand600 },
-  paymentMethodSection: { marginBottom: TOKENS.spacing.lg, gap: 8 },
-  paymentMethodTitle: { fontSize: 10, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textSubtle, letterSpacing: 0.5 },
-  methodOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, backgroundColor: TOKENS.colors.surface50, borderRadius: 12, borderWidth: 1, borderColor: TOKENS.colors.surface200 },
-  methodOptionActive: { borderColor: TOKENS.colors.brand500, backgroundColor: TOKENS.colors.brand50 },
-  methodLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  methodName: { fontSize: 13, fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.textMain },
-  methodHint: { fontSize: 11, color: TOKENS.colors.textSubtle, marginTop: 1 },
-  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: TOKENS.colors.surface300, alignItems: 'center', justifyContent: 'center' },
-  radioChecked: { width: 10, height: 10, borderRadius: 5, backgroundColor: TOKENS.colors.brand500 },
+  emptyApplicantsContainer: { paddingVertical: TOKENS.spacing.md },
 });

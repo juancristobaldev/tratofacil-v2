@@ -129,9 +129,11 @@ export const CREATE_PRODUCT = gql`
       name
       slug
       price
+      stock
       shippingDisabled
     }
-  }`;
+  }
+`;
 
 export const FIND_ALL_CATEGORIES = gql`
   query FindAllCategory {

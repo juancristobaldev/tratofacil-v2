@@ -84,6 +84,8 @@ export const GET_MY_SALES = gql`
         id
         street
         number
+        dept
+        reference
         commune
         region
         phone
@@ -96,6 +98,7 @@ export const UPDATE_ORDER_PRODUCT_SHIPPING = gql`
   mutation UpdateOrderProductShipping($input: UpdateShippingInput!) {
     updateOrderProductShipping(input: $input) {
       id
+      status
       shippingCompany
       trackingCode
     }

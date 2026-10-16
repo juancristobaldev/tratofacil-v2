@@ -32,6 +32,7 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
   const [chatMessages, setChatMessages] = useState<ChatMessageItem[]>([]);
   const [typedMessage, setTypedMessage] = useState('');
   const [contactWarning, setContactWarning] = useState(false);
+  const [moderationError, setModerationError] = useState<string | null>(null);
   const chatScrollRef = useRef<ScrollView | null>(null);
 
   const orderId = activeOrder?.id ? Number(activeOrder.id) : null;
@@ -183,9 +184,15 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
           return prev;
         });
       }
-    } catch {
+    } catch (err: any) {
       // Revert optimistic message if send completely fails
       setChatMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setModerationError(err?.message || null);
+      setContactWarning(true);
+      setTimeout(() => {
+        setContactWarning(false);
+        setModerationError(null);
+      }, 5000);
     }
   };
 
@@ -248,7 +255,7 @@ export const FocusChatOverlay: React.FC<FocusChatOverlayProps> = React.memo(({ c
           <View style={styles.warningBanner}>
             <Icon name="ShieldAlert" size={14} color={TOKENS.colors.warning600} />
             <Text style={styles.warningBannerText}>
-              Por seguridad y protección de garantía, la información de contacto externa es protegida.
+              {moderationError || 'Por seguridad y protección de garantía, la información de contacto externa es protegida.'}
             </Text>
           </View>
         )}

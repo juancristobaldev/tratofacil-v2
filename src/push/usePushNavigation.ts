@@ -38,6 +38,8 @@ export function usePushNavigation() {
           navRef.current?.navigate('Rating', {
             orderRealtimeId: orderId,
             role: 'client',
+            providerId: data.providerId ? Number(data.providerId) : undefined,
+            targetUser: data.providerName ? { name: data.providerName, id: data.providerId ? Number(data.providerId) : undefined } : undefined,
           });
           return;
         }

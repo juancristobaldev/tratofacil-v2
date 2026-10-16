@@ -92,7 +92,7 @@ describe('useTimeRealServices Hook (Flujos 17, 18, 28, 29)', () => {
     expect(io).toHaveBeenCalledWith(
       expect.stringContaining('/find'),
       expect.objectContaining({
-        auth: { token: 'mock_jwt_token' },
+        auth: expect.objectContaining({ token: 'mock_jwt_token' }),
       }),
     );
 
@@ -102,6 +102,8 @@ describe('useTimeRealServices Hook (Flujos 17, 18, 28, 29)', () => {
     expect(registeredEvents).toContain('order-realtime:location-updated');
     expect(registeredEvents).toContain('chat:received');
     expect(registeredEvents).toContain('provider:realtime:status');
+    expect(registeredEvents).toContain('session:device-conflict');
+    expect(registeredEvents).toContain('session:displaced');
 
     view.unmount();
   });
@@ -420,7 +422,7 @@ describe('useTimeRealServices Hook (Flujos 17, 18, 28, 29)', () => {
     expect(updateHandlerCall).toBeDefined();
     const updateHandler = updateHandlerCall[1];
 
-    // Simula recepción de cotización enriquecida
+    // Simula recepción de oferta enriquecida
     await act(async () => {
       updateHandler({
         orderRealtimeId: 555,
@@ -746,7 +748,7 @@ describe('useTimeRealServices Hook (Flujos 17, 18, 28, 29)', () => {
     expect(updateHandlerCall).toBeDefined();
     const updateHandler = updateHandlerCall[1];
 
-    // 1. Cotización recibida del profesional
+    // 1. Oferta recibida del profesional
     await act(async () => {
       updateHandler({
         orderRealtimeId: 777,

@@ -198,7 +198,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
       setIsEditingQuote(false);
       showNotification({
         title: 'Oferta actualizada',
-        message: 'Tu cotización ha sido actualizada con éxito.',
+        message: 'Tu oferta ha sido actualizada con éxito.',
         type: 'success',
       });
     } catch {
@@ -708,7 +708,7 @@ export const FocusProviderPanelContent: React.FC<SheetComponentProps<'focus_prov
             ) : isEditingQuote ? (
               <View style={[styles.quoteCard, { width: '100%', marginBottom: 12 }]}>
                 <View style={styles.quoteCardHeader}>
-                  <Text style={styles.priceAdjusterLabel}>Modificar cotización</Text>
+                  <Text style={styles.priceAdjusterLabel}>Modificar oferta</Text>
                   <View style={styles.totalBadge}>
                     <Text style={styles.totalBadgeLabel}>Nuevo Total</Text>
                     <Text style={styles.totalBadgeValue}>{`$${totalQuote.toLocaleString('es-CL')}`}</Text>

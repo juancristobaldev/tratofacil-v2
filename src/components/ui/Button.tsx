@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, ActivityIndicator, ViewStyle, TextStyle, StyleProp, View } from 'react-native';
+import { StyleSheet, Text, ActivityIndicator, ViewStyle, TextStyle, StyleProp, View, Insets } from 'react-native';
 import { TouchableOpacity } from '@gorhom/bottom-sheet';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { TOKENS, MOTION } from '../../theme';
@@ -38,6 +38,7 @@ export interface ButtonProps {
   debugId?: string;
   adjustsFontSizeToFit?: boolean;
   minimumFontScale?: number;
+  hitSlop?: Insets | number;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -60,6 +61,7 @@ export const Button: React.FC<ButtonProps> = ({
   debugId,
   adjustsFontSizeToFit = false,
   minimumFontScale = 0.8,
+  hitSlop,
 }) => {
   const effectiveIconLeft = iconLeft || icon;
 
@@ -210,9 +212,23 @@ export const Button: React.FC<ButtonProps> = ({
   const debugTouchProps = debugId ? ({ onTouchStart: handleTouchStart } as any) : undefined;
   const resolvedIconColor = iconColor || currentVariant.defaultIconColor;
 
+  const resolvedHitSlop = React.useMemo(() => {
+    if (hitSlop !== undefined) return hitSlop;
+    if (size === 'xs') {
+      // visual height 28px -> +16px vertical/horizontal hitSlop ensures WCAG 2.2 AA (44x44pt) target size
+      return { top: 8, bottom: 8, left: 8, right: 8 };
+    }
+    if (size === 'sm') {
+      // visual height 36px -> +8px vertical/horizontal hitSlop ensures 44x44pt target size
+      return { top: 4, bottom: 4, left: 4, right: 4 };
+    }
+    return undefined;
+  }, [hitSlop, size]);
+
   return (
     <TouchableOpacity
       testID={testID}
+      hitSlop={resolvedHitSlop}
       style={[
         styles.baseContainer,
         currentSize.container,

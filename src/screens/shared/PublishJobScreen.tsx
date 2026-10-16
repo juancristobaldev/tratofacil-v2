@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { CustomAlert as Alert } from '../../components/ui/CustomAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { TOKENS } from '../../theme';
 import { Button, Input, Icon, RegionCitySelect } from '../../components/ui';
+import { VerificationCenterModal } from '../../components/modals/VerificationCenterModal';
 import { useRole } from '../../context/RoleContext';
+import { useAuth } from '../../context/AuthContext';
 import { useJobs } from '../../hooks/useJobs';
 import { containsPhoneNumber } from '../../utils/chile';
 import { JOB_COMMISSION_RATE } from '../../utils/comission';
@@ -15,6 +17,12 @@ export const PublishJobScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { role } = useRole();
+  const { user } = useAuth();
+
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const hasBasicVerification = Boolean(
+    user?.displayName?.trim() && user?.birthday && user?.emailVerified
+  );
 
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -41,6 +49,12 @@ export const PublishJobScreen: React.FC = () => {
       Alert.alert('Error', 'No puedes incluir números telefónicos en la descripción');
       return;
     }
+
+    if (!hasBasicVerification) {
+      setShowVerificationModal(true);
+      return;
+    }
+
     try {
       await createJob({
         title,
@@ -50,7 +64,12 @@ export const PublishJobScreen: React.FC = () => {
       });
       navigation.goBack();
     } catch (err: any) {
-      Alert.alert('Error', err.message);
+      const message = err?.message || '';
+      if (message.includes('datos personales') || message.includes('verificar tu correo') || message.includes('verificación')) {
+        setShowVerificationModal(true);
+      } else {
+        Alert.alert('Error', message || 'No se pudo publicar el trabajo.');
+      }
     }
   };
 
@@ -75,6 +94,24 @@ export const PublishJobScreen: React.FC = () => {
           <Text style={styles.introText}>
             Describe lo que necesitas con claridad para encontrar al candidato ideal en tu zona. Los trabajadores podrán postular a tu anuncio.
           </Text>
+
+          {/* PROACTIVE EARLY WARNING: BASIC VERIFICATION */}
+          {!hasBasicVerification && (
+            <TouchableOpacity
+              style={styles.earlyWarningCard}
+              activeOpacity={0.85}
+              onPress={() => setShowVerificationModal(true)}
+            >
+              <View style={styles.earlyWarningIconBox}>
+                <Icon name="ShieldCheck" size={20} color={TOKENS.colors.brand500} />
+              </View>
+              <View style={styles.earlyWarningContent}>
+                <Text style={styles.earlyWarningTitle}>Completa tus datos personales</Text>
+                <Text style={styles.earlyWarningSub}>Verifica tu cuenta para publicar ofertas de trabajo sin perder los datos que escribas.</Text>
+              </View>
+              <Icon name="ChevronRight" size={18} color={TOKENS.colors.brand500} />
+            </TouchableOpacity>
+          )}
 
           {/* SECTION 1: INFO */}
           <View style={styles.section}>
@@ -170,6 +207,19 @@ export const PublishJobScreen: React.FC = () => {
           />
         </View>
       </KeyboardAvoidingView>
+
+      {/* IN-CONTEXT VERIFICATION MODAL */}
+      <VerificationCenterModal
+        visible={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onSuccess={() => {
+          setShowVerificationModal(false);
+          handlePublish();
+        }}
+        requiredScope="basic"
+        title="Completa tus datos para publicar"
+        description="Solo necesitamos confirmar tu nombre y correo para publicar este trabajo. Tu texto y presupuesto se mantendrán intactos."
+      />
     </View>
   );
 };
@@ -210,4 +260,37 @@ const styles = StyleSheet.create({
   pickerList: { maxHeight: 360 },
   pickerOption: { paddingVertical: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
   pickerOptionText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
+  earlyWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.brand200,
+    borderRadius: 14,
+    padding: TOKENS.spacing.md,
+    marginBottom: TOKENS.spacing.md,
+    gap: 12,
+  },
+  earlyWarningIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.brand100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earlyWarningContent: {
+    flex: 1,
+  },
+  earlyWarningTitle: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand800,
+    marginBottom: 2,
+  },
+  earlyWarningSub: {
+    fontSize: 11,
+    color: TOKENS.colors.brand700,
+    lineHeight: 15,
+  },
 });

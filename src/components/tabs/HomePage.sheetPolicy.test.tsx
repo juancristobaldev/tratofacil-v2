@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, act } from '@testing-library/react-native';
 import { BackHandler } from 'react-native';
-import { HomePage } from './HomePage';
+import { HomePage, _resetNavigatedToRatingOrderIds } from './HomePage';
 
 const mockPresent = jest.fn();
 const mockDismiss = jest.fn();
@@ -70,6 +70,7 @@ jest.mock('../../components/ui/AnimatedUserMarker', () => ({
 describe('HomePage BottomSheet Surface Invariants (Flujo 4 & 20)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    _resetNavigatedToRatingOrderIds();
     mockRole = 'client';
     mockRealtime = {
       activeOrder: null,

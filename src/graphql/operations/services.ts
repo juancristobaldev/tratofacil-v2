@@ -33,6 +33,25 @@ export const MY_SERVICES = gql`
         providerId
         slug
         serviceId
+        isCertified
+        portfolio {
+          id
+          title
+          description
+          imageUrl
+          image {
+            id
+            cdnUrl
+          }
+        }
+        certificates {
+          id
+          title
+          institution
+          year
+          verified
+          fileUrl
+        }
         cities {
           city
         }

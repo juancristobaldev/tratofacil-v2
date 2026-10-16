@@ -171,7 +171,7 @@ const ProviderPinComponent: React.FC<ProviderPinProps> = ({
           <View style={styles.compactCard}>
             {/* 1. Precio arriba */}
             <Text style={styles.compactPrice}>
-              {priceValue > 0 ? `$${priceValue.toLocaleString('es-CL')}` : 'Cotizar'}
+              {priceValue > 0 ? `$${priceValue.toLocaleString('es-CL')}` : 'Ofertar'}
             </Text>
 
             {/* 2. Rating abajo */}

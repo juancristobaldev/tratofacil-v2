@@ -18,7 +18,11 @@ type OrdersSubTab = 'Mis Compras' | 'Mis Ventas';
 
 const statusBadge: Record<string, { label: string; tone: 'brand' | 'success' | 'warning' | 'neutral' }> = {
   PENDING: { label: 'PENDIENTE', tone: 'warning' },
+  CONFIRMED: { label: 'CONFIRMADO', tone: 'brand' },
+  ACCEPTED: { label: 'ACEPTADO', tone: 'brand' },
   PROCESSING: { label: 'EN CAMINO', tone: 'brand' },
+  IN_PROGRESS: { label: 'EN CURSO', tone: 'brand' },
+  COMPLETED: { label: 'COMPLETADO', tone: 'success' },
   SUCCESS: { label: 'COMPLETADO', tone: 'success' },
   CANCELLED: { label: 'CANCELADO', tone: 'neutral' },
 };
@@ -116,6 +120,7 @@ export const MarketplaceTab: React.FC = () => {
 
   const [activeMainTab, setActiveMainTab] = useState<MarketplaceMainTab>('Explorar');
   const [activeSubTab, setActiveSubTab] = useState<OrdersSubTab>('Mis Compras');
+  const [orderCategory, setOrderCategory] = useState<'all' | 'products' | 'services' | 'jobs'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const { setLocation } = useSearchLocation();
@@ -339,41 +344,216 @@ export const MarketplaceTab: React.FC = () => {
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TOKENS.colors.brand500} />}
           >
-                {activeSubTab === 'Mis Compras' && (
-                  <View style={styles.ordersList}>
-                    {myOrdersLoading ? (
-                      <Text style={styles.emptyText}>Cargando tus compras...</Text>
-                    ) : (myOrders?.products || []).length === 0 ? (
-                      <View style={styles.emptyContainer}>
-                        <Icon name="Package" size={48} color={TOKENS.colors.textMuted} />
-                        <Text style={styles.emptyTitle}>No tienes compras aún</Text>
-                        <Text style={styles.emptySubtitle}>Explora productos en el marketplace.</Text>
+                {activeSubTab === 'Mis Compras' && (() => {
+                  const productsList = myOrders?.products || [];
+                  const servicesList = myOrders?.services || [];
+                  const jobsList = myOrders?.jobs || [];
+                  const totalOrdersCount = productsList.length + servicesList.length + jobsList.length;
+
+                  const filteredTotal =
+                    orderCategory === 'products'
+                      ? productsList.length
+                      : orderCategory === 'services'
+                      ? servicesList.length
+                      : orderCategory === 'jobs'
+                      ? jobsList.length
+                      : totalOrdersCount;
+
+                  return (
+                    <View style={styles.ordersList}>
+                      {/* CATEGORY FILTER PILLS */}
+                      <View style={styles.orderPillsRow}>
+                        <TouchableOpacity
+                          style={[styles.orderPill, orderCategory === 'all' && styles.orderPillActive]}
+                          onPress={() => setOrderCategory('all')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.orderPillText, orderCategory === 'all' && styles.orderPillTextActive]}>
+                            Todos ({totalOrdersCount})
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.orderPill, orderCategory === 'products' && styles.orderPillActive]}
+                          onPress={() => setOrderCategory('products')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.orderPillText, orderCategory === 'products' && styles.orderPillTextActive]}>
+                            Productos ({productsList.length})
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.orderPill, orderCategory === 'services' && styles.orderPillActive]}
+                          onPress={() => setOrderCategory('services')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.orderPillText, orderCategory === 'services' && styles.orderPillTextActive]}>
+                            Servicios ({servicesList.length})
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.orderPill, orderCategory === 'jobs' && styles.orderPillActive]}
+                          onPress={() => setOrderCategory('jobs')}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.orderPillText, orderCategory === 'jobs' && styles.orderPillTextActive]}>
+                            Trabajos ({jobsList.length})
+                          </Text>
+                        </TouchableOpacity>
                       </View>
-                    ) : (
-                      (myOrders?.products || []).map((order) => {
-                        const badge = statusBadge[order.status] || { label: order.status, tone: 'neutral' as const };
-                        return (
-                          <TouchableOpacity
-                            key={order.id}
-                            style={styles.orderCard}
-                            onPress={() => navigation.navigate('OrderDetail', { id: order.id })}
-                          >
-                            <View style={styles.orderHeader}>
-                              <Text style={styles.orderNumber}>Orden #{order.id}</Text>
-                              <Badge label={badge.label} tone={badge.tone} />
-                            </View>
-                            <Text style={styles.orderProductTitle} numberOfLines={2}>{order.product?.name || 'Producto'}</Text>
-                            <Text style={styles.orderDate}>{new Date(order.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}</Text>
-                            <View style={styles.orderFooter}>
-                              <Text style={styles.orderPrice}>${order.total.toLocaleString('es-CL')}</Text>
-                              <Icon name="ChevronRight" size={20} color={TOKENS.colors.brand600} />
-                            </View>
-                          </TouchableOpacity>
-                        );
-                      })
-                    )}
-                  </View>
-                )}
+
+                      {myOrdersLoading ? (
+                        <Text style={styles.emptyText}>Cargando tus pedidos...</Text>
+                      ) : filteredTotal === 0 ? (
+                        <View style={styles.emptyContainer}>
+                          <Icon
+                            name={orderCategory === 'services' ? 'Calendar' : orderCategory === 'jobs' ? 'Briefcase' : 'Package'}
+                            size={48}
+                            color={TOKENS.colors.textMuted}
+                          />
+                          <Text style={styles.emptyTitle}>
+                            {orderCategory === 'services'
+                              ? 'No tienes servicios agendados'
+                              : orderCategory === 'jobs'
+                              ? 'No tienes trabajos contratados'
+                              : 'No tienes compras aún'}
+                          </Text>
+                          <Text style={styles.emptySubtitle}>
+                            {orderCategory === 'services'
+                              ? 'Explora profesionales y agenda servicios a domicilio.'
+                              : orderCategory === 'jobs'
+                              ? 'Publica requerimientos y contrata a los mejores candidatos.'
+                              : 'Explora productos en el marketplace.'}
+                          </Text>
+                        </View>
+                      ) : (
+                        <>
+                          {/* 1. PRODUCTS */}
+                          {(orderCategory === 'all' || orderCategory === 'products') &&
+                            productsList.map((order) => {
+                              const badge = statusBadge[order.status] || { label: order.status, tone: 'neutral' as const };
+                              return (
+                                <TouchableOpacity
+                                  key={`prod-${order.id}`}
+                                  style={styles.orderCard}
+                                  onPress={() => navigation.navigate('OrderDetail', { id: order.id })}
+                                  activeOpacity={0.8}
+                                >
+                                  <View style={styles.orderHeader}>
+                                    <View style={styles.orderHeaderLeft}>
+                                      <Icon name="Package" size={16} color={TOKENS.colors.brand500} />
+                                      <Text style={styles.orderNumber}>Producto #{order.id}</Text>
+                                    </View>
+                                    <Badge label={badge.label} tone={badge.tone} />
+                                  </View>
+                                  <Text style={styles.orderProductTitle} numberOfLines={2}>
+                                    {order.product?.name || 'Producto'}
+                                  </Text>
+                                  <Text style={styles.orderDate}>
+                                    {new Date(order.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}
+                                  </Text>
+                                  <View style={styles.orderFooter}>
+                                    <Text style={styles.orderPrice}>${order.total.toLocaleString('es-CL')}</Text>
+                                    <View style={styles.orderActionRow}>
+                                      <Text style={styles.orderActionText}>Ver Detalle</Text>
+                                      <Icon name="ChevronRight" size={16} color={TOKENS.colors.brand600} />
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+
+                          {/* 2. SERVICES */}
+                          {(orderCategory === 'all' || orderCategory === 'services') &&
+                            servicesList.map((serviceOrder) => {
+                              const badge = statusBadge[serviceOrder.status] || { label: serviceOrder.status, tone: 'neutral' as const };
+                              return (
+                                <View key={`svc-${serviceOrder.id}`} style={styles.orderCard}>
+                                  <View style={styles.orderHeader}>
+                                    <View style={styles.orderHeaderLeft}>
+                                      <Icon name="Wrench" size={16} color={TOKENS.colors.brand500} />
+                                      <Text style={styles.orderNumber}>Servicio #{serviceOrder.id}</Text>
+                                    </View>
+                                    <Badge label={badge.label} tone={badge.tone} />
+                                  </View>
+                                  <Text style={styles.orderProductTitle} numberOfLines={2}>
+                                    {serviceOrder.serviceProvider?.service?.name || 'Servicio Profesional'}
+                                  </Text>
+                                  {serviceOrder.serviceProvider?.provider?.name && (
+                                    <Text style={styles.orderVendorSubtitle}>
+                                      Profesional: {serviceOrder.serviceProvider.provider.name}
+                                    </Text>
+                                  )}
+                                  <Text style={styles.orderDate}>
+                                    {serviceOrder.scheduledAt
+                                      ? `Agendado: ${new Date(serviceOrder.scheduledAt).toLocaleDateString('es-CL', {
+                                          day: 'numeric',
+                                          month: 'long',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}`
+                                      : new Date(serviceOrder.createdAt).toLocaleDateString('es-CL', {
+                                          day: 'numeric',
+                                          month: 'long',
+                                        })}
+                                  </Text>
+                                  <View style={styles.orderFooter}>
+                                    <Text style={styles.orderPrice}>
+                                      ${(serviceOrder.total || 0).toLocaleString('es-CL')}
+                                    </Text>
+                                    <View style={styles.orderActionRow}>
+                                      <Text style={styles.orderActionText}>Agendado</Text>
+                                    </View>
+                                  </View>
+                                </View>
+                              );
+                            })}
+
+                          {/* 3. JOBS */}
+                          {(orderCategory === 'all' || orderCategory === 'jobs') &&
+                            jobsList.map((jobOrder) => {
+                              const badge = statusBadge[jobOrder.status] || { label: jobOrder.status, tone: 'neutral' as const };
+                              return (
+                                <TouchableOpacity
+                                  key={`job-${jobOrder.id}`}
+                                  style={styles.orderCard}
+                                  onPress={() => navigation.navigate('MyJobs')}
+                                  activeOpacity={0.8}
+                                >
+                                  <View style={styles.orderHeader}>
+                                    <View style={styles.orderHeaderLeft}>
+                                      <Icon name="Briefcase" size={16} color={TOKENS.colors.brand500} />
+                                      <Text style={styles.orderNumber}>Trabajo #{jobOrder.id}</Text>
+                                    </View>
+                                    <Badge label={badge.label} tone={badge.tone} />
+                                  </View>
+                                  <Text style={styles.orderProductTitle} numberOfLines={2}>
+                                    {jobOrder.job?.title || 'Trabajo Contratado'}
+                                  </Text>
+                                  {jobOrder.worker?.displayName && (
+                                    <Text style={styles.orderVendorSubtitle}>
+                                      Trabajador: {jobOrder.worker.displayName}
+                                    </Text>
+                                  )}
+                                  <Text style={styles.orderDate}>
+                                    {new Date(jobOrder.createdAt).toLocaleDateString('es-CL', { day: 'numeric', month: 'long' })}
+                                  </Text>
+                                  <View style={styles.orderFooter}>
+                                    <Text style={styles.orderPrice}>
+                                      ${(jobOrder.total || 0).toLocaleString('es-CL')}
+                                    </Text>
+                                    <View style={styles.orderActionRow}>
+                                      <Text style={styles.orderActionText}>Gestionar</Text>
+                                      <Icon name="ChevronRight" size={16} color={TOKENS.colors.brand600} />
+                                    </View>
+                                  </View>
+                                </TouchableOpacity>
+                              );
+                            })}
+                        </>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 {activeSubTab === 'Mis Ventas' && (
                   <View style={styles.ordersList}>
@@ -490,4 +670,52 @@ const styles = StyleSheet.create({
   selectorOptionActive: { backgroundColor: TOKENS.colors.brand50 },
   selectorOptionText: { fontSize: TOKENS.typography.sizes.sm, color: TOKENS.colors.textMain },
   selectorOptionTextActive: { fontWeight: TOKENS.typography.weights.bold, color: TOKENS.colors.brand600 },
+
+  orderPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: TOKENS.spacing.xs,
+  },
+  orderPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: TOKENS.colors.surface100,
+    borderWidth: 1,
+    borderColor: TOKENS.colors.surface200,
+  },
+  orderPillActive: {
+    backgroundColor: TOKENS.colors.brand50,
+    borderColor: TOKENS.colors.brand500,
+  },
+  orderPillText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.semibold,
+    color: TOKENS.colors.textSubtle,
+  },
+  orderPillTextActive: {
+    color: TOKENS.colors.brand700,
+    fontWeight: TOKENS.typography.weights.bold,
+  },
+  orderHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  orderVendorSubtitle: {
+    fontSize: 12,
+    color: TOKENS.colors.textSubtle,
+    marginBottom: 4,
+  },
+  orderActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  orderActionText: {
+    fontSize: 11,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand600,
+  },
 });

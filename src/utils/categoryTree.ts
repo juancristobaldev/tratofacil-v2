@@ -44,10 +44,10 @@ export function buildCategoryTree(
         const nodeServices = servicesByCategoryId.get(sub.id) || [];
         const sortedServices = [...nodeServices].sort((a, b) => {
           const aOnline = (a.serviceProviders || []).some(
-            (sp: any) => sp?.provider?.isRealtimeActive,
+            (sp: any) => sp?.hasHomeVisit && sp?.provider?.isRealtimeActive,
           );
           const bOnline = (b.serviceProviders || []).some(
-            (sp: any) => sp?.provider?.isRealtimeActive,
+            (sp: any) => sp?.hasHomeVisit && sp?.provider?.isRealtimeActive,
           );
           if (aOnline !== bOnline) return bOnline ? 1 : -1;
           return a.name.localeCompare(b.name);
@@ -64,7 +64,7 @@ export function buildCategoryTree(
           services: sortedServices,
           providerCount: allProviders.length,
           onlineProviderCount: allProviders.filter(
-            (p) => p?.provider?.isRealtimeActive,
+            (p) => p?.hasHomeVisit && p?.provider?.isRealtimeActive,
           ).length,
         });
       }
@@ -73,10 +73,10 @@ export function buildCategoryTree(
       if (directServices.length > 0) {
         const sortedServices = [...directServices].sort((a, b) => {
           const aOnline = (a.serviceProviders || []).some(
-            (sp: any) => sp?.provider?.isRealtimeActive,
+            (sp: any) => sp?.hasHomeVisit && sp?.provider?.isRealtimeActive,
           );
           const bOnline = (b.serviceProviders || []).some(
-            (sp: any) => sp?.provider?.isRealtimeActive,
+            (sp: any) => sp?.hasHomeVisit && sp?.provider?.isRealtimeActive,
           );
           if (aOnline !== bOnline) return bOnline ? 1 : -1;
           return a.name.localeCompare(b.name);
@@ -92,7 +92,7 @@ export function buildCategoryTree(
           services: sortedServices,
           providerCount: allProviders.length,
           onlineProviderCount: allProviders.filter(
-            (p) => p?.provider?.isRealtimeActive,
+            (p) => p?.hasHomeVisit && p?.provider?.isRealtimeActive,
           ).length,
         });
       }

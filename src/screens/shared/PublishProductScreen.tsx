@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { TOKENS } from '../../theme';
 import { Button, Input, Icon, Modal, RegionCitySelect } from '../../components/ui';
+import { VerificationCenterModal } from '../../components/modals/VerificationCenterModal';
 import { useRole } from '../../context/RoleContext';
 import { useAuth } from '../../context/AuthContext';
 import { useMarketplace } from '../../hooks/useMarketplace';
@@ -25,6 +26,11 @@ export const PublishProductScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { role } = useRole();
   const { user } = useAuth();
+
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const hasBank = Boolean(user?.bankAccount || user?.provider?.bank);
+  const hasBasic = Boolean(user?.displayName?.trim() && user?.birthday && user?.emailVerified);
+  const isProfileReady = hasBasic && hasBank;
 
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -169,6 +175,11 @@ export const PublishProductScreen: React.FC = () => {
       };
     }
 
+    if (!isProfileReady) {
+      setShowVerificationModal(true);
+      return;
+    }
+
     try {
       await createProduct(input);
       Alert.alert('Éxito', '¡Tu producto ha sido publicado correctamente!');
@@ -179,8 +190,7 @@ export const PublishProductScreen: React.FC = () => {
         Alert.alert('Límite alcanzado', 'Has alcanzado el límite de publicaciones de tu plan. Actualiza tu plan para seguir publicando productos.');
         navigation.navigate('MarketplacePlans');
       } else if (message.includes('verificación') || message.includes('verificacion') || message.includes('cuenta bancaria')) {
-        Alert.alert('Error', message);
-        navigation.navigate('VerificationCenter');
+        setShowVerificationModal(true);
       } else if (message.includes('Ya existe un producto') || message.includes('slug')) {
         Alert.alert('Error', 'Ya tienes un producto con un nombre similar. Intenta con otro título.');
       } else {
@@ -233,6 +243,24 @@ export const PublishProductScreen: React.FC = () => {
                 <Text style={styles.limitBannerBtnText}>Mejorar Plan</Text>
               </TouchableOpacity>
             </View>
+          )}
+
+          {/* PROACTIVE EARLY WARNING: BANK & PROFILE */}
+          {!isProfileReady && (
+            <TouchableOpacity
+              style={styles.earlyWarningCard}
+              activeOpacity={0.85}
+              onPress={() => setShowVerificationModal(true)}
+            >
+              <View style={styles.earlyWarningIconBox}>
+                <Icon name="CreditCard" size={20} color={TOKENS.colors.brand500} />
+              </View>
+              <View style={styles.earlyWarningContent}>
+                <Text style={styles.earlyWarningTitle}>Datos de cobro pendientes</Text>
+                <Text style={styles.earlyWarningSub}>Configura tu cuenta bancaria para recibir tus pagos sin salir de esta pantalla ni perder tus fotos.</Text>
+              </View>
+              <Icon name="ChevronRight" size={18} color={TOKENS.colors.brand500} />
+            </TouchableOpacity>
           )}
 
           {/* SECTION 1: PHOTOS */}
@@ -421,6 +449,19 @@ export const PublishProductScreen: React.FC = () => {
           ))}
         </ScrollView>
       </Modal>
+
+      {/* IN-CONTEXT VERIFICATION MODAL */}
+      <VerificationCenterModal
+        visible={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+        onSuccess={() => {
+          setShowVerificationModal(false);
+          Alert.alert('Datos actualizados', 'Tus datos fueron guardados exitosamente. Ya puedes publicar tu producto.');
+        }}
+        requiredScope="full"
+        title="Datos para recibir pagos"
+        description="Configura tu cuenta bancaria y datos personales para recibir el dinero de tus ventas. Tus fotos y datos del producto no se perderán."
+      />
     </View>
   );
 };
@@ -505,4 +546,37 @@ const styles = StyleSheet.create({
   pickerList: { maxHeight: 360 },
   pickerOption: { paddingVertical: TOKENS.spacing.md, borderBottomWidth: 1, borderBottomColor: TOKENS.colors.surface100 },
   pickerOptionText: { fontSize: TOKENS.typography.sizes.md, color: TOKENS.colors.textMain },
+  earlyWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.brand200,
+    borderRadius: 14,
+    padding: TOKENS.spacing.md,
+    marginBottom: TOKENS.spacing.md,
+    gap: 12,
+  },
+  earlyWarningIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.brand100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earlyWarningContent: {
+    flex: 1,
+  },
+  earlyWarningTitle: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand800,
+    marginBottom: 2,
+  },
+  earlyWarningSub: {
+    fontSize: 11,
+    color: TOKENS.colors.brand700,
+    lineHeight: 15,
+  },
 });

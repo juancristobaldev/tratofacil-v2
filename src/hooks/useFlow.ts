@@ -4,7 +4,7 @@ import { Linking, Platform } from 'react-native';
 import { INIT_FLOW_PRODUCT, CONFIRM_FLOW_PRODUCT, PAY_PRODUCT_WITH_SAVED_CARD } from '../graphql/operations/products';
 import { INIT_FLOW_JOB, CONFIRM_FLOW_JOB } from '../graphql/operations/jobs';
 import { INIT_REALTIME_FLOW_PAYMENT, CONFIRM_REALTIME_FLOW_PAYMENT, PAY_REALTIME_ORDER_WITH_SAVED_CARD } from '../graphql/operations/realtime';
-import { CONFIRM_FLOW_AD } from '../graphql/operations/wallet';
+import { CONFIRM_FLOW_AD, PAY_AD_ORDER_WITH_SAVED_CARD } from '../graphql/operations/wallet';
 import {
   CREATE_CHECKOUT,
   PAYMENT_STATUS,
@@ -93,11 +93,16 @@ export function useFlow(): UseFlowReturn {
   const [confirmJob] = useMutation<{ confirmFlowJob: { id: number; status: string } }>(CONFIRM_FLOW_JOB);
 
   const [confirmAd] = useMutation<{ confirmFlowAdTransaction: { id: number; status: string } }>(CONFIRM_FLOW_AD);
+  const [payAdSavedCard] = useMutation(PAY_AD_ORDER_WITH_SAVED_CARD);
 
   const pay = useCallback(
     async (params: FlowInitParams): Promise<FlowInitResult> => {
       setIsProcessing(true);
       setLastError(null);
+
+      if (__DEV__) {
+        console.log('[useFlow:pay:START]', params);
+      }
 
       try {
         let result: FlowInitResult | null = null;
@@ -136,10 +141,17 @@ export function useFlow(): UseFlowReturn {
                 token: session.attemptId,
                 paymentExpiresAt: session.expiresAt || undefined,
               };
+              if (__DEV__) {
+                console.log('[useFlow:createCheckout:SUCCESS]', {
+                  paymentId: session.paymentId,
+                  attemptId: session.attemptId,
+                  checkoutUrl: session.checkoutUrl,
+                });
+              }
             }
           } catch (checkoutErr) {
             if (__DEV__) {
-              console.log('[useFlow] createCheckout fallback to legacy init', checkoutErr);
+              console.warn('[useFlow] createCheckout fallback to legacy init', checkoutErr);
             }
           }
         }
@@ -173,10 +185,22 @@ export function useFlow(): UseFlowReturn {
           }
         }
 
+        if (__DEV__) {
+          console.log('[useFlow:pay:OPEN_URL]', result.url);
+        }
         await Linking.openURL(result.url);
         return result;
       } catch (err: any) {
         const msg = err?.message || 'Error al iniciar el pago';
+        if (__DEV__) {
+          console.error('[useFlow:pay:ERROR]', {
+            type: params.type,
+            orderId: params.orderId,
+            message: msg,
+            graphQLErrors: err?.graphQLErrors,
+            networkError: err?.networkError,
+          });
+        }
         setLastError(msg);
         throw err;
       } finally {
@@ -190,6 +214,10 @@ export function useFlow(): UseFlowReturn {
     async (type: FlowPaymentType, orderId: number): Promise<SavedCardPaymentResult> => {
       setIsProcessing(true);
       setLastError(null);
+
+      if (__DEV__) {
+        console.log('[useFlow:payWithSavedCard:START]', { type, orderId });
+      }
 
       try {
         let result: SavedCardPaymentResult | null = null;
@@ -217,6 +245,9 @@ export function useFlow(): UseFlowReturn {
               if (session.status === 'SUCCEEDED' || !session.requiresAction) {
                 await clearPendingCheckout();
                 result = { success: true, paymentId: session.paymentId };
+                if (__DEV__) {
+                  console.log('[useFlow:payWithSavedCard:SUCCEEDED]', result);
+                }
               } else if (session.checkoutUrl) {
                 await setPendingCheckout({
                   domainType: type,
@@ -227,11 +258,14 @@ export function useFlow(): UseFlowReturn {
                 });
                 await Linking.openURL(session.checkoutUrl);
                 result = { url: session.checkoutUrl, attemptId: session.attemptId };
+                if (__DEV__) {
+                  console.log('[useFlow:payWithSavedCard:ACTION_REQUIRED]', result);
+                }
               }
             }
           } catch (cardErr) {
             if (__DEV__) {
-              console.log('[useFlow] createCheckout saved card fallback', cardErr);
+              console.warn('[useFlow] createCheckout saved card fallback', cardErr);
             }
           }
         }
@@ -252,6 +286,13 @@ export function useFlow(): UseFlowReturn {
               result = (data as any)?.payRealtimeOrderWithSavedCard;
               break;
             }
+            case 'ad': {
+              const { data } = await payAdSavedCard({
+                variables: { orderAdsId: orderId },
+              });
+              result = (data as any)?.payAdOrderWithSavedCard;
+              break;
+            }
             default:
               throw new Error(`Pago con tarjeta no soportado para tipo '${type}'`);
           }
@@ -264,19 +305,32 @@ export function useFlow(): UseFlowReturn {
         return result;
       } catch (err: any) {
         const msg = err?.message || 'Error al procesar el pago con la tarjeta vinculada';
+        if (__DEV__) {
+          console.error('[useFlow:payWithSavedCard:ERROR]', {
+            type,
+            orderId,
+            message: msg,
+            graphQLErrors: err?.graphQLErrors,
+            networkError: err?.networkError,
+          });
+        }
         setLastError(msg);
         throw err;
       } finally {
         setIsProcessing(false);
       }
     },
-    [createCheckoutMut, payProductSavedCard, payRealtimeSavedCard],
+    [createCheckoutMut, payProductSavedCard, payRealtimeSavedCard, payAdSavedCard],
   );
 
   const confirm = useCallback(
     async (type: FlowPaymentType, token: string, attemptId?: string): Promise<string> => {
       setIsProcessing(true);
       setLastError(null);
+
+      if (__DEV__) {
+        console.log('[useFlow:confirm:START]', { type, token, attemptId });
+      }
 
       try {
         // 1. Intento canónico: consulta de solo lectura paymentStatus
@@ -290,6 +344,9 @@ export function useFlow(): UseFlowReturn {
 
           if (data?.paymentStatus) {
             const { isPaid, isTerminal } = data.paymentStatus;
+            if (__DEV__) {
+              console.log('[useFlow:confirm:paymentStatus]', data.paymentStatus);
+            }
             if (isPaid) {
               await clearPendingCheckout();
               return 'SUCCESS';
@@ -302,7 +359,7 @@ export function useFlow(): UseFlowReturn {
           }
         } catch (statusErr) {
           if (__DEV__) {
-            console.log('[useFlow] paymentStatus query fallback', statusErr);
+            console.warn('[useFlow] paymentStatus query fallback', statusErr);
           }
         }
 
@@ -337,9 +394,22 @@ export function useFlow(): UseFlowReturn {
             throw new Error('Confirmación no soportada para este tipo');
         }
         await clearPendingCheckout();
+        if (__DEV__) {
+          console.log('[useFlow:confirm:legacyResult]', { type, token, status });
+        }
         return status ?? 'UNKNOWN';
       } catch (err: any) {
         const msg = err?.message || 'Error al confirmar el pago';
+        if (__DEV__) {
+          console.error('[useFlow:confirm:ERROR]', {
+            type,
+            token,
+            attemptId,
+            message: msg,
+            graphQLErrors: err?.graphQLErrors,
+            networkError: err?.networkError,
+          });
+        }
         setLastError(msg);
         throw err;
       } finally {

@@ -340,19 +340,21 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     const startOrigin = { latitude: -33.4489, longitude: -70.6693 };
     const dest = { latitude: -33.4520, longitude: -70.6710 };
 
-    getDirectionsSpy.mockImplementation((orig) =>
-      Promise.resolve({
+    getDirectionsSpy.mockImplementation((orig) => {
+      const geoDist = directionsModule.computeGeodesicDistance(orig, dest);
+      const roadDist = Math.max(50, Math.round(geoDist * 1.15));
+      return Promise.resolve({
         coordinates: [orig, dest],
-        distanceMeters: 1000,
-        durationSeconds: 120,
-        distance: 1000,
-        duration: 120,
+        distanceMeters: roadDist,
+        durationSeconds: Math.round(roadDist / 10),
+        distance: roadDist,
+        duration: Math.round(roadDist / 10),
         provider: 'google',
         origin: orig,
         destination: dest,
         calculatedAt: Date.now(),
-      }),
-    );
+      });
+    });
 
     let renderer: ReactTestRenderer.ReactTestRenderer;
     await act(async () => {
@@ -384,6 +386,8 @@ describe('useRoutePolyline Hook (Realtime & Concurrency)', () => {
     // Avanzar los 1000ms restantes del cooldown: se dispara la 3ra llamada automáticamente
     await act(async () => {
       jest.advanceTimersByTime(1050);
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
     });
     expect(getDirectionsSpy).toHaveBeenCalledTimes(3);

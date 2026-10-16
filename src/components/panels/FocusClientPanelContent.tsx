@@ -104,7 +104,7 @@ export const FocusClientPanelContent: React.FC<SheetComponentProps<'focus_client
         showNotification({
           id: `counterOffer:${activeOrder?.id}:${activeOrder?.quotedPrice}:rejected`,
           title: 'Contraoferta rechazada',
-          message: 'El profesional rechazó tu contraoferta. Puedes enviar una nueva oferta o aceptar la cotización.',
+          message: 'El profesional rechazó tu contraoferta. Puedes enviar una nueva oferta o aceptar la oferta original.',
           type: 'error',
         });
       }

@@ -79,7 +79,7 @@ export const CategoriesPanelContent: React.FC<SheetComponentProps<'categories'>>
             parentName: node.name,
             services: [service],
             providerCount: sps.length,
-            onlineProviderCount: sps.filter((sp: any) => sp.provider?.isRealtimeActive).length,
+            onlineProviderCount: sps.filter((sp: any) => sp.hasHomeVisit && sp.provider?.isRealtimeActive).length,
           });
         }
       }

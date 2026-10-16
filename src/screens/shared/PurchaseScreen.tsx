@@ -4,6 +4,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TOKENS } from '../../theme';
 import { Icon, Button, Badge, PaymentActionCards } from '../../components/ui';
+import { VerificationCenterModal } from '../../components/modals/VerificationCenterModal';
 import type { PaymentActionType } from '../../components/ui';
 import { useAuth } from '../../context/AuthContext';
 import { useRole } from '../../context/RoleContext';
@@ -33,6 +34,10 @@ export const PurchaseScreen: React.FC = () => {
 
   const [activeAction, setActiveAction] = useState<PaymentActionType | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'flow' | 'saved_card' | null>(null);
+
+  const isProfileIncomplete = Boolean(user && user.emailVerified === false);
 
   if (!product) {
     return (
@@ -50,6 +55,11 @@ export const PurchaseScreen: React.FC = () => {
   const handlePayWithSavedCard = async () => {
     if (role === 'guest') {
       navigation.navigate('Login');
+      return;
+    }
+    if (user && user.emailVerified === false) {
+      setPendingAction('saved_card');
+      setShowVerificationModal(true);
       return;
     }
     setActiveAction('saved_card');
@@ -77,9 +87,19 @@ export const PurchaseScreen: React.FC = () => {
         message: 'Tu pago fue procesado con tu tarjeta guardada.',
         type: 'success',
       });
-      navigation.navigate('PurchasesList');
+      navigation.navigate('PaymentSuccess', {
+        title: '¡Compra exitosa!',
+        subtitle: `Tu pedido de "${product.name}" ha sido procesado correctamente.`,
+        type: 'product',
+      });
     } catch (err: any) {
-      showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+      if (msg.includes('datos personales') || msg.includes('verificar tu correo') || msg.includes('verificación')) {
+        setPendingAction('saved_card');
+        setShowVerificationModal(true);
+      } else {
+        showNotification({ title: 'Error', message: msg || 'Error al procesar el pago.', type: 'error' });
+      }
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -89,6 +109,11 @@ export const PurchaseScreen: React.FC = () => {
   const handlePayWithFlow = async () => {
     if (role === 'guest') {
       navigation.navigate('Login');
+      return;
+    }
+    if (user && user.emailVerified === false) {
+      setPendingAction('flow');
+      setShowVerificationModal(true);
       return;
     }
     setActiveAction('flow');
@@ -122,7 +147,13 @@ export const PurchaseScreen: React.FC = () => {
       }
       showNotification({ title: 'Error', message: 'No se pudo iniciar el pago. Intenta de nuevo.', type: 'error' });
     } catch (err: any) {
-      showNotification({ title: 'Error', message: err.message || 'Error al procesar el pago.', type: 'error' });
+      const msg = err?.graphQLErrors?.[0]?.message || err?.message || '';
+      if (msg.includes('datos personales') || msg.includes('verificar tu correo') || msg.includes('verificación')) {
+        setPendingAction('flow');
+        setShowVerificationModal(true);
+      } else {
+        showNotification({ title: 'Error', message: msg || 'Error al procesar el pago.', type: 'error' });
+      }
     } finally {
       setIsProcessing(false);
       setActiveAction(null);
@@ -157,6 +188,24 @@ export const PurchaseScreen: React.FC = () => {
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
       <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
         
+        {/* PROACTIVE EARLY WARNING: NON-BLOCKING */}
+        {isProfileIncomplete && (
+          <TouchableOpacity
+            style={styles.earlyWarningCard}
+            activeOpacity={0.85}
+            onPress={() => setShowVerificationModal(true)}
+          >
+            <View style={styles.earlyWarningIconCircle}>
+              <Icon name="ShieldCheck" size={18} color={TOKENS.colors.brand500} />
+            </View>
+            <View style={styles.earlyWarningTextContent}>
+              <Text style={styles.earlyWarningTitle}>Completa tu perfil para agilizar el pago</Text>
+              <Text style={styles.earlyWarningSubtitle}>Toca aquí para ingresar tus datos sin salir de la pantalla.</Text>
+            </View>
+            <Icon name="ChevronRight" size={18} color={TOKENS.colors.brand500} />
+          </TouchableOpacity>
+        )}
+
         {/* PRODUCT SUMMARY */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -184,6 +233,17 @@ export const PurchaseScreen: React.FC = () => {
             <Text style={styles.shippingText}>{shippingData.street} {shippingData.number} {shippingData.additional}</Text>
             <Text style={styles.shippingText}>{shippingData.city}, {shippingData.region}</Text>
             <Text style={styles.shippingText}>Contacto: {shippingData.phone}</Text>
+          </View>
+        ) : shippingData?.shippingDisabled ? (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Icon name="Store" size={20} color={TOKENS.colors.warning600} />
+              <Text style={styles.cardTitle}>Modalidad de Entrega</Text>
+            </View>
+            <Text style={styles.shippingText}>Retiro presencial / Sin despacho a domicilio</Text>
+            <Text style={[styles.shippingText, { color: TOKENS.colors.textSubtle, marginTop: 4 }]}>
+              Este producto no incluye despacho. Deberás coordinar el retiro directamente con el vendedor tras confirmar el pago.
+            </Text>
           </View>
         ) : null}
 
@@ -233,6 +293,28 @@ export const PurchaseScreen: React.FC = () => {
           <Text style={styles.secureText}>Pago 100% seguro y encriptado por Flow.cl</Text>
         </View>
       </View>
+
+      {/* IN-CONTEXT VERIFICATION MODAL (ZERO ADVANCE LOSS) */}
+      <VerificationCenterModal
+        visible={showVerificationModal}
+        onClose={() => {
+          setShowVerificationModal(false);
+          setPendingAction(null);
+        }}
+        onSuccess={() => {
+          setShowVerificationModal(false);
+          const act = pendingAction;
+          setPendingAction(null);
+          if (act === 'saved_card') {
+            handlePayWithSavedCard();
+          } else if (act === 'flow') {
+            handlePayWithFlow();
+          }
+        }}
+        requiredScope="basic"
+        title="Completa tus datos de compra"
+        description="Solo necesitamos confirmar tus datos para procesar el pago. Tu compra y dirección se mantendrán intactas."
+      />
     </View>
   );
 };
@@ -433,5 +515,38 @@ const styles = StyleSheet.create({
   secureText: {
     fontSize: 10,
     color: TOKENS.colors.textSubtle,
+  },
+  earlyWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: TOKENS.colors.brand50,
+    borderWidth: 1.5,
+    borderColor: TOKENS.colors.brand200,
+    borderRadius: 14,
+    padding: TOKENS.spacing.md,
+    marginBottom: TOKENS.spacing.md,
+    gap: 12,
+  },
+  earlyWarningIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: TOKENS.colors.brand100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  earlyWarningTextContent: {
+    flex: 1,
+  },
+  earlyWarningTitle: {
+    fontSize: TOKENS.typography.sizes.xs,
+    fontWeight: TOKENS.typography.weights.bold,
+    color: TOKENS.colors.brand800,
+    marginBottom: 2,
+  },
+  earlyWarningSubtitle: {
+    fontSize: 11,
+    color: TOKENS.colors.brand700,
+    lineHeight: 15,
   },
 });

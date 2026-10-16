@@ -55,3 +55,35 @@ export const GET_DATA_AND_TRANSITIONS = gql`
     }
   }
 `;
+
+export const GET_MY_ADS = gql`
+  query GetMyAds {
+    getMyAds {
+      id
+      expiredAt
+      orders {
+        id
+        status
+        total
+        days
+        info
+        image
+        imageRelation {
+          id
+          cdnUrl
+          compressedKey
+          key
+          extension
+        }
+        city
+        link
+        favicon
+        createdAt
+        category {
+          id
+          name
+        }
+      }
+    }
+  }
+`;

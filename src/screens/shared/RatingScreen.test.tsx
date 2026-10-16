@@ -5,9 +5,16 @@ import { RatingScreen } from './RatingScreen';
 const mockNavigate = jest.fn();
 const mockReplace = jest.fn();
 const mockReset = jest.fn();
+const mockGoBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 const mockCreateProviderReview = jest.fn();
 const mockCreateClientReview = jest.fn();
 const mockReviewJob = jest.fn();
+const mockMarkOrderReviewed = jest.fn();
+const mockResetOrderSession = jest.fn();
+
+let mockClientOrders: any[] = [];
+let mockLocalActiveOrder: any = null;
 
 let mockRouteParams: any = {
   role: 'client',
@@ -23,6 +30,8 @@ jest.mock('@react-navigation/native', () => ({
     navigate: mockNavigate,
     replace: mockReplace,
     reset: mockReset,
+    goBack: mockGoBack,
+    canGoBack: mockCanGoBack,
   }),
   useRoute: () => ({
     params: mockRouteParams,
@@ -41,6 +50,10 @@ jest.mock('../../realtime/RealtimeContext', () => ({
   useRealtime: () => ({
     createProviderReview: mockCreateProviderReview,
     createClientReview: mockCreateClientReview,
+    markOrderReviewed: mockMarkOrderReviewed,
+    resetOrderSession: mockResetOrderSession,
+    clientOrders: mockClientOrders,
+    localActiveOrder: mockLocalActiveOrder,
   }),
 }));
 
@@ -161,6 +174,77 @@ describe('RatingScreen component', () => {
         workerId: 66,
       });
       expect(mockReset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'MainApp' }] });
+    });
+  });
+
+  it('COMPONENT: allows skipping review via "Calificar más tarde" and cleans up order session', async () => {
+    mockRouteParams = {
+      role: 'client',
+      orderRealtimeId: 101,
+      providerId: 202,
+    };
+
+    const view = await render(<RatingScreen />);
+    const skipBtn = view.getByText('Calificar más tarde');
+    await fireEvent.press(skipBtn);
+
+    expect(mockMarkOrderReviewed).toHaveBeenCalledWith(101);
+    expect(mockResetOrderSession).toHaveBeenCalledWith(101);
+    expect(mockGoBack).toHaveBeenCalled();
+  });
+
+  it('COMPONENT: resolves providerId fallback from clientOrders when omitted in route params', async () => {
+    mockRouteParams = {
+      role: 'client',
+      orderRealtimeId: 101,
+      // providerId omitted deliberately
+    };
+    mockClientOrders.length = 0;
+    mockClientOrders.push({
+      id: 101,
+      provider: { id: 888, name: 'Fallback Provider' },
+    });
+
+    const view = await render(<RatingScreen />);
+
+    const commentInput = view.getByPlaceholderText('Escribe tu reseña sobre el servicio aquí (obligatorio)...');
+    await fireEvent.changeText(commentInput, 'Buena atención');
+
+    const submitBtn = view.getByText('Enviar reseña');
+    await fireEvent.press(submitBtn);
+
+    await waitFor(() => {
+      expect(mockCreateProviderReview).toHaveBeenCalledWith({
+        rating: 5,
+        comment: 'Buena atención',
+        orderRealtimeId: 101,
+        providerId: 888,
+      });
+      expect(mockMarkOrderReviewed).toHaveBeenCalledWith(101);
+      expect(mockResetOrderSession).toHaveBeenCalledWith(101);
+    });
+  });
+
+  it('COMPONENT: performs cleanup and navigates even if review mutation fails with already reviewed error', async () => {
+    mockRouteParams = {
+      role: 'client',
+      orderRealtimeId: 101,
+      providerId: 202,
+    };
+    mockCreateProviderReview.mockRejectedValueOnce(new Error('La orden ya tiene una calificación'));
+
+    const view = await render(<RatingScreen />);
+
+    const commentInput = view.getByPlaceholderText('Escribe tu reseña sobre el servicio aquí (obligatorio)...');
+    await fireEvent.changeText(commentInput, 'Excelente servicio');
+
+    const submitBtn = view.getByText('Enviar reseña');
+    await fireEvent.press(submitBtn);
+
+    await waitFor(() => {
+      expect(mockMarkOrderReviewed).toHaveBeenCalledWith(101);
+      expect(mockResetOrderSession).toHaveBeenCalledWith(101);
+      expect(mockReplace).toHaveBeenCalledWith('ServiceSuccess');
     });
   });
 });
